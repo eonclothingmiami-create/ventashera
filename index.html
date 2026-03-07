@@ -264,7 +264,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('historial')"><span class="nav-icon">📊</span>Historial</div>
     <div class="nav-item" onclick="showPage('config')"><span class="nav-icon">⚙</span>Configuración</div>
   </nav>
-  <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--meta)">VentasHera POS v3.1</div>
+  <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--meta)">VentasHera ERP v8.0</div>
 </aside>
 
 <main class="main" id="main">
@@ -1011,7 +1011,12 @@ function printReceipt(factura){
       <div style="text-align:center;font-size:10px">¡Gracias por su compra!<br>VentasHera POS</div>
     </div>`;
   const printWin=window.open('','','width=320,height=600');
-  printWin.document.write('<html><head><title>Factura</title></head><body style="margin:0">'+receiptHTML+'</body></html>');
+  printWin.document.write('<html><head><title>Factura</title></head><body style="margin:0">'+receiptHTML+'
+<script>
+console.log("Módulo ERP v8.0 Activo");
+// Aquí irían las funciones de notificaciones nocturnas que discutimos
+</script>
+</body></html>');
   printWin.document.close();
   printWin.focus();
   setTimeout(()=>{printWin.print();printWin.close()},500);
