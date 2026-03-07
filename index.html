@@ -10,6 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"><\/script>
 
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
 <meta name="theme-color" content="#00e5b4">
@@ -264,7 +265,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('historial')"><span class="nav-icon">📊</span>Historial</div>
     <div class="nav-item" onclick="showPage('config')"><span class="nav-icon">⚙</span>Configuración</div>
   </nav>
-  <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--meta)">VentasHera ERP v8.0</div>
+  <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--meta)">Hera ERP v8.3 | INTEGRACIÓN WEB</div>
 </aside>
 
 <main class="main" id="main">
@@ -331,6 +332,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 <script>
 // ===== FIREBASE CONFIG =====
+// Conexión con Catálogo Web
+const catalogApp = firebase.initializeApp({
+    apiKey: "AIzaSyBtynjEseNqWrY13LMFn2MI7ddbNMP58TI",
+    authDomain: "hera-swimwear-catalogo.firebaseapp.com",
+    projectId: "hera-swimwear-catalogo",
+}, "CatalogApp");
+const dbWeb = catalogApp.firestore();
+
 const firebaseConfig = {
   apiKey: "AIzaSyAzWG2WmSldVRw4JtjfHv-e3CLbjwnvbNk",
   authDomain: "ventacontrol-hera.firebaseapp.com",
@@ -1152,46 +1161,77 @@ function removeGaleriaImg(idx){
   renderGaleriaVisual();
 }
 
-function saveArticulo(existingId){
-  const nombre=document.getElementById('m-art-nombre').value.trim();
-  if(!nombre){notify('warning','⚠️','Campo requerido','El nombre es obligatorio.',{duration:3000});return}
-  const precioVenta=parseFloat(document.getElementById('m-art-pv').value)||0;
-  if(precioVenta<=0){notify('warning','⚠️','Precio inválido','El precio de venta debe ser mayor a 0.',{duration:3000});return}
 
-  // Ahora la galería toma los datos del arreglo visual directamente
-  const galeria = [..._tempGaleria];
-
-  const data={
-    codigo:document.getElementById('m-art-codigo').value.trim(),
-    nombre,
-    categoria:document.getElementById('m-art-cat').value,
-    tallas:document.getElementById('m-art-tallas').value.trim() || 'Única',
-    descripcion:document.getElementById('m-art-desc').value.trim(),
-    imagen:document.getElementById('m-art-img').value.trim(),
-    galeria,
-    video:document.getElementById('m-art-video').value.trim(),
-    precioCompra:parseFloat(document.getElementById('m-art-pc').value)||0,
-    precioVenta,
-    iva:parseFloat(document.getElementById('m-art-iva').value)||0,
-    stockMinimo:parseInt(document.getElementById('m-art-min').value)||5,
-    activo:true
-  };
-
-  if(existingId){
-    const idx=(state.articulos||[]).findIndex(a=>a.id===existingId);
-    if(idx>=0)state.articulos[idx]={...state.articulos[idx],...data};
-  }else{
-    data.id=uid();
-    state.articulos.push(data);
-    const stock0=parseInt(document.getElementById('m-art-stock0')?.value)||0;
-    if(stock0>0){
-      const bodegaId=document.getElementById('m-art-bodega')?.value||'bodega_main';
-      state.inv_movimientos.push({id:uid(),articuloId:data.id,bodegaId,cantidad:stock0,tipo:'entrada_inicial',fecha:today(),referencia:'Stock Inicial',nota:'Inventario inicial'});
+async function saveArticulo(existingId){
+    const nombre=document.getElementById('m-art-nombre').value.trim();
+    if(!nombre) return alert('El nombre es obligatorio');
+    
+    let galeriaFinal = [..._tempGaleria];
+    if(galeriaFinal.length > 0 && _portadaIndex < galeriaFinal.length){
+        const portada = galeriaFinal.splice(_portadaIndex, 1)[0];
+        galeriaFinal.unshift(portada);
     }
-  }
-  saveState();closeModal();renderArticulos();
-  notify('success','✅',existingId?'Prenda actualizada':'Prenda creada',nombre,{duration:3000});
+
+    const colorArray = document.getElementById('m-art-colores').value.split(',').map(c=>c.trim()).filter(Boolean);
+    const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
+
+    const data={
+        codigo: refID,
+        ref: refID, // Para la WEB
+        nombre: nombre,
+        name: nombre, // Para la WEB
+        seccion: document.getElementById('m-art-seccion').value,
+        cat: document.getElementById('m-art-cat').value,
+        descripcion: document.getElementById('m-art-desc').value.trim(),
+        video: document.getElementById('m-art-video').value.trim(),
+        tallas: document.getElementById('m-art-tallas').value.trim(),
+        sizes: document.getElementById('m-art-tallas').value.trim(), // Para la WEB
+        colors: colorArray,
+        imagen: galeriaFinal[0] || '',
+        images: galeriaFinal, // Para la WEB
+        precioCompra: parseFloat(document.getElementById('m-art-pc').value)||0,
+        precioVenta: parseFloat(document.getElementById('m-art-pv').value)||0,
+        price: parseFloat(document.getElementById('m-art-pv').value)||0, // Para la WEB
+        iva: parseFloat(document.getElementById('m-art-iva').value)||19,
+        stockMinimo: 5,
+        activo: true,
+        createdAt: firebase.firestore.Timestamp.now()
+    };
+
+    try {
+        // --- GUARDAR EN ERP (Realtime Database) ---
+        if(existingId){
+            const idx=state.articulos.findIndex(a=>a.id===existingId);
+            state.articulos[idx]={...state.articulos[idx], ...data};
+            // Actualizar en Web (Firestore) buscando por referencia
+            const q = await dbWeb.collection('products').where('ref','==',refID).get();
+            q.forEach(doc => doc.ref.update(data));
+        } else {
+            data.id=uid();
+            state.articulos.push(data);
+            // Crear en Web (Firestore)
+            await dbWeb.collection('products').add(data);
+        }
+
+        // --- GESTIÓN DE INVENTARIO ---
+        const qty = parseInt(document.getElementById('m-art-stock0').value)||0;
+        if(qty !== 0){
+            state.inv_movimientos.push({
+                id: uid(), articuloId: data.id, 
+                bodegaId: document.getElementById('m-art-bodega').value,
+                cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
+                fecha: today(), referencia: 'Integración Web', nota: 'Sincronizado'
+            });
+        }
+
+        saveState(); closeModal(); renderArticulos();
+        notify('success','🌐','¡Sincronizado!', 'La prenda ya está en el Catálogo Web e Inventario ERP.');
+    } catch(e) {
+        console.error("Error de Sincronización:", e);
+        alert("Error al enviar a la web: " + e.message);
+    }
 }
+
 
 // ===== SUBIDA DIRECTA DE FOTOS A FIREBASE STORAGE =====
 async function uploadSingleImage(input) {
