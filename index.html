@@ -1212,72 +1212,89 @@ async function uploadGalleryImages(input) {
 }
 
 async function saveArticulo(existingId){
-    const nombre=document.getElementById('m-art-nombre').value.trim();
-    if(!nombre) return alert('El nombre es obligatorio');
+    const nombre = document.getElementById('m-art-nombre').value.trim();
+    const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
     
+    if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios para sincronizar.');
+    
+    // 1. Prioridad de Galería: Si no subiste fotos nuevas, mantenemos las actuales
     let galeriaFinal = [..._tempGaleria];
     if(galeriaFinal.length > 0 && _portadaIndex < galeriaFinal.length){
         const portada = galeriaFinal.splice(_portadaIndex, 1)[0];
         galeriaFinal.unshift(portada);
     }
 
-    const colorArray = document.getElementById('m-art-colores').value.split(',').map(c=>c.trim()).filter(Boolean);
-    const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
-
-    const data={
+    const data = {
         codigo: refID,
-        ref: refID, // Para la WEB
+        ref: refID, 
         nombre: nombre,
-        name: nombre, // Para la WEB
+        name: nombre, 
         seccion: document.getElementById('m-art-seccion').value,
         cat: document.getElementById('m-art-cat').value,
         descripcion: document.getElementById('m-art-desc').value.trim(),
         video: document.getElementById('m-art-video').value.trim(),
         tallas: document.getElementById('m-art-tallas').value.trim(),
-        sizes: document.getElementById('m-art-tallas').value.trim(), // Para la WEB
-        colors: colorArray,
+        sizes: document.getElementById('m-art-tallas').value.trim(),
+        colors: document.getElementById('m-art-colores').value.split(',').map(c=>c.trim()).filter(Boolean),
         imagen: galeriaFinal[0] || '',
-        images: galeriaFinal, // Para la WEB
+        images: galeriaFinal, 
         precioCompra: parseFloat(document.getElementById('m-art-pc').value)||0,
         precioVenta: parseFloat(document.getElementById('m-art-pv').value)||0,
-        price: parseFloat(document.getElementById('m-art-pv').value)||0, // Para la WEB
+        price: parseFloat(document.getElementById('m-art-pv').value)||0, 
         iva: parseFloat(document.getElementById('m-art-iva').value)||19,
         stockMinimo: 5,
         activo: true,
-        createdAt: firebase.firestore.Timestamp.now()
+        lastUpdate: firebase.firestore.Timestamp.now()
     };
 
     try {
-        // --- GUARDAR EN ERP (Realtime Database) ---
-        if(existingId){
-            const idx=state.articulos.findIndex(a=>a.id===existingId);
-            state.articulos[idx]={...state.articulos[idx], ...data};
-            // Actualizar en Web (Firestore) buscando por referencia
-            const q = await dbWeb.collection('products').where('ref','==',refID).get();
-            q.forEach(doc => doc.ref.update(data));
+        showLoadingOverlay('connecting');
+
+        // --- PASO A: BUSCAR SI YA EXISTE EN LA WEB (Evita duplicados) ---
+        const queryWeb = await dbWeb.collection('products').where('ref', '==', refID).get();
+        
+        if (!queryWeb.empty) {
+            // Si existe en la web, actualizamos el documento existente
+            const docIdWeb = queryWeb.docs[0].id;
+            await dbWeb.collection('products').doc(docIdWeb).update(data);
+            console.log("Web: Producto actualizado por Referencia.");
         } else {
-            data.id=uid();
-            state.articulos.push(data);
-            // Crear en Web (Firestore)
-            await dbWeb.collection('products').add(data);
+            // Si NO existe en la web, lo creamos
+            await dbWeb.collection('products').add({ ...data, createdAt: firebase.firestore.Timestamp.now() });
+            console.log("Web: Producto nuevo creado.");
         }
 
-        // --- GESTIÓN DE INVENTARIO ---
+        // --- PASO B: GUARDAR EN ERP (Inventario Local) ---
+        if(existingId){
+            const idx = state.articulos.findIndex(a => a.id === existingId);
+            state.articulos[idx] = { ...state.articulos[idx], ...data };
+        } else {
+            // Si es nuevo en el ERP pero ya existía en la web, el ERP simplemente lo adopta
+            data.id = uid();
+            state.articulos.push(data);
+        }
+
+        // --- PASO C: REGISTRAR STOCK ---
         const qty = parseInt(document.getElementById('m-art-stock0').value)||0;
         if(qty !== 0){
             state.inv_movimientos.push({
                 id: uid(), articuloId: data.id, 
                 bodegaId: document.getElementById('m-art-bodega').value,
                 cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
-                fecha: today(), referencia: 'Integración Web', nota: 'Sincronizado'
+                fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
             });
         }
 
-        saveState(); closeModal(); renderArticulos();
-        notify('success','🌐','¡Sincronizado!', 'La prenda ya está en el Catálogo Web e Inventario ERP.');
+        saveState(); 
+        closeModal(); 
+        renderArticulos();
+        showLoadingOverlay('hide');
+        notify('success','🌐','Sincronización Exitosa', `Referencia ${refID} vinculada correctamente.`);
+        
     } catch(e) {
+        showLoadingOverlay('hide');
         console.error("Error de Sincronización:", e);
-        alert("Error al enviar a la web: " + e.message);
+        alert("Error al sincronizar: " + e.message);
     }
 }
 
@@ -2020,3 +2037,4 @@ window.addEventListener('load',()=>{loadState()});
 </script>
 </body>
 </html>
+
