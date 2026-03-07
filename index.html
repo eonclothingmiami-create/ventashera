@@ -18,28 +18,10 @@
 <meta name="apple-mobile-web-app-title" content="VentasHera">
 
 <style>
-:root {
-  --bg: #0a0f1e;
-  --bg2: #111827;
-  --bg3: #1a2235;
-  --card: rgba(255,255,255,0.04);
-  --card2: rgba(255,255,255,0.07);
-  --border: rgba(255,255,255,0.08);
-  --accent: #00e5b4;
-  --accent2: #00c4ff;
-  --accent3: #7c3aed;
-  --text: #e8f0fe;
-  --text2: #8899aa;
-  --red: #f87171;
-  --yellow: #fbbf24;
-  --green: #4ade80;
-  --orange: #fb923c;
-  --meta: #4b5563;
-}
+:root {--bg:#0a0f1e;--bg2:#111827;--bg3:#1a2235;--card:rgba(255,255,255,0.04);--card2:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.08);--accent:#00e5b4;--accent2:#00c4ff;--accent3:#7c3aed;--text:#e8f0fe;--text2:#8899aa;--red:#f87171;--yellow:#fbbf24;--green:#4ade80;--orange:#fb923c;--meta:#4b5563;}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:14px;overflow:hidden}
 h1,h2,h3,.logo-mark,.nav-item,.btn-primary,.level-name,.page-title,.section-title{font-family:'Syne',sans-serif}
-
 .app{display:flex;height:100vh;position:relative}
 .sidebar{width:240px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;flex-shrink:0;overflow-y:auto}
 .sidebar::-webkit-scrollbar{width:3px}
@@ -48,15 +30,12 @@ h1,h2,h3,.logo-mark,.nav-item,.btn-primary,.level-name,.page-title,.section-titl
 .main::-webkit-scrollbar{width:4px}
 .main::-webkit-scrollbar-track{background:transparent}
 .main::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-
 body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,180,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,180,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
 .sidebar,.main{position:relative;z-index:1}
-
 .logo{padding:20px 16px 14px;border-bottom:1px solid var(--border)}
 .logo-mark{font-size:17px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-0.5px}
 .logo-sub{font-size:10px;color:var(--text2);letter-spacing:2px;margin-top:4px;display:flex;align-items:center;gap:6px}
 #fb-status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--yellow);flex-shrink:0;transition:background .4s}
-
 .nav{padding:8px 0;flex:1}
 .nav-section{padding:12px 16px 6px;font-size:10px;font-weight:700;color:var(--meta);letter-spacing:2px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;color:var(--text2);font-family:'Syne',sans-serif;font-size:12px;font-weight:600;transition:all .15s;border-left:3px solid transparent;position:relative;white-space:nowrap}
@@ -64,13 +43,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .nav-item.active{color:var(--accent);background:rgba(0,229,180,.08);border-left-color:var(--accent)}
 .nav-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0}
 .nav-badge{background:var(--red);color:#fff;border-radius:999px;font-size:9px;padding:1px 5px;margin-left:auto;font-family:'DM Mono',monospace}
-
 .page{display:none;animation:fadeIn .2s ease}
 .page.active{display:block}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .page-title{font-size:22px;font-weight:800;margin-bottom:20px;letter-spacing:-0.5px;background:linear-gradient(135deg,var(--text) 60%,var(--text2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .section-title{font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px}
-
 .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;transition:border-color .2s;margin-bottom:16px}
 .card:hover{border-color:rgba(255,255,255,.12)}
 .card-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px}
@@ -78,11 +55,9 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
 .grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
-
 .stat-val{font-size:28px;font-weight:800;font-family:'Syne',sans-serif;color:var(--accent);line-height:1}
 .stat-label{font-size:11px;color:var(--text2);margin-top:4px;letter-spacing:0.5px}
 .stat-sub{font-size:11px;color:var(--text2);margin-top:2px}
-
 .btn{padding:10px 20px;border:none;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
 .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0a0f1e;box-shadow:0 4px 20px rgba(0,229,180,.3)}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,229,180,.4)}
@@ -94,7 +69,6 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .btn-xs{padding:4px 10px;font-size:11px;border-radius:6px}
 .btn-icon{width:32px;height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;font-size:14px}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap}
-
 .form-group{margin-bottom:16px}
 .form-label{display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px;letter-spacing:0.5px}
 .form-control{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;transition:border-color .2s;outline:none}
@@ -106,7 +80,6 @@ textarea.form-control{resize:vertical;min-height:80px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
 .form-inline{display:flex;gap:8px;align-items:flex-end}
-
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
 .badge-vitrina{background:rgba(124,58,237,.2);color:#a78bfa}
 .badge-local{background:rgba(251,191,36,.15);color:var(--yellow)}
@@ -115,20 +88,16 @@ textarea.form-control{resize:vertical;min-height:80px}
 .badge-pend{background:rgba(248,113,113,.15);color:var(--red)}
 .badge-warn{background:rgba(251,191,36,.15);color:var(--yellow)}
 .badge-info{background:rgba(0,196,255,.15);color:var(--accent2)}
-
 .progress-bar-wrap{background:rgba(255,255,255,.06);border-radius:999px;height:8px;overflow:hidden}
 .progress-bar-fill{height:100%;border-radius:999px;transition:width .6s cubic-bezier(.4,0,.2,1);background:linear-gradient(90deg,var(--accent),var(--accent2))}
-
 .table-wrap{overflow-x:auto;margin:-4px}
 table{width:100%;border-collapse:collapse}
 th{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
 td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:var(--text)}
 tr:hover td{background:rgba(255,255,255,.02)}
-
 .ring-meter{position:relative;display:inline-block}
 .ring-meter svg{transform:rotate(-90deg)}
 .ring-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
-
 #notif-container{position:fixed;bottom:20px;right:20px;z-index:5000;display:flex;flex-direction:column;gap:10px;max-width:360px;pointer-events:none}
 .notif-toast{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start;pointer-events:all;animation:toastIn .3s ease;box-shadow:0 8px 32px rgba(0,0,0,.5);position:relative;overflow:hidden}
 .notif-toast::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:99px 0 0 99px}
@@ -144,7 +113,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .notif-close{position:absolute;top:10px;right:12px;cursor:pointer;color:var(--text2);font-size:16px;line-height:1}
 @keyframes toastIn{from{transform:translateX(110%);opacity:0}to{transform:none;opacity:1}}
 @keyframes toastOut{to{transform:translateX(110%);opacity:0}}
-
 #celebration-overlay{position:fixed;inset:0;z-index:6000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7);backdrop-filter:blur(6px)}
 #celebration-overlay.active{display:flex;animation:fadeIn .3s ease}
 .celebration-card{background:var(--bg2);border:1px solid var(--border);border-radius:24px;padding:48px 40px;text-align:center;max-width:420px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
@@ -155,16 +123,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .confetti-piece{position:fixed;width:10px;height:10px;top:-10px;z-index:7000;pointer-events:none;border-radius:2px;animation:confettiFall linear forwards}
 @keyframes confettiFall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
 #screen-flash{position:fixed;inset:0;z-index:4000;pointer-events:none;opacity:0;transition:opacity .1s}
-
-/* MODAL */
 .modal-overlay{position:fixed;inset:0;z-index:5500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)}
 .modal-overlay.active{display:flex;animation:fadeIn .2s ease}
 .modal{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:28px;max-width:600px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.6)}
 .modal-lg{max-width:800px}
 .modal-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
 .modal-close{cursor:pointer;color:var(--text2);font-size:20px;background:none;border:none;padding:4px}
-
-/* POS LAYOUT */
 .pos-layout{display:grid;grid-template-columns:1fr 380px;gap:20px;height:calc(100vh - 120px)}
 .pos-products{overflow-y:auto;padding-right:8px}
 .pos-products::-webkit-scrollbar{width:3px}
@@ -180,10 +144,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .pos-item-qty{display:flex;align-items:center;gap:4px}
 .pos-item-qty button{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
 .pos-item-qty span{width:28px;text-align:center;font-size:12px;font-weight:700}
-
-/* PRODUCT GRID */
 .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.product-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;transition:all .15s;text-align:center}
+.product-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;transition:all .15s;text-align:center;overflow:hidden;}
 .product-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,229,180,.1)}
 .product-card .p-emoji{font-size:36px;margin-bottom:8px}
 .product-card .p-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:4px;color:var(--text)}
@@ -191,21 +153,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .product-card .p-stock{font-size:10px;color:var(--text2);margin-top:4px}
 .product-card.low-stock{border-color:rgba(248,113,113,.3)}
 .product-card.no-stock{opacity:.4;pointer-events:none}
-
 .search-bar{position:relative;margin-bottom:16px}
 .search-bar input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 16px 12px 40px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;transition:border-color .2s}
 .search-bar input:focus{border-color:var(--accent)}
 .search-bar .search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text2);font-size:14px}
 .search-bar .scanner-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
-
 .tabs{display:flex;gap:4px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px}
 .tab{padding:8px 16px;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text2);background:var(--card);border:1px solid var(--border);transition:all .15s;white-space:nowrap}
 .tab:hover{color:var(--text);background:var(--card2)}
 .tab.active{color:var(--accent);background:rgba(0,229,180,.1);border-color:rgba(0,229,180,.3)}
-
-/* RECEIPT / PRINT */
 @media print{body *{visibility:hidden}#print-area,#print-area *{visibility:visible}#print-area{position:absolute;left:0;top:0;width:80mm;font-size:10px}}
-
 @media(max-width:768px){
   .sidebar{position:fixed;left:-240px;top:0;bottom:0;z-index:3000;transition:left .3s;height:100vh}
   .sidebar.open{left:0}
@@ -223,24 +180,19 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .mobile-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2999}
 .sidebar-overlay.active{display:block}
-
 .urgency-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;transition:border-color .2s}
 .urgency-item.urgent{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}
 .urgency-item.warning{border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.05)}
 .urgency-item.ok{border-color:rgba(74,222,128,.2)}
-
 .game-level-bar{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px}
 .level-name{font-family:'Syne',sans-serif;font-size:24px;font-weight:800}
-
 .quick-actions{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
 .quick-action{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:var(--card);border:1px solid var(--border);cursor:pointer;transition:all .15s;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text2)}
 .quick-action:hover{color:var(--accent);border-color:rgba(0,229,180,.3);background:rgba(0,229,180,.05)}
-
 .empty-state{text-align:center;padding:48px 20px}
 .empty-state .es-icon{font-size:56px;margin-bottom:16px}
 .empty-state .es-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px}
 .empty-state .es-text{color:var(--text2);font-size:13px;line-height:1.6;max-width:360px;margin:0 auto}
-
 #scanner-overlay{position:fixed;inset:0;z-index:6500;display:none;background:rgba(0,0,0,.9);flex-direction:column;align-items:center;justify-content:center}
 #scanner-overlay.active{display:flex}
 #scanner-input{position:absolute;opacity:0;width:1px;height:1px}
@@ -439,7 +391,11 @@ let state = {
 };
 
 // ESTADO GLOBAL DE FORMULARIO POS Y FILTROS PARA MANTENER LA DATA
-let posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', metodo: 'efectivo' };
+let posFormState = { 
+  canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', 
+  cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true 
+};
+const CUENTAS_BANCARIAS = ['Bancolombia Principal', 'Bancolombia 2', 'Nequi', 'Daviplata'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
 
 // ===== CONSTANTS =====
@@ -604,7 +560,7 @@ function spawnConfetti(){const colors=['#00e5b4','#00c4ff','#f59e0b','#f87171','
 function showCelebration(emoji,title,sub){document.getElementById('cel-emoji').textContent=emoji;document.getElementById('cel-title').textContent=title;document.getElementById('cel-sub').textContent=sub;document.getElementById('celebration-overlay').classList.add('active');spawnConfetti()}
 function closeCelebration(){document.getElementById('celebration-overlay').classList.remove('active')}
 
-// ===== XP & BADGES (from original) =====
+// ===== XP & BADGES =====
 function awardXP(xp){
   if(!state.game)state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};
   const oldLv=calcLevel(state.game.xp||0).level;
@@ -708,25 +664,28 @@ function syncPOSFormState() {
   const g = document.getElementById('pos-guia'); if(g) posFormState.guia = g.value;
   const ci = document.getElementById('pos-ciudad'); if(ci) posFormState.ciudad = ci.value;
   const cl = document.getElementById('pos-cliente'); if(cl) posFormState.cliente = cl.value;
+  const tel = document.getElementById('pos-telefono'); if(tel) posFormState.telefono = tel.value;
   const m = document.getElementById('pos-metodo-pago'); if(m) posFormState.metodo = m.value;
+  const cta = document.getElementById('pos-cuenta'); if(cta) posFormState.cuenta = cta.value;
+  const iva = document.getElementById('pos-apply-iva'); if(iva) posFormState.applyIva = iva.checked;
 }
 
 function renderPOS(){
   const cart=state.pos_cart||[];
   const articulos=state.articulos||[];
-  const subtotal=cart.reduce((a,item)=>a+(item.precio*item.qty),0);
-  const iva=subtotal*0.19;
-  const total=subtotal+iva;
-
-  // Preserve inputs before re-rendering
+  
   syncPOSFormState();
+
+  const subtotal=cart.reduce((a,item)=>a+(item.precio*item.qty),0);
+  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
+  const total = subtotal + iva;
 
   document.getElementById('pos-content').innerHTML=`
     <div class="pos-layout">
       <div class="pos-products">
         <div class="search-bar">
           <span class="search-icon">🔍</span>
-          <input type="text" id="pos-search" placeholder="Buscar artículo o escanear código..." oninput="filterPOSProducts()" onkeydown="handlePOSScan(event)">
+          <input type="text" id="pos-search" placeholder="Buscar artículo o escanear..." oninput="filterPOSProducts()" onkeydown="handlePOSScan(event)">
           <button class="btn btn-sm btn-secondary scanner-btn" onclick="openScannerOverlay()" title="Escanear código de barras">📡</button>
         </div>
         <div class="tabs" id="pos-cat-tabs"></div>
@@ -739,6 +698,7 @@ function renderPOS(){
             <button class="btn btn-primary" style="margin-top:16px" onclick="showPage('articulos')">Ir a Artículos</button>
           </div>`:''}
       </div>
+
       <div class="pos-cart">
         <div class="pos-cart-header">
           <span>🛒 Carrito (${cart.length})</span>
@@ -750,22 +710,25 @@ function renderPOS(){
             <div class="pos-item">
               <div style="flex:1">
                 <div style="font-family:Syne;font-size:12px;font-weight:700">${item.nombre}</div>
+                <div style="font-size:10px;color:var(--accent2)">Talla: ${item.talla}</div>
                 <div style="font-size:11px;color:var(--text2)">${fmt(item.precio)} c/u</div>
               </div>
               <div class="pos-item-qty">
-                <button onclick="posCartQty(${i},-1)">−</button>
-                <span>${item.qty}</span>
-                <button onclick="posCartQty(${i},1)">+</button>
+                <button onclick="posCartQty(${i},-1)">−</button><span>${item.qty}</span><button onclick="posCartQty(${i},1)">+</button>
               </div>
-              <div style="font-family:Syne;font-weight:700;color:var(--accent);min-width:80px;text-align:right">${fmt(item.precio*item.qty)}</div>
+              <div style="font-family:Syne;font-weight:700;color:var(--accent);min-width:70px;text-align:right">${fmt(item.precio*item.qty)}</div>
               <button class="btn-icon btn-danger" style="font-size:10px;width:24px;height:24px" onclick="posCartRemove(${i})">✕</button>
             </div>`).join('')}
         </div>
+
         <div class="pos-cart-footer">
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text2); margin-bottom:8px; cursor:pointer;">
+            <input type="checkbox" id="pos-apply-iva" ${posFormState.applyIva?'checked':''} onchange="renderPOS()"> Aplicar IVA e Impuestos
+          </label>
           <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2);font-size:12px">Subtotal</span><span style="font-size:12px">${fmt(subtotal)}</span></div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2);font-size:12px">IVA (19%)</span><span style="font-size:12px">${fmt(iva)}</span></div>
+          ${posFormState.applyIva ? `<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text2);font-size:12px">IVA (19%)</span><span style="font-size:12px">${fmt(iva)}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;margin-bottom:12px;padding-top:8px;border-top:1px solid var(--border)"><span style="font-family:Syne;font-weight:800;font-size:16px">TOTAL</span><span style="font-family:Syne;font-weight:800;font-size:20px;color:var(--accent)">${fmt(total)}</span></div>
-          
+
           <div class="form-group" style="margin-bottom:10px">
             <select class="form-control" id="pos-canal" onchange="handlePOSShippingUI()" style="padding:8px 12px; background:var(--bg3)">
               <option value="vitrina" ${posFormState.canal==='vitrina'?'selected':''}>🏪 Venta Vitrina</option>
@@ -773,34 +736,40 @@ function renderPOS(){
               <option value="inter" ${posFormState.canal==='inter'?'selected':''}>📦 Intermunicipal</option>
             </select>
           </div>
-          
+
           <div id="pos-shipping-fields" style="display:${posFormState.canal!=='vitrina'?'flex':'none'}; flex-direction:column; gap:8px; margin-bottom:12px; background:var(--bg3); padding:10px; border-radius:10px; border:1px solid var(--border)">
-            <select class="form-control" id="pos-empresa" onchange="handlePOSEmpresa()">
-              </select>
-            <select class="form-control" id="pos-transportadora" style="display:none">
+             <select class="form-control" id="pos-empresa" onchange="handlePOSEmpresa()"></select>
+             <select class="form-control" id="pos-transportadora" style="display:none">
               <option value="">— Transportadora —</option>
               <option value="TCC" ${posFormState.transportadora==='TCC'?'selected':''}>TCC</option>
               <option value="Coordinadora" ${posFormState.transportadora==='Coordinadora'?'selected':''}>Coordinadora</option>
               <option value="Envía" ${posFormState.transportadora==='Envía'?'selected':''}>Envía</option>
               <option value="Interrapidisimo" ${posFormState.transportadora==='Interrapidisimo'?'selected':''}>Inter Rapidísimo</option>
               <option value="Servientrega" ${posFormState.transportadora==='Servientrega'?'selected':''}>Servientrega</option>
-            </select>
-            <input type="text" class="form-control" id="pos-guia" placeholder="Número de Guía" value="${posFormState.guia}">
-            <input type="text" class="form-control" id="pos-ciudad" placeholder="Ciudad / Dirección" value="${posFormState.ciudad}">
-            <div id="pos-liq-info" style="font-size:10px; color:var(--accent); margin-top:4px"></div>
+             </select>
+             <input type="text" class="form-control" id="pos-guia" placeholder="Número de Guía" value="${posFormState.guia}">
+             <input type="text" class="form-control" id="pos-ciudad" placeholder="Ciudad / Dirección" value="${posFormState.ciudad}">
+             <div id="pos-liq-info" style="font-size:10px; color:var(--accent); margin-top:4px"></div>
           </div>
 
-          <div class="form-group" style="margin-bottom:10px">
-            <select class="form-control" id="pos-metodo-pago" style="padding:8px 12px">
+          <div class="form-group" style="margin-bottom:10px; display:flex; gap:8px;">
+            <select class="form-control" id="pos-metodo-pago" style="padding:8px 12px" onchange="renderPOS()">
               <option value="efectivo" ${posFormState.metodo==='efectivo'?'selected':''}>💵 Efectivo</option>
               <option value="tarjeta" ${posFormState.metodo==='tarjeta'?'selected':''}>💳 Tarjeta</option>
               <option value="transferencia" ${posFormState.metodo==='transferencia'?'selected':''}>📱 Transferencia</option>
+              <option value="addi" ${posFormState.metodo==='addi'?'selected':''}>💜 Addi</option>
               <option value="mixto" ${posFormState.metodo==='mixto'?'selected':''}>🔄 Mixto</option>
             </select>
+            ${posFormState.metodo==='transferencia' ? `
+            <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
+              ${CUENTAS_BANCARIAS.map(c => `<option value="${c}" ${posFormState.cuenta===c?'selected':''}>${c}</option>`).join('')}
+            </select>` : ''}
           </div>
-          <div class="form-group" style="margin-bottom:10px">
+          <div class="form-row" style="gap:8px; margin-bottom:10px">
             <input type="text" class="form-control" id="pos-cliente" placeholder="Cliente (opcional)" style="padding:8px 12px" value="${posFormState.cliente}">
+            <input type="tel" class="form-control" id="pos-telefono" placeholder="Teléfono (opcional)" style="padding:8px 12px" value="${posFormState.telefono}">
           </div>
+
           <button class="btn btn-primary" style="width:100%" onclick="procesarVentaPOS()" ${cart.length===0?'disabled':''}>💰 Cobrar ${fmt(total)}</button>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="previewReceipt()">🧾 Vista Previa</button>
@@ -811,7 +780,7 @@ function renderPOS(){
     </div>`;
   renderPOSProductGrid();
   renderPOSCategoryTabs();
-  handlePOSShippingUI(); // Configurar UI basada en estado inicial
+  handlePOSShippingUI();
 }
 
 function handlePOSShippingUI() {
@@ -863,26 +832,51 @@ function renderPOSProductGrid(){
   let items=(state.articulos||[]).filter(a=>a.activo!==false);
   if(_posFilter)items=items.filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(_posFilter));
   if(_posCatFilter)items=items.filter(a=>a.categoria===_posCatFilter);
+
   el.innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);
     const low=stock<=a.stockMinimo;const out=stock<=0;
-    return`<div class="product-card ${out?'no-stock':low?'low-stock':''}" onclick="addToCart('${a.id}')">
-      <div class="p-emoji">${a.emoji||'📦'}</div>
-      <div class="p-name">${a.nombre}</div>
-      <div class="p-price">${fmt(a.precioVenta)}</div>
-      <div class="p-stock">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
-      ${a.codigo?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+a.codigo+'</div>':''}
+    const bgImg = a.imagen ? `background-image: linear-gradient(to top, rgba(0,0,0,0.8), transparent), url('${a.imagen}'); background-size: cover; background-position: center; color: white; border: none;` : '';
+    const videoIcon = a.video ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border-radius:50%;padding:4px;font-size:12px;">▶️</div>` : '';
+
+    return`<div class="product-card ${out?'no-stock':low?'low-stock':''}" style="position:relative; min-height:140px; display:flex; flex-direction:column; justify-content:flex-end; ${bgImg}" onclick="promptTallaYAgregar('${a.id}')">
+      ${videoIcon}
+      ${!a.imagen ? `<div class="p-emoji">${a.emoji||'👙'}</div>` : ''}
+      <div class="p-name" style="${a.imagen ? 'text-shadow: 0 1px 3px rgba(0,0,0,0.8);' : ''}">${a.nombre}</div>
+      <div class="p-price" style="${a.imagen ? 'color:#00e5b4; text-shadow: 0 1px 2px rgba(0,0,0,0.8);' : ''}">${fmt(a.precioVenta)}</div>
+      <div class="p-stock" style="${a.imagen ? 'color:#ddd;' : ''}">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
+      ${a.codigo&&!a.imagen?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+a.codigo+'</div>':''}
     </div>`}).join('')||'<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
 }
 
-function addToCart(artId){
-  syncPOSFormState(); // Save inputs before render
+function promptTallaYAgregar(artId){
+  const art=(state.articulos||[]).find(a=>a.id===artId);if(!art)return;
+  const tallas = art.tallas ? art.tallas.split(',') : ['XS','S','M','L','XL','Única'];
+
+  openModal(`
+    <div class="modal-title">Seleccionar Talla - ${art.nombre}<button class="modal-close" onclick="closeModal()">×</button></div>
+    ${art.descripcion ? `<div style="font-size:12px; color:var(--text2); margin-bottom:16px">${art.descripcion}</div>` : ''}
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:16px">
+      ${tallas.map(t => `<button class="btn btn-secondary" onclick="addToCart('${artId}', '${t.trim()}')">${t.trim()}</button>`).join('')}
+    </div>
+  `);
+}
+
+function addToCart(artId, talla = 'Única'){
+  syncPOSFormState(); 
   const art=(state.articulos||[]).find(a=>a.id===artId);if(!art)return;
   const stock=getArticuloStock(artId);
-  const inCart=(state.pos_cart||[]).find(c=>c.articuloId===artId);
+  const inCart=(state.pos_cart||[]).find(c=>c.articuloId===artId && c.talla===talla);
   const currentQty=inCart?inCart.qty:0;
+
   if(currentQty>=stock){notify('warning','⚠️','Sin stock','No hay suficiente inventario.',{duration:3000});return}
-  if(inCart){inCart.qty++}else{state.pos_cart.push({articuloId:artId,nombre:art.nombre,precio:art.precioVenta,qty:1, categoria: art.categoria})}
+
+  if(inCart){
+    inCart.qty++;
+  } else {
+    state.pos_cart.push({articuloId:artId, nombre:art.nombre, precio:art.precioVenta, qty:1, categoria: art.categoria, talla: talla});
+  }
+  closeModal();
   renderPOS();
 }
 
@@ -900,72 +894,66 @@ function clearPOSCart(){syncPOSFormState();state.pos_cart=[];renderPOS()}
 function procesarVentaPOS(){
   syncPOSFormState();
   const cart=state.pos_cart||[];if(cart.length===0)return;
-  
-  const canal = posFormState.canal;
-  const empresa = posFormState.empresa;
-  const transportadora = posFormState.transportadora;
-  const guia = posFormState.guia;
-  const ciudad = posFormState.ciudad;
-  const cliente = posFormState.cliente;
-  const metodo = posFormState.metodo;
 
-  // Validación rápida de envíos
-  if(canal === 'inter' && !guia) { notify('warning','⚠️','Guía requerida','Ingresa el número de guía.',{duration:4000}); return; }
-  
+  const canal = posFormState.canal;
+  const metodo = posFormState.metodo;
+  const cuentaStr = metodo === 'transferencia' ? posFormState.cuenta : metodo;
+
   const subtotal=cart.reduce((a,item)=>a+(item.precio*item.qty),0);
-  const iva=subtotal*0.19;
+  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
   const total=subtotal+iva;
   const numFactura='POS-'+getNextConsec('factura');
   const fechaActual = today();
 
-  // Calcular categoría global para estadísticas
   let catGlobal = 'Varias';
   const catsInCart = [...new Set(cart.map(c => c.categoria).filter(Boolean))];
-  if(catsInCart.length === 1) catGlobal = catsInCart[0]; // Si todo es Trajes de Baño, se queda ahí.
+  if(catsInCart.length === 1) catGlobal = catsInCart[0]; 
 
   let fechaLiquidacion = null;
   let liquidado = true;
   if (canal === 'local') { fechaLiquidacion = addBusinessDays(fechaActual, state.diasLocal); liquidado = false; }
   if (canal === 'inter') { fechaLiquidacion = addBusinessDays(fechaActual, state.diasInter); liquidado = false; }
 
-  // Create factura
-  const factura={id:uid(),numero:numFactura,fecha:fechaActual,cliente,items:cart.map(c=>({...c})),subtotal,iva,total,metodo,estado:liquidado?'pagada':'pendiente',tipo:'pos'};
+  const factura={
+    id:uid(), numero:numFactura, fecha:fechaActual, cliente: posFormState.cliente, 
+    telefono: posFormState.telefono, items:cart.map(c=>({...c})), 
+    subtotal, iva, total, metodo: cuentaStr, estado:liquidado?'pagada':'pendiente', tipo:'pos'
+  };
   state.facturas.push(factura);
 
-  // Register as venta (for gamification and dropshipping control)
   const venta={
     id:uid(), canal, valor:total, fecha:fechaActual, fechaLiquidacion, 
-    guia, empresa, transportadora, categoria:catGlobal, desc:numFactura, 
-    cliente, ciudad, liquidado, confirmadoCobro:false, archived:false
+    guia: posFormState.guia, empresa: posFormState.empresa, transportadora: posFormState.transportadora, 
+    categoria:catGlobal, desc:numFactura, cliente: posFormState.cliente, 
+    telefono: posFormState.telefono, ciudad: posFormState.ciudad, liquidado, archived:false,
+    metodoPago: cuentaStr
   };
   state.ventas.push(venta);
 
-  // Decrease inventory
   cart.forEach(item=>{
-    state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:'Venta POS'});
+    state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
   });
 
-  // Add to caja SOLO SI SE COBRÓ YA (Vitrina)
   if(liquidado) {
     const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
     if(cajaAbierta){
       cajaAbierta.saldo+=total;
-      state.tes_movimientos.push({id:uid(),cajaId:cajaAbierta.id,tipo:'ingreso',valor:total,concepto:'Venta POS '+numFactura,fecha:fechaActual,metodo});
+      state.tes_movimientos.push({id:uid(),cajaId:cajaAbierta.id,tipo:'ingreso',valor:total,concepto:'Venta POS '+numFactura,fecha:fechaActual,metodo: cuentaStr});
     }
   }
 
   const xpGained=calcXP(canal,total);
-  awardXP(xpGained);checkBadges();
+  awardXP(xpGained); checkBadges();
+
   state.pos_cart=[];
-  
-  // Limpiar form guardado
-  posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', metodo: 'efectivo' };
-  
+  posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true };
   saveState();
+
+  openCashDrawer(); 
+  printReceipt(factura); 
+
   notify('sale','✅','¡Venta registrada!',`${numFactura} · ${fmt(total)} · +${xpGained}XP`,{duration:4000});
   spawnConfetti();screenFlash('green');
-
-  if(confirm('¿Imprimir factura POS?'))printReceipt(factura);
   renderPOS();
   updateNavBadges();
 }
@@ -981,7 +969,7 @@ function openScannerOverlay(){
       if(code){
         closeScannerOverlay();
         const art=(state.articulos||[]).find(a=>a.codigo===code);
-        if(art)addToCart(art.id);
+        if(art)promptTallaYAgregar(art.id);
         else notify('warning','⚠️','No encontrado','Código: '+code,{duration:3000});
       }
     }
@@ -992,7 +980,7 @@ function handlePOSScan(e){
   if(e.key==='Enter'){
     const val=e.target.value.trim();
     const art=(state.articulos||[]).find(a=>a.codigo===val);
-    if(art){addToCart(art.id);e.target.value=''}
+    if(art){promptTallaYAgregar(art.id);e.target.value=''}
   }
 }
 
@@ -1011,14 +999,15 @@ function printReceipt(factura){
       <div style="font-weight:700">Factura: ${factura.numero}</div>
       <div>Fecha: ${formatDate(factura.fecha)} ${new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
       ${factura.cliente?'<div>Cliente: '+factura.cliente+'</div>':''}
+      ${factura.telefono?'<div>Tel Cliente: '+factura.telefono+'</div>':''}
       <div style="border-top:1px dashed #000;margin:8px 0"></div>
       <table style="width:100%;font-size:10px;border-collapse:collapse">
         <tr style="border-bottom:1px solid #ccc"><th style="text-align:left;padding:2px">Art.</th><th style="text-align:center;padding:2px">Cant</th><th style="text-align:right;padding:2px">Total</th></tr>
-        ${(factura.items||[]).map(item=>`<tr><td style="padding:2px">${item.nombre}</td><td style="text-align:center;padding:2px">${item.qty}</td><td style="text-align:right;padding:2px">${fmtN(item.precio*item.qty)}</td></tr>`).join('')}
+        ${(factura.items||[]).map(item=>`<tr><td style="padding:2px">${item.nombre} ${item.talla ? `(${item.talla})` : ''}</td><td style="text-align:center;padding:2px">${item.qty}</td><td style="text-align:right;padding:2px">${fmtN(item.precio*item.qty)}</td></tr>`).join('')}
       </table>
       <div style="border-top:1px dashed #000;margin:8px 0"></div>
       <div style="display:flex;justify-content:space-between"><span>Subtotal:</span><span>${fmt(factura.subtotal)}</span></div>
-      <div style="display:flex;justify-content:space-between"><span>IVA 19%:</span><span>${fmt(factura.iva)}</span></div>
+      <div style="display:flex;justify-content:space-between"><span>IVA:</span><span>${fmt(factura.iva)}</span></div>
       <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;margin-top:4px"><span>TOTAL:</span><span>${fmt(factura.total)}</span></div>
       <div style="margin-top:4px;font-size:10px">Método: ${factura.metodo}</div>
       <div style="border-top:1px dashed #000;margin:8px 0"></div>
@@ -1034,7 +1023,8 @@ function printReceipt(factura){
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
   const subtotal=cart.reduce((a,i)=>a+(i.precio*i.qty),0);
-  const factura={numero:'PREVIEW',fecha:today(),cliente:document.getElementById('pos-cliente')?.value||'',items:cart,subtotal,iva:subtotal*0.19,total:subtotal*1.19,metodo:'efectivo'};
+  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
+  const factura={numero:'PREVIEW',fecha:today(),cliente:document.getElementById('pos-cliente')?.value||'',telefono:document.getElementById('pos-telefono')?.value||'',items:cart,subtotal,iva,total:subtotal+iva,metodo:posFormState.metodo};
   printReceipt(factura);
 }
 
@@ -1383,7 +1373,6 @@ function marcarLiquidado(id){
   v.liquidado=true;awardXP(20);saveState();renderPendientes();updateNavBadges();
   notify('success','💵','¡Liquidado!',fmt(v.valor)+' · +20XP',{duration:3000});screenFlash('green');
   
-  // Agregar ingreso a caja
   const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
   if(cajaAbierta){
     cajaAbierta.saldo+=v.valor;
@@ -1695,13 +1684,10 @@ function updateHistFilters() {
 
 function renderHistorial(){
   let ventas=[...(state.ventas||[]).filter(v=>!v.archived)];
-  
-  // Aplicar Filtros
   if(histFilters.canal) ventas = ventas.filter(v => v.canal === histFilters.canal);
   if(histFilters.cat) ventas = ventas.filter(v => v.categoria === histFilters.cat);
   if(histFilters.start) ventas = ventas.filter(v => v.fecha >= histFilters.start);
   if(histFilters.end) ventas = ventas.filter(v => v.fecha <= histFilters.end);
-  
   ventas.reverse();
 
   document.getElementById('historial-content').innerHTML=`
@@ -1835,9 +1821,9 @@ function renderConfig(){
     <div class="card">
       <div class="card-title">🖨️ HARDWARE POS</div>
       <div style="font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:12px">
-        <strong>Impresora Térmica:</strong> Compatible con impresoras de 80mm vía navegador (Print dialog).<br>
-        <strong>Cajón POS:</strong> Se envía el comando ESC/POS al imprimir.<br>
-        <strong>Pistola Scanner:</strong> Conecta tu scanner USB o Bluetooth. Funciona automáticamente en el POS — simplemente escanea y el producto se agrega al carrito.
+        <strong>Impresora Térmica:</strong> Compatible con impresoras de 80mm vía navegador.<br>
+        <strong>Cajón POS:</strong> Se envía comando automático al cobrar.<br>
+        <strong>Pistola Scanner:</strong> Conecta tu scanner USB/Bluetooth y usa el ícono de escáner en POS.
       </div>
     </div>
     <button class="btn btn-primary" style="width:100%;margin-bottom:16px" onclick="guardarConfig()">💾 Guardar Todo</button>
