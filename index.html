@@ -1057,40 +1057,51 @@ function renderArticulosList(){
   let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
   document.getElementById('art-tbody').innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
-    return`<tr><td style="font-size:20px">${a.emoji||'📦'}</td><td>${a.codigo||'—'}</td><td style="font-weight:700">${a.nombre}</td><td><span class="badge badge-info">${a.categoria||'—'}</span></td><td>${fmt(a.precioCompra)}</td><td style="color:var(--accent);font-weight:700">${fmt(a.precioVenta)}</td><td style="color:${low?'var(--red)':'var(--green)'};font-weight:700">${stock}</td><td>${a.stockMinimo}</td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="openArticuloModal('${a.id}')">✏️</button><button class="btn btn-xs btn-danger" onclick="deleteArticulo('${a.id}')">✕</button></div></td></tr>`}).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin artículos</td></tr>';
+    const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
+    return`<tr><td style="width:50px">${thumb}</td><td>${a.codigo||'—'}</td><td style="font-weight:700">${a.nombre}</td><td><span class="badge badge-info">${a.categoria||'—'}</span></td><td>${fmt(a.precioCompra)}</td><td style="color:var(--accent);font-weight:700">${fmt(a.precioVenta)}</td><td style="color:${low?'var(--red)':'var(--green)'};font-weight:700">${stock}</td><td>${a.stockMinimo}</td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="openArticuloModal('${a.id}')">✏️</button><button class="btn btn-xs btn-danger" onclick="deleteArticulo('${a.id}')">✕</button></div></td></tr>`}).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin artículos</td></tr>';
 }
 
 function openArticuloModal(id){
   const art=id?(state.articulos||[]).find(a=>a.id===id):null;
-  const cats = ['Trajes de baño', 'Pijamas', 'Deportiva', 'Varias'];
+  const cats = ['Trajes de baño', 'Pijamas', 'Ropa Casual', 'Deportiva', 'Varias'];
+  const galeriaText = art && art.galeria ? art.galeria.join('\n') : '';
+
   openModal(`
-    <div class="modal-title">${art?'Editar':'Nuevo'} Artículo<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">CÓDIGO / BARRAS</label><input class="form-control" id="m-art-codigo" value="${art?.codigo||''}" placeholder="Ej: 7702004012345"></div>
-      <div class="form-group"><label class="form-label">EMOJI</label><input class="form-control" id="m-art-emoji" value="${art?.emoji||'📦'}" placeholder="📦"></div>
-    </div>
-    <div class="form-group"><label class="form-label">NOMBRE *</label><input class="form-control" id="m-art-nombre" value="${art?.nombre||''}" placeholder="Nombre del artículo"></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">CATEGORÍA</label>
-        <select class="form-control" id="m-art-cat">
-          <option value="">— Seleccionar —</option>
-          ${cats.map(c=>`<option value="${c}" ${art?.categoria===c?'selected':''}>${c}</option>`).join('')}
-        </select>
+    <div class="modal-title">${art?'Editar':'Nuevo'} Artículo de Catálogo<button class="modal-close" onclick="closeModal()">×</button></div>
+    <div style="max-height: 65vh; overflow-y: auto; padding-right: 12px;">
+      
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">CÓDIGO / REFERENCIA</label><input class="form-control" id="m-art-codigo" value="${art?.codigo||''}" placeholder="Ej: REF-001"></div>
+        <div class="form-group"><label class="form-label">CATEGORÍA</label>
+          <select class="form-control" id="m-art-cat">
+            <option value="">— Seleccionar —</option>
+            ${cats.map(c=>`<option value="${c}" ${art?.categoria===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">UNIDAD</label><select class="form-control" id="m-art-unidad"><option value="und" ${art?.unidad==='und'?'selected':''}>Unidad</option><option value="par" ${art?.unidad==='par'?'selected':''}>Par</option><option value="kg" ${art?.unidad==='kg'?'selected':''}>Kg</option><option value="mt" ${art?.unidad==='mt'?'selected':''}>Metro</option></select></div>
+      <div class="form-group"><label class="form-label">NOMBRE DE LA PRENDA *</label><input class="form-control" id="m-art-nombre" value="${art?.nombre||''}" placeholder="Ej: Enterizo Bora Bora"></div>
+      <div class="form-group"><label class="form-label">TALLAS DISPONIBLES (Separadas por coma)</label><input class="form-control" id="m-art-tallas" value="${art?.tallas||'S, M, L'}" placeholder="Ej: XS, S, M, L, XL"></div>
+      <div class="form-group"><label class="form-label">DESCRIPCIÓN COMERCIAL</label><textarea class="form-control" id="m-art-desc" rows="3" placeholder="Describe la tela, el corte, detalles de la prenda...">${art?.descripcion||''}</textarea></div>
+
+      <div class="card-title" style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">📷 MULTIMEDIA Y CATÁLOGO</div>
+      <div class="form-group"><label class="form-label">IMAGEN PRINCIPAL (Link URL)</label><input class="form-control" id="m-art-img" value="${art?.imagen||''}" placeholder="https://tu-sitio.com/foto1.jpg"></div>
+      <div class="form-group"><label class="form-label">GALERÍA ADICIONAL (Hasta 15 URLs, pon una por línea)</label><textarea class="form-control" id="m-art-galeria" rows="4" placeholder="https://tu-sitio.com/foto2.jpg&#10;https://tu-sitio.com/foto3.jpg">${galeriaText}</textarea></div>
+      <div class="form-group"><label class="form-label">VIDEO (Link URL)</label><input class="form-control" id="m-art-video" value="${art?.video||''}" placeholder="Link del video en mp4, YouTube, etc."></div>
+
+      <div class="card-title" style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">💰 PRECIOS E INVENTARIO</div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">COSTO / P. COMPRA</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra||0}" min="0"></div>
+        <div class="form-group"><label class="form-label">PRECIO DE VENTA *</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta||0}" min="0"></div>
+        <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva??19}" min="0" max="100"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">STOCK MÍNIMO (Alerta)</label><input type="number" class="form-control" id="m-art-min" value="${art?.stockMinimo||3}" min="0"></div>
+        <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
+      </div>
+      ${!art?'<div class="form-group"><label class="form-label">STOCK INICIAL</label><input type="number" class="form-control" id="m-art-stock0" value="0" min="0"></div>':''}
+      
     </div>
-    <div class="form-row-3">
-      <div class="form-group"><label class="form-label">PRECIO COMPRA</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra||0}" min="0"></div>
-      <div class="form-group"><label class="form-label">PRECIO VENTA *</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta||0}" min="0"></div>
-      <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva??19}" min="0" max="100"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">STOCK MÍNIMO</label><input type="number" class="form-control" id="m-art-min" value="${art?.stockMinimo||5}" min="0"></div>
-      <div class="form-group"><label class="form-label">BODEGA INICIAL</label><select class="form-control" id="m-art-bodega">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-    </div>
-    ${!art?'<div class="form-group"><label class="form-label">STOCK INICIAL</label><input type="number" class="form-control" id="m-art-stock0" value="0" min="0"></div>':''}
-    <div class="form-group"><label class="form-label">NOTAS</label><textarea class="form-control" id="m-art-notas" rows="2">${art?.notas||''}</textarea></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveArticulo('${id||''}')">${art?'Guardar Cambios':'Crear Artículo'}</button>
+    <button class="btn btn-primary" style="width:100%; margin-top:16px" onclick="saveArticulo('${id||''}')">${art?'Guardar Cambios':'Crear Prenda'}</button>
   `);
 }
 
@@ -1100,17 +1111,23 @@ function saveArticulo(existingId){
   const precioVenta=parseFloat(document.getElementById('m-art-pv').value)||0;
   if(precioVenta<=0){notify('warning','⚠️','Precio inválido','El precio de venta debe ser mayor a 0.',{duration:3000});return}
 
+  // Procesar la galería (separar por líneas, limpiar espacios, máximo 15)
+  const galeriaRaw = document.getElementById('m-art-galeria').value.trim();
+  const galeria = galeriaRaw ? galeriaRaw.split('\n').map(url => url.trim()).filter(url => url !== '').slice(0, 15) : [];
+
   const data={
     codigo:document.getElementById('m-art-codigo').value.trim(),
-    emoji:document.getElementById('m-art-emoji').value.trim()||'📦',
     nombre,
-    categoria:document.getElementById('m-art-cat').value.trim(),
-    unidad:document.getElementById('m-art-unidad').value,
+    categoria:document.getElementById('m-art-cat').value,
+    tallas:document.getElementById('m-art-tallas').value.trim() || 'Única',
+    descripcion:document.getElementById('m-art-desc').value.trim(),
+    imagen:document.getElementById('m-art-img').value.trim(),
+    galeria,
+    video:document.getElementById('m-art-video').value.trim(),
     precioCompra:parseFloat(document.getElementById('m-art-pc').value)||0,
     precioVenta,
-    iva:parseFloat(document.getElementById('m-art-iva').value)||19,
+    iva:parseFloat(document.getElementById('m-art-iva').value)||0,
     stockMinimo:parseInt(document.getElementById('m-art-min').value)||5,
-    notas:document.getElementById('m-art-notas').value.trim(),
     activo:true
   };
 
@@ -1127,7 +1144,7 @@ function saveArticulo(existingId){
     }
   }
   saveState();closeModal();renderArticulos();
-  notify('success','✅',existingId?'Artículo actualizado':'Artículo creado',nombre,{duration:3000});
+  notify('success','✅',existingId?'Prenda actualizada':'Prenda creada',nombre,{duration:3000});
 }
 
 function deleteArticulo(id){if(!confirm('¿Eliminar este artículo?'))return;state.articulos=(state.articulos||[]).filter(a=>a.id!==id);saveState();renderArticulos()}
@@ -1871,3 +1888,4 @@ window.addEventListener('load',()=>{loadState()});
 </script>
 </body>
 </html>
+
