@@ -7,9 +7,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
+<!-- Firebase Compat SDK -->
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
 
+<!-- PWA Favicon -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
 <meta name="theme-color" content="#00e5b4">
@@ -163,6 +165,23 @@ tr:hover td{background:rgba(255,255,255,.02)}
 /* SCREEN FLASH */
 #screen-flash{position:fixed;inset:0;z-index:4000;pointer-events:none;opacity:0;transition:opacity .1s}
 
+/* MOBILE */
+@media(max-width:768px){
+  .sidebar{position:fixed;left:-220px;top:0;bottom:0;z-index:3000;transition:left .3s;height:100vh}
+  .sidebar.open{left:0}
+  .main{padding:16px}
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr 1fr}
+  .mobile-header{display:flex!important}
+  body{overflow:hidden}
+  #notif-container{bottom:16px;right:16px;left:16px;max-width:none}
+}
+.mobile-header{display:none;position:fixed;top:0;left:0;right:0;z-index:2000;background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;align-items:center;gap:12px;height:56px}
+.hamburger{background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px}
+.mobile-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+@media(max-width:768px){.main{padding-top:72px!important}}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2999}
+.sidebar-overlay.active{display:block}
+
 /* XTRA STYLES */
 .urgency-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;transition:border-color .2s}
 .urgency-item.urgent{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}
@@ -190,55 +209,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 /* NOTIF PERM BANNER */
 #notif-banner{background:linear-gradient(135deg,rgba(0,229,180,.15),rgba(0,196,255,.1));border:1px solid rgba(0,229,180,.3);border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px}
-
-/* MOBILE & RESPONSIVE FIXES */
-.mobile-header{display:none;position:fixed;top:0;left:0;right:0;z-index:2000;background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;align-items:center;gap:12px;height:56px}
-.hamburger{background:none;border:none;color:var(--text);font-size:22px;cursor:pointer;padding:4px}
-.mobile-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2999}
-.sidebar-overlay.active{display:block}
-
-@media(max-width:768px) {
-  /* Estructura base */
-  .sidebar { position: fixed; left: -220px; top: 0; bottom: 0; z-index: 3000; transition: left .3s cubic-bezier(0.4, 0, 0.2, 1); height: 100vh; }
-  .sidebar.open { left: 0; }
-  .main { padding: 16px !important; padding-top: 72px !important; }
-  .mobile-header { display: flex !important; }
-  body { overflow: hidden; }
-  #notif-container { bottom: 16px; right: 16px; left: 16px; max-width: none; }
-
-  /* Reajuste de Grids generales */
-  .grid-2, .grid-3 { grid-template-columns: 1fr; gap: 12px; }
-  .grid-4 { grid-template-columns: 1fr 1fr; gap: 12px; } /* Mantiene estadísticas en 2 columnas */
-
-  /* Solución al Dashboard (Sobrescribe estilos en línea de JS con !important) */
-  #dashboard-content > div:first-child {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 16px !important;
-  }
-  #dashboard-content > div:first-child > div {
-    width: 100% !important;
-  }
-
-  /* Ajustes en sección Juego y Recompensas */
-  .game-level-bar > div { flex-direction: column; text-align: center; gap: 12px !important; }
-  #juego-content .card > div[style*="align-items:center"] { flex-direction: column; text-align: center; gap: 16px; }
-  
-  /* Permite scroll horizontal en las tablas sin romper el diseño */
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding-bottom: 8px; }
-  table { min-width: 500px; } /* Fuerza el ancho para que aparezca el scroll */
-
-  /* Detalles estéticos para móvil */
-  .card { padding: 16px; }
-  .ring-meter svg { width: 120px; height: 120px; }
-  .celebration-card { max-width: 90%; padding: 32px 24px; }
-  .celebration-title { font-size: 24px; }
-}
 </style>
 </head>
 <body>
 
+<!-- Mobile Header -->
 <div class="mobile-header" id="mobile-header">
   <button class="hamburger" onclick="toggleSidebar()">☰</button>
   <div class="mobile-title">⬡ VentasHera</div>
@@ -247,6 +222,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <div class="app">
+  <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="logo">
       <div class="logo-mark">⬡ VentasHera</div>
@@ -270,13 +246,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
     </div>
   </aside>
 
+  <!-- MAIN CONTENT -->
   <main class="main" id="main">
 
+    <!-- ===== DASHBOARD ===== -->
     <div class="page active" id="page-dashboard">
       <div class="page-title">Dashboard</div>
       <div id="dashboard-content"></div>
     </div>
 
+    <!-- ===== REGISTRAR VENTA ===== -->
     <div class="page" id="page-ventas">
       <div class="page-title">Registrar Venta</div>
       <div class="card" style="max-width:580px">
@@ -312,6 +291,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <label class="form-label">DESCRIPCIÓN / TALLA</label>
           <input type="text" class="form-control" id="venta-desc" placeholder="Ej: Vestido floral talla M">
         </div>
+        <!-- GUÍA section (hidden for vitrina) -->
         <div id="guia-section">
           <div class="form-group">
             <label class="form-label" id="empresa-label">EMPRESA MENSAJERÍA</label>
@@ -329,6 +309,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
             <input type="text" class="form-control" id="venta-guia" placeholder="Ej: HEK-123456">
           </div>
         </div>
+        <!-- CLIENT data -->
         <div id="cliente-section">
           <div class="form-group">
             <label class="form-label">NOMBRE CLIENTE <span id="cliente-req" style="color:var(--red)"></span></label>
@@ -358,16 +339,19 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
 
+    <!-- ===== COBROS / PENDIENTES ===== -->
     <div class="page" id="page-pendientes">
       <div class="page-title">Cobros Pendientes</div>
       <div id="pendientes-content"></div>
     </div>
 
+    <!-- ===== ALERTAS ===== -->
     <div class="page" id="page-alertas">
       <div class="page-title">Alertas</div>
       <div id="alertas-content"></div>
     </div>
 
+    <!-- ===== HISTORIAL ===== -->
     <div class="page" id="page-historial">
       <div class="page-title">Historial de Ventas</div>
       <div class="grid-2" style="margin-bottom:16px">
@@ -417,16 +401,19 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
 
+    <!-- ===== JUEGO ===== -->
     <div class="page" id="page-juego">
       <div class="page-title">Juego & XP</div>
       <div id="juego-content"></div>
     </div>
 
+    <!-- ===== RECOMPENSAS ===== -->
     <div class="page" id="page-recompensas">
       <div class="page-title">Recompensas</div>
       <div id="recompensas-content"></div>
     </div>
 
+    <!-- ===== CONFIG ===== -->
     <div class="page" id="page-config">
       <div class="page-title">Configuración</div>
       <div id="config-content"></div>
@@ -435,8 +422,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </main>
 </div>
 
+<!-- Notification container -->
 <div id="notif-container"></div>
 
+<!-- Celebration overlay -->
 <div id="celebration-overlay">
   <div class="celebration-card">
     <div id="cel-emoji" class="celebration-emoji">🎉</div>
@@ -446,6 +435,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- Screen flash -->
 <div id="screen-flash"></div>
 
 <script>
@@ -1296,6 +1286,7 @@ function renderGamePage() {
       </div>
     </div>
 
+    <!-- SNACK SORPRESA SEMANAL -->
     <div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,rgba(0,229,180,.06),rgba(0,196,255,.06));border-color:rgba(0,229,180,.2)">
       <div class="card-title">🎁 SNACK SORPRESA · SEMANA ${week}</div>
       <div style="display:flex;align-items:center;gap:20px">
@@ -1313,6 +1304,7 @@ function renderGamePage() {
       </div>
     </div>
 
+    <!-- MISIÓN ESCALERA -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-title">🪜 MISIÓN DESPACHOS</div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
@@ -1325,6 +1317,7 @@ function renderGamePage() {
       </div>
     </div>
 
+    <!-- BADGES -->
     <div class="card">
       <div class="card-title">🏅 INSIGNIAS (${earnedBadges.length}/${BADGES.length})</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">
@@ -1402,6 +1395,7 @@ function renderConfig() {
   const notifEnabled = state.notifEnabled || false;
   const notifHour = state.notifHour || 21;
   let html = `
+    <!-- NOTIFICACIONES -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-title">🔔 NOTIFICACIONES NOCTURNAS</div>
       <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">
@@ -1435,6 +1429,7 @@ function renderConfig() {
       </div>
     </div>
 
+    <!-- METAS -->
     <div class="card" style="margin-bottom:20px">
       <div class="card-title">📊 METAS Y TIEMPOS</div>
       <div class="grid-3">
@@ -1454,6 +1449,7 @@ function renderConfig() {
       <button class="btn btn-primary" onclick="guardarConfig()">💾 Guardar Configuración</button>
     </div>
 
+    <!-- DATOS -->
     <div class="card">
       <div class="card-title">⚠️ DATOS</div>
       <p style="font-size:12px;color:var(--text2);margin-bottom:12px">El historial se archiva automáticamente al inicio de cada mes.</p>
