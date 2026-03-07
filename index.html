@@ -1918,21 +1918,31 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
 // ===== CONFIG =====
 // ===================================================================
 function renderConfig(){
-  const emp=state.empresa||{};
-  document.getElementById('config-content').innerHTML=`
-    <div class="card">
-      <div class="card-title">🏢 DATOS DE EMPRESA</div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">NOMBRE</label><input class="form-control" id="cfg-emp-nombre" value="${emp.nombre||''}"></div>
-        <div class="form-group"><label class="form-label">NIT</label><input class="form-control" id="cfg-emp-nit" value="${emp.nit||''}"></div>
+  const emp = state.empresa || {};
+  document.getElementById('config-content').innerHTML = `
+    <div class="grid-2">
+      <div class="card" style="margin:0">
+        <div class="card-title">🏢 DATOS DE EMPRESA</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">NOMBRE</label><input class="form-control" id="cfg-emp-nombre" value="${emp.nombre||''}"></div>
+          <div class="form-group"><label class="form-label">NIT</label><input class="form-control" id="cfg-emp-nit" value="${emp.nit||''}"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">DIRECCIÓN</label><input class="form-control" id="cfg-emp-dir" value="${emp.direccion||''}"></div>
+          <div class="form-group"><label class="form-label">TELÉFONO</label><input class="form-control" id="cfg-emp-tel" value="${emp.telefono||''}"></div>
+        </div>
+        <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="cfg-emp-ciudad" value="${emp.ciudad||''}"></div>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input class="form-control" id="cfg-emp-dir" value="${emp.direccion||''}"></div>
-        <div class="form-group"><label class="form-label">TELÉFONO</label><input class="form-control" id="cfg-emp-tel" value="${emp.telefono||''}"></div>
+
+      <div class="card" style="margin:0">
+        <div class="card-title">🎨 DISEÑO DE TICKET POS</div>
+        <div class="form-group"><label class="form-label">URL DEL LOGO (JPG/PNG)</label><input class="form-control" id="cfg-emp-logo" value="${emp.logoUrl||''}" placeholder="https://tuweb.com/logo.png"></div>
+        <div class="form-group"><label class="form-label">INSTAGRAM / REDES</label><input class="form-control" id="cfg-emp-social" value="${emp.social||''}" placeholder="@heraswimwear"></div>
+        <div class="form-group"><label class="form-label">MENSAJE AL PIE DE FACTURA</label><textarea class="form-control" id="cfg-emp-footer" rows="2" placeholder="Gracias por elegirnos.">${emp.mensajePie||''}</textarea></div>
       </div>
-      <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="cfg-emp-ciudad" value="${emp.ciudad||''}"></div>
     </div>
-    <div class="card">
+
+    <div class="card" style="margin-top:16px">
       <div class="card-title">📊 METAS Y TIEMPOS</div>
       <div class="form-row-3">
         <div class="form-group"><label class="form-label">META MENSUAL</label><input type="number" class="form-control" id="cfg-meta" value="${state.meta}"></div>
@@ -1940,6 +1950,7 @@ function renderConfig(){
         <div class="form-group"><label class="form-label">DÍAS LIQ. INTER</label><input type="number" class="form-control" id="cfg-dias-inter" value="${state.diasInter}" min="1"></div>
       </div>
     </div>
+
     <div class="card">
       <div class="card-title">📦 BODEGAS</div>
       <div id="cfg-bodegas-list">${(state.bodegas||[]).map(b=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input class="form-control" value="${b.name}" style="flex:1" disabled><span style="font-size:12px;color:var(--text2)">${b.ubicacion}</span></div>`).join('')}</div>
@@ -1948,6 +1959,7 @@ function renderConfig(){
         <button class="btn btn-sm btn-secondary" onclick="addBodega()">+ Agregar</button>
       </div>
     </div>
+
     <div class="card">
       <div class="card-title">🖨️ HARDWARE POS</div>
       <div style="font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:12px">
@@ -1956,7 +1968,9 @@ function renderConfig(){
         <strong>Pistola Scanner:</strong> Conecta tu scanner USB/Bluetooth y usa el ícono de escáner en POS.
       </div>
     </div>
-    <button class="btn btn-primary" style="width:100%;margin-bottom:16px" onclick="guardarConfig()">💾 Guardar Todo</button>
+
+    <button class="btn btn-primary" style="width:100%; height:50px; font-size:16px; margin-bottom:16px" onclick="guardarConfig()">💾 Guardar Configuración Completa</button>
+
     <div class="card">
       <div class="card-title">⚠️ DATOS</div>
       <div class="btn-group">
@@ -1965,19 +1979,25 @@ function renderConfig(){
       </div>
     </div>`;
 }
-
 function guardarConfig(){
-  state.meta=parseFloat(document.getElementById('cfg-meta').value)||34000000;
-  state.diasLocal=parseInt(document.getElementById('cfg-dias-local').value)||1;
-  state.diasInter=parseInt(document.getElementById('cfg-dias-inter').value)||5;
-  state.empresa={
-    nombre:document.getElementById('cfg-emp-nombre').value.trim(),
-    nit:document.getElementById('cfg-emp-nit').value.trim(),
-    direccion:document.getElementById('cfg-emp-dir').value.trim(),
-    telefono:document.getElementById('cfg-emp-tel').value.trim(),
-    ciudad:document.getElementById('cfg-emp-ciudad').value.trim()
+  state.meta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
+  state.diasLocal = parseInt(document.getElementById('cfg-dias-local').value) || 1;
+  state.diasInter = parseInt(document.getElementById('cfg-dias-inter').value) || 5;
+  
+  state.empresa = {
+    nombre: document.getElementById('cfg-emp-nombre').value.trim(),
+    nit: document.getElementById('cfg-emp-nit').value.trim(),
+    direccion: document.getElementById('cfg-emp-dir').value.trim(),
+    telefono: document.getElementById('cfg-emp-tel').value.trim(),
+    ciudad: document.getElementById('cfg-emp-ciudad').value.trim(),
+    logoUrl: document.getElementById('cfg-emp-logo').value.trim(),
+    social: document.getElementById('cfg-emp-social').value.trim(),
+    mensajePie: document.getElementById('cfg-emp-footer').value.trim()
   };
-  saveState();notify('success','✅','Guardado','Configuración actualizada.',{duration:3000});renderDashboard();
+  
+  saveState();
+  notify('success','✅','Guardado','Configuración y diseño de ticket actualizados.',{duration:3000});
+  renderDashboard();
 }
 
 function addBodega(){
@@ -2001,5 +2021,6 @@ window.addEventListener('load',()=>{loadState()});
 </script>
 </body>
 </html>
+
 
 
