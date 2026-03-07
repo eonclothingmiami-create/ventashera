@@ -296,37 +296,39 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <label class="form-label">CATEGORÍA</label>
           <select class="form-control" id="venta-categoria">
             <option value="">— Sin categoría —</option>
-            <option value="Ropa Mujer">👗 Ropa Mujer</option>
-            <option value="Ropa Hombre">👕 Ropa Hombre</option>
-            <option value="Ropa Niños">🧒 Ropa Niños</option>
-            <option value="Accesorios">💎 Accesorios</option>
-            <option value="Calzado">👟 Calzado</option>
-            <option value="Bolsos">👜 Bolsos</option>
-            <option value="Ropa Deportiva">🏃 Ropa Deportiva</option>
-            <option value="Ropa Interior">🩱 Ropa Interior</option>
-            <option value="Vestidos">👘 Vestidos</option>
-            <option value="Otro">📦 Otro</option>
+            <option value="Trajes de baño">👙 Trajes de baño</option>
+            <option value="Pijamas">🌙 Pijamas</option>
+            <option value="Deportiva">🏃 Ropa Deportiva</option>
+            <option value="Varias">🛍️ Varias (Mezcla)</option>
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">DESCRIPCIÓN / TALLA</label>
-          <input type="text" class="form-control" id="venta-desc" placeholder="Ej: Vestido floral talla M">
+          <input type="text" class="form-control" id="venta-desc" placeholder="Ej: Pijama satín talla M">
         </div>
         <div id="guia-section">
-          <div class="form-group">
-            <label class="form-label" id="empresa-label">EMPRESA MENSAJERÍA</label>
-            <select class="form-control" id="venta-empresa">
-              <option value="">— Empresa —</option>
-              <option value="HEKA">HEKA Entrega</option>
-              <option value="DROPI">Dropi</option>
-              <option value="Servientrega">Servientrega</option>
-              <option value="Coordinadora">Coordinadora</option>
-              <option value="Otra Inter">Otra</option>
-            </select>
+          <div class="grid-2" style="margin-bottom:0">
+            <div class="form-group">
+              <label class="form-label" id="empresa-label">PLATAFORMA/EMPRESA</label>
+              <select class="form-control" id="venta-empresa" onchange="handlePlataformaChange()">
+                <option value="">— Seleccionar —</option>
+              </select>
+            </div>
+            <div class="form-group" id="transportadora-group" style="display:none">
+              <label class="form-label">TRANSPORTADORA</label>
+              <select class="form-control" id="venta-transportadora">
+                <option value="">— Transportadora —</option>
+                <option value="TCC">TCC</option>
+                <option value="Coordinadora">Coordinadora</option>
+                <option value="Envía">Envía</option>
+                <option value="Interrapidisimo">Inter Rapidísimo</option>
+                <option value="Servientrega">Servientrega</option>
+              </select>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">NÚMERO DE GUÍA</label>
-            <input type="text" class="form-control" id="venta-guia" placeholder="Ej: HEK-123456">
+            <input type="text" class="form-control" id="venta-guia" placeholder="Ej: 240047589480">
           </div>
         </div>
         <div id="cliente-section">
@@ -370,7 +372,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
     <div class="page" id="page-historial">
       <div class="page-title">Historial de Ventas</div>
-      <div class="grid-2" style="margin-bottom:16px">
+      <div class="grid-2" style="margin-bottom:12px">
         <div class="form-group" style="margin:0">
           <label class="form-label">FILTRAR CANAL</label>
           <select class="form-control" id="hist-canal" onchange="renderHistorial()">
@@ -384,19 +386,24 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <label class="form-label">FILTRAR CATEGORÍA</label>
           <select class="form-control" id="hist-cat" onchange="renderHistorial()">
             <option value="">Todas</option>
-            <option value="Ropa Mujer">Ropa Mujer</option>
-            <option value="Ropa Hombre">Ropa Hombre</option>
-            <option value="Ropa Niños">Ropa Niños</option>
-            <option value="Accesorios">Accesorios</option>
-            <option value="Calzado">Calzado</option>
-            <option value="Bolsos">Bolsos</option>
-            <option value="Ropa Deportiva">Ropa Deportiva</option>
-            <option value="Ropa Interior">Ropa Interior</option>
-            <option value="Vestidos">Vestidos</option>
-            <option value="Otro">Otro</option>
+            <option value="Trajes de baño">Trajes de baño</option>
+            <option value="Pijamas">Pijamas</option>
+            <option value="Deportiva">Deportiva</option>
+            <option value="Varias">Varias</option>
           </select>
         </div>
       </div>
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">FECHA DESDE</label>
+          <input type="date" class="form-control" id="hist-date-start" onchange="renderHistorial()">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">FECHA HASTA</label>
+          <input type="date" class="form-control" id="hist-date-end" onchange="renderHistorial()">
+        </div>
+      </div>
+      
       <div class="card" style="margin-bottom:16px" id="hist-chart-card">
         <div class="card-title">VENTAS POR CATEGORÍA</div>
         <div id="hist-chart" style="height:160px;display:flex;align-items:flex-end;gap:8px;padding-top:8px"></div>
@@ -554,7 +561,16 @@ const REWARDS = [
 
 // ===== HELPERS =====
 function fmt(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
-function today() { return new Date().toISOString().split('T')[0]; }
+
+// Solucion al bug de la zona horaria UTC vs Local
+function today() { 
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function formatDate(d) {
   if (!d) return '—';
   const [y,m,day] = d.split('-');
@@ -993,8 +1009,12 @@ function handleCanalChange() {
   const guiaSection = document.getElementById('guia-section');
   const liqInfo = document.getElementById('liquidacion-info');
   const liqText = document.getElementById('liquidacion-text');
+  
   const empresaSel = document.getElementById('venta-empresa');
   const empresaLabel = document.getElementById('empresa-label');
+  const transGroup = document.getElementById('transportadora-group');
+  const transSel = document.getElementById('venta-transportadora');
+  
   const ciudadGroup = document.getElementById('ciudad-group');
   const telGroup = document.getElementById('telefono-group');
   const dirGroup = document.getElementById('direccion-group');
@@ -1006,16 +1026,20 @@ function handleCanalChange() {
     ciudadGroup.style.display = 'none';
     telGroup.style.display = 'none';
     dirGroup.style.display = 'none';
+    transGroup.style.display = 'none';
     if (clienteReq) clienteReq.textContent = '';
   } else if (canal === 'local') {
     guiaSection.style.display = '';
-    empresaLabel.textContent = 'Empresa Mensajería Local';
+    empresaLabel.textContent = 'MENSAJERÍA LOCAL';
     empresaSel.innerHTML = `
       <option value="">— Empresa —</option>
       <option value="MensLocal">Mensajería Local</option>
       <option value="Rappi">Rappi</option>
       <option value="Picap">Picap</option>
       <option value="Otra Local">Otra</option>`;
+    transGroup.style.display = 'none';
+    transSel.value = ''; // Limpiar
+    
     liqInfo.style.display = '';
     liqText.textContent = '⚡ La mensajería local debe liquidarte AL DÍA SIGUIENTE hábil del despacho.';
     ciudadGroup.style.display = 'none';
@@ -1024,14 +1048,14 @@ function handleCanalChange() {
     if (clienteReq) clienteReq.textContent = '';
   } else {
     guiaSection.style.display = '';
-    empresaLabel.textContent = 'Empresa Mensajería';
+    empresaLabel.textContent = 'PLATAFORMA';
     empresaSel.innerHTML = `
-      <option value="">— Empresa —</option>
-      <option value="HEKA">HEKA Entrega</option>
+      <option value="">— Plataforma —</option>
+      <option value="HEKA">HEKA</option>
       <option value="DROPI">Dropi</option>
-      <option value="Servientrega">Servientrega</option>
-      <option value="Coordinadora">Coordinadora</option>
-      <option value="Otra Inter">Otra</option>`;
+      <option value="Directo">Directo / Otra</option>`;
+    transGroup.style.display = 'block'; // Mostrar transportadoras
+    
     liqInfo.style.display = '';
     liqText.textContent = `📦 Intermunicipal: liquidación en ${state.diasInter} días hábiles.`;
     ciudadGroup.style.display = '';
@@ -1041,6 +1065,11 @@ function handleCanalChange() {
   }
 }
 
+// Opcional por si queremos hacer algo al cambiar plataforma (por ahora no es necesario, pero útil a futuro)
+function handlePlataformaChange() {
+  // Aquí se podrían filtrar las transportadoras dependiendo si es Dropi o Heka si lo deseas.
+}
+
 function registrarVenta() {
   const canal = document.getElementById('venta-canal').value;
   const valor = parseFloat(document.getElementById('venta-valor').value) || 0;
@@ -1048,6 +1077,7 @@ function registrarVenta() {
   const desc = document.getElementById('venta-desc').value.trim();
   const guia = document.getElementById('venta-guia')?.value.trim() || '';
   const empresa = document.getElementById('venta-empresa')?.value || '';
+  const transportadora = document.getElementById('venta-transportadora')?.value || '';
   const cliente = document.getElementById('venta-cliente')?.value.trim() || '';
   const ciudad = document.getElementById('venta-ciudad')?.value.trim() || '';
   const telefono = document.getElementById('venta-telefono')?.value.trim() || '';
@@ -1064,7 +1094,7 @@ function registrarVenta() {
 
   const venta = {
     id: Date.now() + Math.random().toString(36).slice(2,6),
-    canal, valor, guia, empresa, categoria, desc,
+    canal, valor, guia, empresa, transportadora, categoria, desc,
     cliente, ciudad, telefono, direccion,
     fecha, fechaLiquidacion,
     liquidado: false, confirmadoCobro: false, archived: false
@@ -1086,6 +1116,7 @@ function registrarVenta() {
   document.getElementById('venta-direccion').value = '';
   document.getElementById('venta-desc').value = '';
   document.getElementById('venta-empresa').value = '';
+  if (document.getElementById('venta-transportadora')) document.getElementById('venta-transportadora').value = '';
 
   const canalLabel = canal==='vitrina'?'🏪 Vitrina':canal==='local'?'🛵 Local':'📦 Inter';
   notify('sale','✅','¡Venta registrada!',`${canalLabel} · ${fmt(valor)} · +${xpGained} XP`,{duration:4000});
@@ -1113,6 +1144,9 @@ function renderPendientes() {
       const diff = daysDiff(v.fechaLiquidacion);
       let urgClass = diff < 0 ? 'urgent' : diff <= 1 ? 'warning' : 'ok';
       let urgLabel = diff < 0 ? `⚡ VENCIDO hace ${Math.abs(diff)} día${Math.abs(diff)>1?'s':''}` : diff === 0 ? '⚠️ Vence HOY' : diff === 1 ? '⚠️ Vence mañana' : `✓ Vence en ${diff} días`;
+      
+      const empresaString = v.empresa ? (v.transportadora ? `${v.empresa} (${v.transportadora})` : v.empresa) : '';
+
       html += `
         <div class="urgency-item ${urgClass}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
@@ -1122,7 +1156,7 @@ function renderPendientes() {
             </div>
             <span style="font-size:11px;font-weight:700;color:${urgClass==='urgent'?'var(--red)':urgClass==='warning'?'var(--yellow)':'var(--green)'}">${urgLabel}</span>
           </div>
-          ${v.guia?`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">📋 Guía: <span style="color:var(--text)">${v.guia}</span> · ${v.empresa||''}</div>`:''}
+          ${v.guia?`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">📋 Guía: <span style="color:var(--text)">${v.guia}</span> · ${empresaString}</div>`:''}
           ${v.cliente?`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">👤 ${v.cliente}${v.ciudad?' · '+v.ciudad:''}</div>`:''}
           <div style="font-size:12px;color:var(--text2);margin-bottom:12px">📅 ${formatDate(v.fecha)} → Liq: ${formatDate(v.fechaLiquidacion)}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1204,9 +1238,15 @@ function renderAlertas() {
 function renderHistorial() {
   const canal = document.getElementById('hist-canal')?.value || '';
   const cat = document.getElementById('hist-cat')?.value || '';
+  const start = document.getElementById('hist-date-start')?.value || '';
+  const end = document.getElementById('hist-date-end')?.value || '';
+
   let ventas = (state.ventas||[]).filter(v => !v.archived);
   if (canal) ventas = ventas.filter(v => v.canal === canal);
   if (cat) ventas = ventas.filter(v => v.categoria === cat);
+  if (start) ventas = ventas.filter(v => v.fecha >= start);
+  if (end) ventas = ventas.filter(v => v.fecha <= end);
+
   const sorted = [...ventas].reverse();
 
   // Category chart
@@ -1227,17 +1267,24 @@ function renderHistorial() {
 
   const tbody = document.getElementById('hist-tbody');
   if (!tbody) return;
-  tbody.innerHTML = sorted.map(v => `
+  tbody.innerHTML = sorted.map(v => {
+    const empresaString = v.empresa ? (v.transportadora ? `${v.empresa} (${v.transportadora})` : v.empresa) : '—';
+    return `
     <tr>
       <td>${formatDate(v.fecha)}</td>
       <td><span class="badge badge-${v.canal}">${v.canal==='vitrina'?'🏪 Vitrina':v.canal==='local'?'🛵 Local':'📦 Inter'}</span></td>
       <td style="color:var(--accent);font-weight:600">${fmt(v.valor)}</td>
       <td style="color:var(--text2)">${v.categoria||'—'}</td>
       <td style="color:var(--text2)">${v.cliente||'—'}</td>
-      <td>${v.guia?`<span style="background:rgba(0,229,180,.1);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:11px">${v.guia}</span>`:'—'}</td>
+      <td>
+        ${v.guia?`<div style="background:rgba(0,229,180,.1);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:11px;display:inline-block;margin-bottom:2px">${v.guia}</div>`:''}
+        ${empresaString !== '—' && v.canal !== 'vitrina' ? `<div style="font-size:10px;color:var(--text2)">${empresaString}</div>` : ''}
+        ${!v.guia && v.canal==='vitrina' ? '—' : ''}
+      </td>
       <td><span class="badge ${v.liquidado?'badge-ok':v.canal==='vitrina'?'':'badge-pend'}">${v.liquidado?'✓ Liq':v.canal==='vitrina'?'—':'⏳ Pend'}</span></td>
       <td><button class="btn btn-danger btn-sm" onclick="eliminarVenta('${v.id}')" style="padding:3px 8px;font-size:10px">✕</button></td>
-    </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin ventas</td></tr>';
+    </tr>`
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin ventas</td></tr>';
 }
 
 function eliminarVenta(id) {
@@ -1251,12 +1298,15 @@ function eliminarVenta(id) {
 function exportCSV() {
   const ventas = (state.ventas||[]).filter(v => !v.archived);
   const BOM = '\uFEFF';
-  const header = 'Fecha,Canal,Valor,Categoría,Descripción,Cliente,Ciudad,Teléfono,Empresa,Guía,Liquidado,Fecha Liquidación\n';
-  const rows = ventas.map(v => [
-    v.fecha, v.canal, v.valor, v.categoria||'', v.desc||'',
-    v.cliente||'', v.ciudad||'', v.telefono||'', v.empresa||'', v.guia||'',
-    v.liquidado?'Sí':'No', v.fechaLiquidacion||''
-  ].map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const header = 'Fecha,Canal,Valor,Categoría,Descripción,Cliente,Ciudad,Teléfono,Empresa/Transportadora,Guía,Liquidado,Fecha Liquidación\n';
+  const rows = ventas.map(v => {
+    const empresaComb = v.empresa ? (v.transportadora ? `${v.empresa} - ${v.transportadora}` : v.empresa) : '';
+    return [
+      v.fecha, v.canal, v.valor, v.categoria||'', v.desc||'',
+      v.cliente||'', v.ciudad||'', v.telefono||'', empresaComb, v.guia||'',
+      v.liquidado?'Sí':'No', v.fechaLiquidacion||''
+    ].map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
+  }).join('\n');
   const blob = new Blob([BOM + header + rows], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
