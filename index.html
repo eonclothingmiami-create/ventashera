@@ -3,21 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VentasHera — Sistema POS Completo</title>
+<title>VentasHera — ERP Moda & Catálogo Sync</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-storage-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-firestore-compat.js"></script>
 
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
-<meta name="theme-color" content="#00e5b4">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="VentasHera">
 
 <style>
 :root {--bg:#0a0f1e;--bg2:#111827;--bg3:#1a2235;--card:rgba(255,255,255,0.04);--card2:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.08);--accent:#00e5b4;--accent2:#00c4ff;--accent3:#7c3aed;--text:#e8f0fe;--text2:#8899aa;--red:#f87171;--yellow:#fbbf24;--green:#4ade80;--orange:#fb923c;--meta:#4b5563;}
@@ -216,7 +211,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div class="app">
 <aside class="sidebar" id="sidebar">
   <div class="logo">
-    <div class="logo-mark">⬡ VentasHera POS</div>
+    <div class="logo-mark">⬡ VentasHera ERP</div>
     <div class="logo-sub">SISTEMA EMPRESARIAL <span id="fb-status-dot" title="Conectando..."></span></div>
   </div>
   <nav class="nav" id="nav-container">
@@ -256,6 +251,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('tes_comp_egreso')"><span class="nav-icon">📤</span>Comp. Egreso</div>
     <div class="nav-item" onclick="showPage('tes_transferencias')"><span class="nav-icon">🔄</span>Transferencias</div>
 
+    <div class="nav-section">CATÁLOGO WEB</div>
+    <a href="https://eonclothingonline.com/mayoristas/?admin=true" target="_blank" class="nav-item"><span class="nav-icon">🛠</span>Gestión Mayorista</a>
+    <a href="https://eonclothingonline.com/mayoristas/?type=showroom" target="_blank" class="nav-item"><span class="nav-icon">🏢</span>Vista Showroom</a>
+    <a href="https://eonclothingonline.com/mayoristas/?type=public" target="_blank" class="nav-item"><span class="nav-icon">🌐</span>Catálogo Público</a>
+
     <div class="nav-section">GAMIFICACIÓN</div>
     <div class="nav-item" onclick="showPage('juego')"><span class="nav-icon">🎮</span>Juego</div>
     <div class="nav-item" onclick="showPage('recompensas')"><span class="nav-icon">🏆</span>Recompensas</div>
@@ -265,7 +265,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('historial')"><span class="nav-icon">📊</span>Historial</div>
     <div class="nav-item" onclick="showPage('config')"><span class="nav-icon">⚙</span>Configuración</div>
   </nav>
-  <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--meta)">Hera ERP v8.3 | INTEGRACIÓN WEB</div>
+  <div style="padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--meta)">Hera ERP v8.3 Profesional</div>
 </aside>
 
 <main class="main" id="main">
@@ -332,14 +332,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 <script>
 // ===== FIREBASE CONFIG =====
-// Conexión con Catálogo Web
-const catalogApp = firebase.initializeApp({
-    apiKey: "AIzaSyBtynjEseNqWrY13LMFn2MI7ddbNMP58TI",
-    authDomain: "hera-swimwear-catalogo.firebaseapp.com",
-    projectId: "hera-swimwear-catalogo",
-}, "CatalogApp");
-const dbWeb = catalogApp.firestore();
-
 const firebaseConfig = {
   apiKey: "AIzaSyAzWG2WmSldVRw4JtjfHv-e3CLbjwnvbNk",
   authDomain: "ventacontrol-hera.firebaseapp.com",
@@ -349,6 +341,15 @@ const firebaseConfig = {
   messagingSenderId: "1950402952",
   appId: "1:1950402952:web:f343b2b0cc56b7cdd0523d"
 };
+
+// Conexión con Catálogo Web
+const catalogApp = firebase.initializeApp({
+    apiKey: "AIzaSyBtynjEseNqWrY13LMFn2MI7ddbNMP58TI",
+    authDomain: "hera-swimwear-catalogo.firebaseapp.com",
+    projectId: "hera-swimwear-catalogo",
+}, "CatalogApp");
+const dbWeb = catalogApp.firestore();
+
 if(typeof firebase==='undefined'){document.body.innerHTML='<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0f1e;font-family:Syne,sans-serif;text-align:center;padding:32px"><div style="font-size:52px">📡</div><div style="font-size:22px;font-weight:800;color:#f87171;margin-top:16px">Error Firebase</div><button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne;font-size:15px;font-weight:800;cursor:pointer">🔄 Reintentar</button></div>';}
 else{firebase.initializeApp(firebaseConfig);}
 const database=firebase.database();
@@ -360,11 +361,11 @@ let state = {
   ventas: [], currentMonth: null,
   game: { xp:0, streakMax:0, earnedBadges:[], claimedSnacks:{} },
   rewards: {}, notifEnabled: false, notifHour: 21,
-  articulos: [],       
+  articulos: [],        
   bodegas: [{id:'bodega_main',name:'Bodega Principal',ubicacion:'Local'},{id:'bodega_vitrina',name:'Vitrina',ubicacion:'Vitrina'}],
-  inv_movimientos: [],  
-  inv_ajustes: [],      
-  inv_traslados: [],    
+  inv_movimientos: [],   
+  inv_ajustes: [],       
+  inv_traslados: [],     
   cotizaciones: [],
   ordenes_venta: [],
   facturas: [],
@@ -402,7 +403,7 @@ let posFormState = {
 };
 const CUENTAS_BANCARIAS = ['Bancolombia Principal', 'Bancolombia 2', 'Nequi', 'Daviplata'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
-let _tempGaleria = []; // Para editar fotos visualmente
+let _tempGaleria = []; let _portadaIndex = 0;
 
 // ===== CONSTANTS =====
 const LEVELS=[{level:1,name:'Novata',avatar:'🌱',minXp:0},{level:2,name:'Activa',avatar:'✨',minXp:200},{level:3,name:'Vendedora',avatar:'💫',minXp:500},{level:4,name:'Destacada',avatar:'🌟',minXp:1000},{level:5,name:'Pro',avatar:'⚡',minXp:1800},{level:6,name:'Experta',avatar:'🔥',minXp:3000},{level:7,name:'Campeona',avatar:'💎',minXp:4500},{level:8,name:'Leyenda',avatar:'👑',minXp:6500},{level:9,name:'Élite',avatar:'🏆',minXp:9000},{level:10,name:'Mega Vendedora',avatar:'🚀',minXp:12000}];
@@ -1020,12 +1021,7 @@ function printReceipt(factura){
       <div style="text-align:center;font-size:10px">¡Gracias por su compra!<br>VentasHera POS</div>
     </div>`;
   const printWin=window.open('','','width=320,height=600');
-  printWin.document.write('<html><head><title>Factura</title></head><body style="margin:0">'+receiptHTML+'
-<script>
-console.log("Módulo ERP v8.0 Activo");
-// Aquí irían las funciones de notificaciones nocturnas que discutimos
-</script>
-</body></html>');
+  printWin.document.write('<html><head><title>Factura</title></head><body style="margin:0">'+receiptHTML+'</body></html>');
   printWin.document.close();
   printWin.focus();
   setTimeout(()=>{printWin.print();printWin.close()},500);
@@ -1073,94 +1069,147 @@ function renderArticulosList(){
 }
 
 function openArticuloModal(id){
-  const art=id?(state.articulos||[]).find(a=>a.id===id):null;
-  const cats = ['Trajes de baño', 'Pijamas', 'Ropa Casual', 'Deportiva', 'Varias'];
-  
-  // Cargamos la galería actual en la variable temporal
-  _tempGaleria = art && art.galeria ? [...art.galeria] : [];
+    const art=id?(state.articulos||[]).find(a=>a.id===id):null;
+    _tempGaleria = art && art.galeria ? [...art.galeria] : [];
+    _portadaIndex = 0; 
+    
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne'; letter-spacing:1px;">🔒 MAQUETADOR DE PRENDA PROFESIONAL</div>
+        <div style="max-height: 75vh; overflow-y: auto; padding-right: 10px; text-align:left;">
+            
+            <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:20px;">
+                <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
+                <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
+                    <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br><span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada.</span>
+                    <input type="file" multiple accept="image/*,video/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="uploadGalleryImages(this)">
+                </div>
+                <div id="m-art-galeria-visual" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;"></div>
+            </div>
 
-  openModal(`
-    <div class="modal-title">${art?'✏️ Editar':'✨ Nueva'} Prenda de Catálogo<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div style="max-height: 65vh; overflow-y: auto; padding-right: 12px;">
-      
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">REFERENCIA / CÓDIGO</label><input class="form-control" id="m-art-codigo" value="${art?.codigo||''}" placeholder="Ej: REF-001"></div>
-        <div class="form-group"><label class="form-label">CATEGORÍA</label>
-          <select class="form-control" id="m-art-cat">
-            <option value="">— Seleccionar —</option>
-            ${cats.map(c=>`<option value="${c}" ${art?.categoria===c?'selected':''}>${c}</option>`).join('')}
-          </select>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">REFERENCIA</label><input class="form-control" id="m-art-codigo" value="${art?.codigo||''}"></div>
+                <div class="form-group">
+                    <label class="form-label">SECCIÓN WEB</label>
+                    <select class="form-control" id="m-art-seccion" onchange="actualizarCatsERP()">
+                        <option value="Trajes de Baño" ${art?.seccion==='Trajes de Baño'?'selected':''}>Trajes de Baño</option>
+                        <option value="Pijamas" ${art?.seccion==='Pijamas'?'selected':''}>Resort & Pijamas</option>
+                        <option value="Ropa Deportiva" ${art?.seccion==='Ropa Deportiva'?'selected':''}>Activewear</option>
+                        <option value="Casual" ${art?.seccion==='Casual'?'selected':''}>Casual</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group"><label class="form-label">CATEGORÍA</label><select class="form-control" id="m-art-cat"></select></div>
+            <div class="form-group"><label class="form-label">NOMBRE COMERCIAL</label><input class="form-control" id="m-art-nombre" value="${art?.nombre||''}"></div>
+            <div class="form-group"><label class="form-label">DESCRIPCIÓN (Para el Catálogo)</label><textarea class="form-control" id="m-art-desc" rows="2">${art?.descripcion||''}</textarea></div>
+
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas||'S, M, L, XL'}"></div>
+                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art?.colors?.join(', ')||''}"></div>
+            </div>
+
+            <div class="form-group"><label class="form-label">LINK DE VIDEO (Opcional)</label><input class="form-control" id="m-art-video" value="${art?.video||''}" placeholder="URL mp4 o YouTube"></div>
+
+            <div class="card-title" style="margin-top:10px; border-top:1px solid var(--border); padding-top:15px; color:var(--accent);">💰 INVENTARIO Y PRECIOS</div>
+            <div class="form-row-3">
+                <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra||0}"></div>
+                <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta||0}"></div>
+                <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva??19}"></div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
+                <div class="form-group"><label class="form-label">${art?'AJUSTE DE STOCK':'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
+            </div>
         </div>
-      </div>
-      <div class="form-group"><label class="form-label">NOMBRE DE LA PRENDA *</label><input class="form-control" id="m-art-nombre" value="${art?.nombre||''}" placeholder="Ej: Enterizo Bora Bora"></div>
-      <div class="form-group"><label class="form-label">TALLAS DISPONIBLES (Separadas por coma)</label><input class="form-control" id="m-art-tallas" value="${art?.tallas||'S, M, L'}" placeholder="Ej: XS, S, M, L, XL"></div>
-      <div class="form-group"><label class="form-label">DESCRIPCIÓN COMERCIAL</label><textarea class="form-control" id="m-art-desc" rows="3" placeholder="Describe la tela, el corte, detalles de la prenda...">${art?.descripcion||''}</textarea></div>
-
-      <div class="card-title" style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">📷 MULTIMEDIA Y CATÁLOGO</div>
-      
-      <div class="form-group">
-        <label class="form-label">IMAGEN PRINCIPAL</label>
-        <div style="display:flex; gap:8px; align-items:flex-start;">
-          <div id="m-art-img-preview-container" style="position:relative; display:${art?.imagen?'block':'none'}; flex-shrink:0;">
-            <div id="m-art-img-preview" style="width:64px; height:64px; border-radius:8px; background:url('${art?.imagen||''}') center/cover; border:1px solid var(--border);"></div>
-            <button class="btn-danger" style="position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:none; cursor:pointer; font-size:10px; padding:0; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 4px rgba(0,0,0,0.5)" onclick="removeMainImg()" title="Borrar foto principal">✕</button>
-          </div>
-          <div style="flex:1">
-            <input type="file" class="form-control" accept="image/*" style="padding:6px; margin-bottom:6px; background:var(--card)" onchange="uploadSingleImage(this)">
-            <input type="text" class="form-control" id="m-art-img" value="${art?.imagen||''}" placeholder="Link oculto URL" style="display:none">
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">GALERÍA ADICIONAL</label>
-        <input type="file" class="form-control" accept="image/*" multiple style="padding:6px; margin-bottom:6px; background:var(--card)" onchange="uploadGalleryImages(this)">
-        <div id="m-art-galeria-visual" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;"></div>
-      </div>
-
-      <div class="form-group"><label class="form-label">VIDEO (Link URL)</label><input class="form-control" id="m-art-video" value="${art?.video||''}" placeholder="Link del video en mp4, YouTube, Instagram, etc."></div>
-
-      <div class="card-title" style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">💰 PRECIOS E INVENTARIO</div>
-      <div class="form-row-3">
-        <div class="form-group"><label class="form-label">COSTO / P. COMPRA</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra||0}" min="0"></div>
-        <div class="form-group"><label class="form-label">PRECIO DE VENTA *</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta||0}" min="0"></div>
-        <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva??19}" min="0" max="100"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">STOCK MÍNIMO (Alerta)</label><input type="number" class="form-control" id="m-art-min" value="${art?.stockMinimo||3}" min="0"></div>
-        <div class="form-group"><label class="form-label">BODEGA INICIAL</label><select class="form-control" id="m-art-bodega">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-      </div>
-      ${!art?'<div class="form-group"><label class="form-label">STOCK INICIAL</label><input type="number" class="form-control" id="m-art-stock0" value="0" min="0"></div>':''}
-      
-    </div>
-    <button class="btn btn-primary" style="width:100%; margin-top:16px" onclick="saveArticulo('${id||''}')">${art?'💾 Guardar Cambios':'✨ Crear Prenda'}</button>
-  `);
-  
-  // Renderizamos la galería visual apenas se abre el modal
-  renderGaleriaVisual();
+        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveArticulo('${id||''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
+    `, true);
+    actualizarCatsERP(art?.cat);
+    renderGaleriaVisual();
 }
 
-function removeMainImg() {
+function removeMainImg(){
   document.getElementById('m-art-img').value = '';
   document.getElementById('m-art-img-preview-container').style.display = 'none';
   document.getElementById('m-art-img-preview').style.background = 'none';
 }
 
 function renderGaleriaVisual(){
-  const container = document.getElementById('m-art-galeria-visual');
-  if(!container) return;
-  container.innerHTML = _tempGaleria.map((url, idx) => `
-    <div style="position:relative; width:64px; height:64px; border-radius:8px; background:url('${url}') center/cover; border:1px solid var(--border)">
-      <button class="btn-danger" style="position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:none; cursor:pointer; font-size:12px; padding:0; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 4px rgba(0,0,0,0.5)" onclick="removeGaleriaImg(${idx})" title="Borrar foto">✕</button>
-    </div>
-  `).join('');
+    const container = document.getElementById('m-art-galeria-visual');
+    if(!container) return;
+    container.innerHTML = _tempGaleria.map((url, idx) => {
+        const esVideo = url.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
+        const media = esVideo 
+            ? `<video src="${url}" style="width:100%; height:100%; object-fit:cover;"></video>`
+            : `<img src="${url}" style="width:100%; height:100%; object-fit:cover;">`;
+        return `
+            <div style="position:relative; width:72px; height:96px; border-radius:6px; overflow:hidden; border:2px solid ${idx === _portadaIndex ? 'var(--accent)' : 'transparent'}; cursor:pointer;" onclick="_portadaIndex=${idx}; renderGaleriaVisual();">
+                ${media}
+                <button class="btn-danger" style="position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%; border:none; font-size:9px;" onclick="event.stopPropagation(); _tempGaleria.splice(${idx},1); if(_portadaIndex>=${idx})_portadaIndex=0; renderGaleriaVisual();">✕</button>
+                <div style="position:absolute; bottom:2px; left:2px; background:${idx === _portadaIndex ? 'var(--accent)' : 'rgba(0,0,0,0.5)'}; color:#000; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px;">⭐</div>
+            </div>`;
+    }).join('');
 }
 
-function removeGaleriaImg(idx){
-  _tempGaleria.splice(idx, 1);
-  renderGaleriaVisual();
+function actualizarCatsERP(selectedCat){
+    const sec = document.getElementById('m-art-seccion').value;
+    const cat = document.getElementById('m-art-cat');
+    let opciones = "";
+    if(sec === 'Trajes de Baño'){
+        opciones = ['Enterizos','Bikinis','Tankinis','Asoleadores','Salidas de Baño','3 Piezas'].map(o=>`<option value="${o}" ${selectedCat===o?'selected':''}>${o}</option>`).join('');
+    } else {
+        opciones = `<option value="${sec}">${sec}</option>`;
+    }
+    cat.innerHTML = opciones;
 }
 
+// ===== SUBIDA DIRECTA DE FOTOS A FIREBASE STORAGE =====
+async function uploadSingleImage(input) {
+  const file = input.files[0];
+  if(!file) return;
+  showLoadingOverlay('connecting');
+  try {
+    const ref = firebase.storage().ref('catalogo/' + uid() + '_' + file.name);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    
+    document.getElementById('m-art-img').value = url;
+    const preview = document.getElementById('m-art-img-preview');
+    const container = document.getElementById('m-art-img-preview-container');
+    preview.style.background = `url('${url}') center/cover`;
+    container.style.display = 'block';
+    
+    showLoadingOverlay('hide');
+    notify('success', '📷', 'Foto subida', 'Imagen principal lista',{duration:3000});
+  } catch(e) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error al subir', e.message);
+  }
+}
+
+async function uploadGalleryImages(input) {
+  const files = input.files;
+  if(!files.length) return;
+  showLoadingOverlay('connecting');
+  try {
+    let added = 0;
+    for(let i=0; i<files.length; i++) {
+      if(_tempGaleria.length >= 15) break; // Límite de 15 fotos por galería
+      const file = files[i];
+      const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
+      await ref.put(file);
+      const url = await ref.getDownloadURL();
+      _tempGaleria.push(url);
+      added++;
+    }
+    renderGaleriaVisual();
+    showLoadingOverlay('hide');
+    notify('success', '📸', 'Galería actualizada', `+${added} fotos agregadas al catálogo`,{duration:4000});
+  } catch(e) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error en galería', e.message);
+  }
+}
 
 async function saveArticulo(existingId){
     const nombre=document.getElementById('m-art-nombre').value.trim();
@@ -1231,56 +1280,6 @@ async function saveArticulo(existingId){
         alert("Error al enviar a la web: " + e.message);
     }
 }
-
-
-// ===== SUBIDA DIRECTA DE FOTOS A FIREBASE STORAGE =====
-async function uploadSingleImage(input) {
-  const file = input.files[0];
-  if(!file) return;
-  showLoadingOverlay('connecting');
-  try {
-    const ref = firebase.storage().ref('catalogo/' + uid() + '_' + file.name);
-    await ref.put(file);
-    const url = await ref.getDownloadURL();
-    
-    document.getElementById('m-art-img').value = url;
-    const preview = document.getElementById('m-art-img-preview');
-    const container = document.getElementById('m-art-img-preview-container');
-    preview.style.background = `url('${url}') center/cover`;
-    container.style.display = 'block';
-    
-    showLoadingOverlay('hide');
-    notify('success', '📷', 'Foto subida', 'Imagen principal lista',{duration:3000});
-  } catch(e) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error al subir', e.message);
-  }
-}
-
-async function uploadGalleryImages(input) {
-  const files = input.files;
-  if(!files.length) return;
-  showLoadingOverlay('connecting');
-  try {
-    let added = 0;
-    for(let i=0; i<files.length; i++) {
-      if(_tempGaleria.length >= 15) break; // Límite de 15 fotos por galería
-      const file = files[i];
-      const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
-      await ref.put(file);
-      const url = await ref.getDownloadURL();
-      _tempGaleria.push(url);
-      added++;
-    }
-    renderGaleriaVisual();
-    showLoadingOverlay('hide');
-    notify('success', '📸', 'Galería actualizada', `+${added} fotos agregadas al catálogo`,{duration:4000});
-  } catch(e) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error en galería', e.message);
-  }
-}
-
 
 // ===================================================================
 // ===== INVENTORY TRAZABILIDAD =====
