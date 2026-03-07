@@ -1068,70 +1068,77 @@ function renderArticulosList(){
     return`<tr><td style="width:50px">${thumb}</td><td>${a.codigo||'—'}</td><td style="font-weight:700">${a.nombre}</td><td><span class="badge badge-info">${a.categoria||'—'}</span></td><td>${fmt(a.precioCompra)}</td><td style="color:var(--accent);font-weight:700">${fmt(a.precioVenta)}</td><td style="color:${low?'var(--red)':'var(--green)'};font-weight:700">${stock}</td><td>${a.stockMinimo}</td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="openArticuloModal('${a.id}')">✏️</button><button class="btn btn-xs btn-danger" onclick="deleteArticulo('${a.id}')">✕</button></div></td></tr>`}).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin prendas registradas</td></tr>';
 }
 
+// ===================================================================
+// ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
+// ===================================================================
+
 function openArticuloModal(id){
-    const art=id?(state.articulos||[]).find(a=>a.id===id):null;
+    const art = id ? (state.articulos || []).find(a => a.id === id) : null;
     _tempGaleria = art && art.galeria ? [...art.galeria] : [];
     _portadaIndex = 0; 
     
     openModal(`
-        <div class="modal-title" style="font-family:'Syne'; letter-spacing:1px;">🔒 MAQUETADOR DE PRENDA PROFESIONAL</div>
+        <div class="modal-title" style="font-family:'Syne'; letter-spacing:1px;">🚀 MAQUETADOR DE PRENDA PROFESIONAL</div>
         <div style="max-height: 75vh; overflow-y: auto; padding-right: 10px; text-align:left;">
             
             <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:20px;">
                 <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
-                    <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br><span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada.</span>
+                    <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br>
+                    <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada.</span>
                     <input type="file" multiple accept="image/*,video/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="uploadGalleryImages(this)">
                 </div>
                 <div id="m-art-galeria-visual" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;"></div>
             </div>
 
             <div class="form-row">
-                <div class="form-group"><label class="form-label">REFERENCIA</label><input class="form-control" id="m-art-codigo" value="${art?.codigo||''}"></div>
+                <div class="form-group"><label class="form-label">REFERENCIA (REF)</label><input class="form-control" id="m-art-codigo" value="${art?.codigo || ''}"></div>
+                <div class="form-group"><label class="form-label">COLECCIÓN / TEMPORADA</label><input class="form-control" id="m-art-coleccion" value="${art?.coleccion || ''}" placeholder="Ej: Verano 2026"></div>
+            </div>
+
+            <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">SECCIÓN WEB</label>
                     <select class="form-control" id="m-art-seccion" onchange="actualizarCatsERP()">
-                        <option value="Trajes de Baño" ${art?.seccion==='Trajes de Baño'?'selected':''}>Trajes de Baño</option>
-                        <option value="Pijamas" ${art?.seccion==='Pijamas'?'selected':''}>Resort & Pijamas</option>
-                        <option value="Ropa Deportiva" ${art?.seccion==='Ropa Deportiva'?'selected':''}>Activewear</option>
-                        <option value="Casual" ${art?.seccion==='Casual'?'selected':''}>Casual</option>
+                        <option value="Trajes de Baño" ${art?.seccion === 'Trajes de Baño' ? 'selected' : ''}>Trajes de Baño</option>
+                        <option value="Pijamas" ${art?.seccion === 'Pijamas' ? 'selected' : ''}>Resort & Pijamas</option>
+                        <option value="Ropa Deportiva" ${art?.seccion === 'Ropa Deportiva' ? 'selected' : ''}>Activewear</option>
+                        <option value="Casual" ${art?.seccion === 'Casual' ? 'selected' : ''}>Casual</option>
                     </select>
                 </div>
+                <div class="form-group"><label class="form-label">CATEGORÍA</label><select class="form-control" id="m-art-cat"></select></div>
             </div>
 
-            <div class="form-group"><label class="form-label">CATEGORÍA</label><select class="form-control" id="m-art-cat"></select></div>
-            <div class="form-group"><label class="form-label">NOMBRE COMERCIAL</label><input class="form-control" id="m-art-nombre" value="${art?.nombre||''}"></div>
-            <div class="form-group"><label class="form-label">DESCRIPCIÓN (Para el Catálogo)</label><textarea class="form-control" id="m-art-desc" rows="2">${art?.descripcion||''}</textarea></div>
+            <div class="form-group"><label class="form-label">NOMBRE COMERCIAL</label><input class="form-control" id="m-art-nombre" value="${art?.nombre || ''}"></div>
+            <div class="form-group"><label class="form-label">DESCRIPCIÓN (Para el Catálogo)</label><textarea class="form-control" id="m-art-desc" rows="2">${art?.descripcion || ''}</textarea></div>
 
             <div class="form-row">
-                <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas||'S, M, L, XL'}"></div>
-                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art?.colors?.join(', ')||''}"></div>
+                <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas || 'S, M, L, XL'}"></div>
+                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art?.colors?.join(', ') || ''}"></div>
             </div>
 
-            <div class="form-group"><label class="form-label">LINK DE VIDEO (Opcional)</label><input class="form-control" id="m-art-video" value="${art?.video||''}" placeholder="URL mp4 o YouTube"></div>
+            <div class="form-group"><label class="form-label">LINK DE VIDEO (Opcional)</label><input class="form-control" id="m-art-video" value="${art?.video || ''}" placeholder="URL mp4 o YouTube"></div>
 
             <div class="card-title" style="margin-top:10px; border-top:1px solid var(--border); padding-top:15px; color:var(--accent);">💰 INVENTARIO Y PRECIOS</div>
             <div class="form-row-3">
-                <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra||0}"></div>
-                <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta||0}"></div>
-                <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva??19}"></div>
+                <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra || 0}"></div>
+                <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta || 0}"></div>
+                <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva ?? 19}"></div>
             </div>
 
             <div class="form-row">
-                <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-                <div class="form-group"><label class="form-label">${art?'AJUSTE DE STOCK':'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
+                <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas || []).map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
+                <div class="form-group"><label class="form-label">${art ? 'AJUSTE DE STOCK' : 'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
             </div>
         </div>
-        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveArticulo('${id||''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
+        <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveArticulo('${id || ''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
     `, true);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
 }
 
 function removeMainImg(){
-  document.getElementById('m-art-img').value = '';
-  document.getElementById('m-art-img-preview-container').style.display = 'none';
-  document.getElementById('m-art-img-preview').style.background = 'none';
+    document.getElementById('m-art-img-preview-container').style.display = 'none';
 }
 
 function renderGaleriaVisual(){
@@ -1154,70 +1161,44 @@ function renderGaleriaVisual(){
 function actualizarCatsERP(selectedCat){
     const sec = document.getElementById('m-art-seccion').value;
     const cat = document.getElementById('m-art-cat');
-    let opciones = "";
-    if(sec === 'Trajes de Baño'){
-        opciones = ['Enterizos','Bikinis','Tankinis','Asoleadores','Salidas de Baño','3 Piezas'].map(o=>`<option value="${o}" ${selectedCat===o?'selected':''}>${o}</option>`).join('');
-    } else {
-        opciones = `<option value="${sec}">${sec}</option>`;
-    }
-    cat.innerHTML = opciones;
-}
-
-// ===== SUBIDA DIRECTA DE FOTOS A FIREBASE STORAGE =====
-async function uploadSingleImage(input) {
-  const file = input.files[0];
-  if(!file) return;
-  showLoadingOverlay('connecting');
-  try {
-    const ref = firebase.storage().ref('catalogo/' + uid() + '_' + file.name);
-    await ref.put(file);
-    const url = await ref.getDownloadURL();
+    let opciones = [];
+    if(sec === 'Trajes de Baño') opciones = ['Enterizos','Bikinis','Tankinis','Asoleadores','Salidas de Baño','3 Piezas'];
+    else if(sec === 'Pijamas') opciones = ['Batas','Pantalones Largos','Shorts','Sets 2 Piezas'];
+    else if(sec === 'Ropa Deportiva') opciones = ['Leggings','Tops','Conjuntos'];
+    else opciones = ['Vestidos','Faldas','Tops','Pantalones'];
     
-    document.getElementById('m-art-img').value = url;
-    const preview = document.getElementById('m-art-img-preview');
-    const container = document.getElementById('m-art-img-preview-container');
-    preview.style.background = `url('${url}') center/cover`;
-    container.style.display = 'block';
-    
-    showLoadingOverlay('hide');
-    notify('success', '📷', 'Foto subida', 'Imagen principal lista',{duration:3000});
-  } catch(e) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error al subir', e.message);
-  }
+    cat.innerHTML = opciones.map(o => `<option value="${o}" ${selectedCat === o ? 'selected' : ''}>${o}</option>`).join('');
 }
 
 async function uploadGalleryImages(input) {
-  const files = input.files;
-  if(!files.length) return;
-  showLoadingOverlay('connecting');
-  try {
-    let added = 0;
-    for(let i=0; i<files.length; i++) {
-      if(_tempGaleria.length >= 15) break; // Límite de 15 fotos por galería
-      const file = files[i];
-      const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
-      await ref.put(file);
-      const url = await ref.getDownloadURL();
-      _tempGaleria.push(url);
-      added++;
+    const files = input.files;
+    if(!files.length) return;
+    showLoadingOverlay('connecting');
+    try {
+        let added = 0;
+        for(let i=0; i<files.length; i++) {
+            if(_tempGaleria.length >= 15) break;
+            const file = files[i];
+            const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
+            await ref.put(file);
+            const url = await ref.getDownloadURL();
+            _tempGaleria.push(url);
+            added++;
+        }
+        renderGaleriaVisual();
+        showLoadingOverlay('hide');
+        notify('success', '📸', 'Galería cargada', `+${added} fotos.`);
+    } catch(e) {
+        showLoadingOverlay('hide');
+        notify('danger', '⚠️', 'Error', e.message);
     }
-    renderGaleriaVisual();
-    showLoadingOverlay('hide');
-    notify('success', '📸', 'Galería actualizada', `+${added} fotos agregadas al catálogo`,{duration:4000});
-  } catch(e) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error en galería', e.message);
-  }
 }
 
 async function saveArticulo(existingId){
     const nombre = document.getElementById('m-art-nombre').value.trim();
     const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
+    if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
     
-    if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios para sincronizar.');
-    
-    // 1. Prioridad de Galería: Si no subiste fotos nuevas, mantenemos las actuales
     let galeriaFinal = [..._tempGaleria];
     if(galeriaFinal.length > 0 && _portadaIndex < galeriaFinal.length){
         const portada = galeriaFinal.splice(_portadaIndex, 1)[0];
@@ -1226,9 +1207,10 @@ async function saveArticulo(existingId){
 
     const data = {
         codigo: refID,
-        ref: refID, 
+        ref: refID,
         nombre: nombre,
-        name: nombre, 
+        name: nombre,
+        coleccion: document.getElementById('m-art-coleccion').value.trim(),
         seccion: document.getElementById('m-art-seccion').value,
         cat: document.getElementById('m-art-cat').value,
         descripcion: document.getElementById('m-art-desc').value.trim(),
@@ -1237,64 +1219,46 @@ async function saveArticulo(existingId){
         sizes: document.getElementById('m-art-tallas').value.trim(),
         colors: document.getElementById('m-art-colores').value.split(',').map(c=>c.trim()).filter(Boolean),
         imagen: galeriaFinal[0] || '',
-        images: galeriaFinal, 
+        images: galeriaFinal,
         precioCompra: parseFloat(document.getElementById('m-art-pc').value)||0,
         precioVenta: parseFloat(document.getElementById('m-art-pv').value)||0,
-        price: parseFloat(document.getElementById('m-art-pv').value)||0, 
+        price: parseFloat(document.getElementById('m-art-pv').value)||0,
         iva: parseFloat(document.getElementById('m-art-iva').value)||19,
-        stockMinimo: 5,
-        activo: true,
+        stockMinimo: 5, activo: true,
         lastUpdate: firebase.firestore.Timestamp.now()
     };
 
     try {
         showLoadingOverlay('connecting');
-
-        // --- PASO A: BUSCAR SI YA EXISTE EN LA WEB (Evita duplicados) ---
         const queryWeb = await dbWeb.collection('products').where('ref', '==', refID).get();
-        
         if (!queryWeb.empty) {
-            // Si existe en la web, actualizamos el documento existente
-            const docIdWeb = queryWeb.docs[0].id;
-            await dbWeb.collection('products').doc(docIdWeb).update(data);
-            console.log("Web: Producto actualizado por Referencia.");
+            await dbWeb.collection('products').doc(queryWeb.docs[0].id).update(data);
         } else {
-            // Si NO existe en la web, lo creamos
             await dbWeb.collection('products').add({ ...data, createdAt: firebase.firestore.Timestamp.now() });
-            console.log("Web: Producto nuevo creado.");
         }
 
-        // --- PASO B: GUARDAR EN ERP (Inventario Local) ---
         if(existingId){
             const idx = state.articulos.findIndex(a => a.id === existingId);
             state.articulos[idx] = { ...state.articulos[idx], ...data };
         } else {
-            // Si es nuevo en el ERP pero ya existía en la web, el ERP simplemente lo adopta
             data.id = uid();
             state.articulos.push(data);
         }
 
-        // --- PASO C: REGISTRAR STOCK ---
         const qty = parseInt(document.getElementById('m-art-stock0').value)||0;
         if(qty !== 0){
             state.inv_movimientos.push({
-                id: uid(), articuloId: data.id, 
-                bodegaId: document.getElementById('m-art-bodega').value,
+                id: uid(), articuloId: data.id, bodegaId: document.getElementById('m-art-bodega').value,
                 cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
                 fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
             });
         }
-
-        saveState(); 
-        closeModal(); 
-        renderArticulos();
+        saveState(); closeModal(); renderArticulos();
         showLoadingOverlay('hide');
-        notify('success','🌐','Sincronización Exitosa', `Referencia ${refID} vinculada correctamente.`);
-        
+        notify('success','🌐','Sincronizado', `${refID} actualizado en Web y ERP.`);
     } catch(e) {
         showLoadingOverlay('hide');
-        console.error("Error de Sincronización:", e);
-        alert("Error al sincronizar: " + e.message);
+        alert("Error: " + e.message);
     }
 }
 
@@ -2037,4 +2001,5 @@ window.addEventListener('load',()=>{loadState()});
 </script>
 </body>
 </html>
+
 
