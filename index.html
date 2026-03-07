@@ -31,8 +31,9 @@
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+<!-- Firebase via jsDelivr CDN (funciona con file:// y https://) -->
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.min.js"></script>
 <style>
   :root {
     --bg: #0a0f1e;
@@ -1109,7 +1110,10 @@
   <aside class="sidebar">
     <div class="logo">
       <div class="logo-mark">⬡ VentaControl</div>
-      <div class="logo-sub">GESTIÓN EMPRESARIAL</div>
+      <div class="logo-sub" style="display:flex;align-items:center;gap:6px;justify-content:center">
+        GESTIÓN EMPRESARIAL
+        <span id="fb-status-dot" title="Conectando..." style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b;flex-shrink:0;transition:background .4s"></span>
+      </div>
     </div>
     <nav class="nav">
       <div class="nav-item active" onclick="showPage('dashboard')">
@@ -1678,8 +1682,8 @@
 
       <!-- SNACKS DESBLOQUEABLES -->
       <div class="section" style="margin-bottom:20px">
-        <div class="section-header">🍫 Snacks por XP
-          <span style="font-size:11px;color:var(--text2)">Se asigna aleatoriamente cada semana</span>
+        <div class="section-header">🎁 Snack Sorpresa Semanal
+          <span style="font-size:11px;color:#f59e0b">Nuevo snack cada lunes · Meta: 100 XP</span>
         </div>
         <div style="padding:16px" id="snacks-grid"></div>
       </div>
@@ -1735,6 +1739,19 @@
 </div>
 
 <script>
+// ===== FIREBASE SAFETY CHECK =====
+// If Firebase scripts failed to load (e.g. no internet), show a clear error
+window.addEventListener('load', function() {
+  if (typeof firebase === 'undefined') {
+    document.body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0a0f1e;color:#fff;font-family:sans-serif;text-align:center;padding:32px">'
+      + '<div style="font-size:48px;margin-bottom:16px">📡</div>'
+      + '<div style="font-size:22px;font-weight:700;color:#00e5b4;margin-bottom:12px">Sin conexión a Internet</div>'
+      + '<div style="font-size:14px;color:#8899aa;max-width:400px;line-height:1.6">VentasHera necesita conexión a internet para cargar Firebase.<br><br>Conéctate a WiFi o datos móviles y recarga la página.</div>'
+      + '<button onclick="location.reload()" style="margin-top:24px;background:#00e5b4;color:#0a0f1e;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer">🔄 Reintentar</button>'
+      + '</div>';
+  }
+});
+
 // ===== PWA MANIFEST INJECTION =====
 (function() {
   const manifest = {
@@ -1786,16 +1803,36 @@ let state = {
 };
 
 let isFirstLoad = true;
-let isSaving = false; // prevent echo loops
+let _fbConnected = false;
+let _fbTimeoutId = null;
 
 function loadState() {
-  // Show loading indicator
-  showLoadingOverlay(true);
+  showLoadingOverlay('connecting');
+
+  // ── Timeout: si en 10s Firebase no responde → mostrar error de conexión
+  _fbTimeoutId = setTimeout(() => {
+    if (!_fbConnected) {
+      showLoadingOverlay('error');
+    }
+  }, 10000);
+
+  // ── Detectar estado de conexión en tiempo real
+  firebase.database().ref('.info/connected').on('value', (snap) => {
+    _fbConnected = !!snap.val();
+    const statusEl = document.getElementById('fb-status-dot');
+    if (statusEl) {
+      statusEl.style.background = _fbConnected ? '#22c55e' : '#f59e0b';
+      statusEl.title = _fbConnected ? 'Conectado a la nube' : 'Sin conexión';
+    }
+  });
 
   stateRef.on('value', (snapshot) => {
+    // Cancelar timeout — Firebase respondió
+    if (_fbTimeoutId) { clearTimeout(_fbTimeoutId); _fbTimeoutId = null; }
+    _fbConnected = true;
+
     const data = snapshot.val();
     if (data) {
-      // Merge cloud data into state, ensuring arrays stay as arrays
       state = { ...state, ...data };
       if (!state.ventas || !Array.isArray(state.ventas)) state.ventas = [];
       if (!state.game) state.game = { xp:0, streakMax:0, earnedBadges:[], claimedSnacks:{} };
@@ -1805,9 +1842,9 @@ function loadState() {
     }
 
     checkMonthReset();
-    showLoadingOverlay(false);
+    showLoadingOverlay('hide');
 
-    // Refresh whichever page is currently visible
+    // Refrescar página activa
     renderDashboard();
     checkAndRenderRewards();
     if (document.getElementById('page-pendientes')?.classList.contains('active')) renderPendientes();
@@ -1816,7 +1853,7 @@ function loadState() {
     if (document.getElementById('page-juego')?.classList.contains('active')) renderGamePage();
     if (document.getElementById('page-recompensas')?.classList.contains('active')) renderRewards();
 
-    // One-time UI init on first load
+    // Init UI solo la primera vez
     if (isFirstLoad) {
       isFirstLoad = false;
       const fechaEl = document.getElementById('venta-fecha');
@@ -1828,37 +1865,32 @@ function loadState() {
       const cfgLocal = document.getElementById('cfg-dias-local');
       if (cfgLocal) cfgLocal.value = state.diasLocal;
 
-      // Show connection notification
-      setTimeout(() => notify('success', '☁️', '¡Conectado en la nube!', 'Los datos se sincronizan en tiempo real entre todos los dispositivos.', { duration: 4000 }), 1000);
+      setTimeout(() => notify('success', '☁️', '¡Conectado!', 'Sincronizado en tiempo real con todos los dispositivos.', { duration: 3500 }), 800);
 
-      // Alerts check
       const urgentAlerts = buildAlerts().filter(a => a.type === 'urgent');
       if (urgentAlerts.length > 0) {
         setTimeout(() => {
           screenFlash('red');
           notify('danger', '🚨', '¡' + urgentAlerts.length + ' cobro' + (urgentAlerts.length>1?'s':'') + ' urgente' + (urgentAlerts.length>1?'s':'') + '!',
-            'Tienes liquidaciones vencidas o que vencen hoy. ¡Ve a Cobros ahora!',
+            'Tienes liquidaciones vencidas o que vencen hoy.',
             { duration: 8000, action: "showPage('pendientes')", actionLabel: '⚡ Ir a Cobros →' });
         }, 2000);
       }
-      // Motivational morning/afternoon message
       const hourNow = new Date().getHours();
       if (hourNow >= 6 && hourNow < 12) {
-        setTimeout(() => notify('sale', '☀️', '¡Buenos días!', 'Cada venta cuenta. ¿Qué vas a facturar hoy?', { duration: 4000 }), 3000);
+        setTimeout(() => notify('sale', '☀️', '¡Buenos días!', 'Cada despacho cuenta. ¿Qué vas a facturar hoy?', { duration: 4000 }), 3000);
       } else if (hourNow >= 12 && hourNow < 18) {
-        setTimeout(() => notify('sale', '💪', '¡Tarde productiva!', 'Ya va la mitad del día. ¡Sigue empujando!', { duration: 4000 }), 3000);
+        setTimeout(() => notify('sale', '💪', '¡Tarde productiva!', 'Ya va la mitad del día. ¡Sigue despachando!', { duration: 4000 }), 3000);
       }
     }
   }, (error) => {
-    // Firebase connection error
-    showLoadingOverlay(false);
-    notify('danger', '📡', 'Error de conexión', 'No se pudo conectar a la nube. Revisa tu internet.', { duration: 8000 });
+    if (_fbTimeoutId) { clearTimeout(_fbTimeoutId); _fbTimeoutId = null; }
+    showLoadingOverlay('error');
     console.error('Firebase error:', error);
   });
 }
 
 function saveState() {
-  // Save to Firebase (broadcasts to all connected devices)
   stateRef.set(state).catch(err => {
     notify('danger', '⚠️', 'Error al guardar', 'No se pudo guardar en la nube. Verifica tu conexión.', { duration: 5000 });
     console.error('Firebase save error:', err);
@@ -1879,27 +1911,54 @@ function checkMonthReset() {
 }
 
 // ===== LOADING OVERLAY =====
-function showLoadingOverlay(show) {
+// state: 'connecting' | 'error' | 'hide'
+function showLoadingOverlay(state) {
+  // Inject keyframes once
+  if (!document.getElementById('fb-spin-style')) {
+    const s = document.createElement('style');
+    s.id = 'fb-spin-style';
+    s.textContent = '@keyframes fbspin{from{transform:rotate(0)}to{transform:rotate(360deg)}}';
+    document.head.appendChild(s);
+  }
+
   let ov = document.getElementById('firebase-loading');
   if (!ov) {
     ov = document.createElement('div');
     ov.id = 'firebase-loading';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,15,30,.85);z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(4px);transition:opacity .3s';
-    ov.innerHTML = '<div style="font-size:48px;animation:spin 1s linear infinite">☁️</div>'
-      + '<div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700;color:#00e5b4;margin-top:16px">Conectando con la nube...</div>'
-      + '<div style="font-size:12px;color:#8899aa;margin-top:6px">Firebase Realtime Database</div>';
-    // Add spin keyframe
-    const style = document.createElement('style');
-    style.textContent = '@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}';
-    document.head.appendChild(style);
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,15,30,.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(6px);transition:opacity .35s;padding:32px;text-align:center';
     document.body.appendChild(ov);
   }
-  if (show) {
-    ov.style.display = 'flex';
-    setTimeout(() => ov.style.opacity = '1', 10);
-  } else {
+
+  if (state === 'hide') {
     ov.style.opacity = '0';
-    setTimeout(() => { if(ov) ov.style.display = 'none'; }, 400);
+    setTimeout(() => { ov.style.display = 'none'; }, 380);
+    return;
+  }
+
+  ov.style.display = 'flex';
+  setTimeout(() => ov.style.opacity = '1', 10);
+
+  if (state === 'connecting') {
+    ov.innerHTML =
+      '<div style="font-size:52px;animation:fbspin 1.2s linear infinite;display:inline-block">☁️</div>'
+      + '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#00e5b4;margin-top:18px">Conectando con la nube...</div>'
+      + '<div style="font-size:12px;color:#8899aa;margin-top:8px">Firebase Realtime Database · VentasHera</div>'
+      + '<div style="margin-top:20px;width:200px;height:4px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden">'
+        + '<div style="height:100%;width:40%;background:#00e5b4;border-radius:99px;animation:fbslide 1.4s ease-in-out infinite"></div>'
+      + '</div>'
+      + '<style>@keyframes fbslide{0%{margin-left:-40%}100%{margin-left:100%}}</style>';
+  }
+
+  if (state === 'error') {
+    ov.innerHTML =
+      '<div style="font-size:52px">📡</div>'
+      + '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#f87171;margin-top:16px">Sin conexión a internet</div>'
+      + '<div style="font-size:13px;color:#aabbcc;margin-top:10px;max-width:340px;line-height:1.7">'
+        + 'VentasHera necesita internet para conectarse a Firebase.<br>'
+        + 'Verifica tu WiFi o datos móviles y vuelve a intentarlo.'
+      + '</div>'
+      + '<button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne,sans-serif;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 20px rgba(0,229,180,.3)">🔄 Reintentar conexión</button>'
+      + '<div style="margin-top:16px;font-size:11px;color:#556677">Si el problema persiste, verifica que Firebase esté activo en tu proyecto.</div>';
   }
 }
 
@@ -2631,21 +2690,47 @@ const ALL_BADGES = [
   { id:'nivel8',         icon:'🚀', name:'Leyenda',           desc:'Alcanza el nivel 8',                              check:(g)=>g.level>=8 },
 ];
 
-// Snacks — awarded weekly by XP threshold
+// Snacks — ONE random snack per week, same XP goal every week (100 XP)
+// The snack is revealed each Monday — surprise motivates to reach the goal!
 const SNACKS = [
-  { id:'bonyourt',   emoji:'🥤', name:'Bonyourt',              xpThreshold:80  },
-  { id:'bimbo',      emoji:'🍞', name:'Snacks Bimbo',          xpThreshold:80  },
-  { id:'turron',     emoji:'🍬', name:'Turrón de Any',         xpThreshold:80  },
-  { id:'refrigerio', emoji:'🧃', name:'Refrigerio',            xpThreshold:100 },
-  { id:'paleta',     emoji:'🍫', name:'Paleta de Chocolate',   xpThreshold:120 },
-  { id:'chocono',    emoji:'🍦', name:'Choco Cono',            xpThreshold:120 },
-  { id:'galleta',    emoji:'🍪', name:'Galleta de Helado',     xpThreshold:140 },
-  { id:'churro',     emoji:'🥐', name:'Churro + Gaseosa',      xpThreshold:160 },
-  { id:'panpizza',   emoji:'🍕', name:'Pan Pizza',             xpThreshold:180 },
-  { id:'empanada',   emoji:'🥙', name:'Empanada Desmechada',   xpThreshold:200 },
-  { id:'bunuelo',    emoji:'🫓', name:'Buñuelo o Pandequeso',  xpThreshold:220 },
-  { id:'pollo',      emoji:'🍗', name:'Presa Pollo Asado',     xpThreshold:260 },
+  { id:'bonyourt',    emoji:'🥤', name:'Bonyourt'                  },
+  { id:'bimbo',       emoji:'🍞', name:'Snacks Bimbo'              },
+  { id:'turron',      emoji:'🍬', name:'Turrón de Any'             },
+  { id:'refrigerio',  emoji:'🧃', name:'Refrigerio'                },
+  { id:'paleta',      emoji:'🍫', name:'Paleta de Chocolate'       },
+  { id:'chocono',     emoji:'🍦', name:'Choco Cono'                },
+  { id:'galleta',     emoji:'🍪', name:'Galleta de Helado'         },
+  { id:'churro',      emoji:'🥐', name:'Churro + Gaseosa'          },
+  { id:'panpizza',    emoji:'🍕', name:'Pan Pizza'                 },
+  { id:'empanada',    emoji:'🥙', name:'Empanada Desmechada'       },
+  { id:'bunuelo',     emoji:'🫓', name:'Buñuelo o Pandequeso'      },
+  { id:'pollo',       emoji:'🍗', name:'Presa Pollo Asado'         },
+  { id:'boliquesos',  emoji:'🧀', name:'Boliquesos'                },
+  { id:'mantequilla', emoji:'🍪', name:'Galletas de Mantequilla'   },
+  { id:'todito',      emoji:'🌽', name:'De Todito'                 },
+  { id:'brownie',     emoji:'🍫', name:'Brownie con Leche'         },
+  { id:'ponqueramo',  emoji:'🎂', name:'Ponqué Ramo'               },
+  { id:'chocoramo',   emoji:'🍫', name:'Chocoramo con Leche'       },
+  { id:'minichips',   emoji:'🍟', name:'MiniChips'                 },
+  { id:'jumbo',       emoji:'🍫', name:'Chocolatina Jumbo Mediana' },
+  { id:'doritos',     emoji:'🌮', name:'Doritos'                   },
+  { id:'tostacos',    emoji:'🌮', name:'Tostacos'                  },
+  { id:'choclitos',   emoji:'🌽', name:'Choclitos'                 },
 ];
+
+// XP needed to unlock the weekly snack — the SAME goal every week, surprise is WHICH snack
+const SNACK_XP_GOAL = 100;
+
+// Get this week's random snack — deterministic by ISO week + year
+// so all devices show the same snack, but changes every Monday
+function getWeekSnack() {
+  const now = new Date();
+  const wk = getISOWeek(now);
+  const yr = now.getFullYear();
+  // Hash week+year for non-sequential, non-repeating distribution
+  const hash = Math.abs(wk * 31 + yr * 7 + wk * yr) % SNACKS.length;
+  return SNACKS[hash];
+}
 
 function getISOWeek(date) {
   const d = new Date(date);
@@ -2774,9 +2859,10 @@ function getMonthlyMissions() {
   ];
 }
 
-// Weekly missions — despachos-focused + snack unlocks by XP
+// Weekly missions — despachos-focused + ONE random snack unlock per week
 function getWeeklyMissions(wk, streak, todaySales, wkXP) {
-  const unlockedSnack = SNACKS.slice().reverse().find(s => wkXP >= s.xpThreshold) || null;
+  const weekSnack = getWeekSnack();
+  const snackUnlocked = wkXP >= SNACK_XP_GOAL;
   return [
     { icon:'⚡', title:'5 despachos hoy',             prog:Math.min(todaySales,5),  max:5,   xp:50,  done:todaySales>=5,  type:'day' },
     { icon:'📊', title:'15 despachos esta semana',     prog:Math.min(wk,15),         max:15,  xp:80,  done:wk>=15,         type:'week' },
@@ -2785,16 +2871,16 @@ function getWeeklyMissions(wk, streak, todaySales, wkXP) {
     { icon:'⚡', title:'Racha: 5 días (5 desp/día)',   prog:Math.min(streak,5),      max:5,   xp:250, done:streak>=5,      type:'streak' },
     { icon:'🏆', title:'35 despachos esta semana',     prog:Math.min(wk,35),         max:35,  xp:200, done:wk>=35,         type:'week' },
     {
-      icon: unlockedSnack ? unlockedSnack.emoji : '🎁',
-      title: unlockedSnack
-        ? '¡' + unlockedSnack.emoji + ' ' + unlockedSnack.name + ' desbloqueado!'
-        : 'Snack: gana ' + SNACKS[0].xpThreshold + ' XP semanal',
+      icon: snackUnlocked ? weekSnack.emoji : '🎁',
+      title: snackUnlocked
+        ? '¡' + weekSnack.emoji + ' ' + weekSnack.name + ' desbloqueado!'
+        : weekSnack.emoji + ' ' + weekSnack.name + ' — gana ' + SNACK_XP_GOAL + ' XP esta semana',
       prog: wkXP,
-      max: SNACKS[0].xpThreshold,
+      max: SNACK_XP_GOAL,
       xp: 0,
-      done: !!unlockedSnack,
+      done: snackUnlocked,
       type: 'snack',
-      snackObj: unlockedSnack
+      snackObj: weekSnack
     },
   ];
 }
@@ -2941,25 +3027,58 @@ function renderGamePage() {
       + '</div>';
   }).join('');
 
-  // Snacks grid — show all 12, highlight unlocked by wkXP
+  // Snacks grid — show THIS WEEK's snack prominently + all past snacks earned
   const claimedSnacks = gs.claimedSnacks || {};
+  const weekSnack = getWeekSnack();
+  const thisWk = getISOWeek(now);
+  const thisYr = now.getFullYear();
+  const weekKey = weekSnack.id + '_' + thisWk + '_' + thisYr;
+  const snackUnlocked = wkXP >= SNACK_XP_GOAL;
+  const snackClaimed = !!claimedSnacks[weekKey];
+  const snackPct = Math.min(100, Math.round((wkXP / SNACK_XP_GOAL) * 100));
   const snacksGrid = document.getElementById('snacks-grid');
-  if (snacksGrid) snacksGrid.innerHTML = '<div class="snack-grid">' + SNACKS.map(s => {
-    const isUnlocked = wkXP >= s.xpThreshold;
-    const isClaimed = !!claimedSnacks[s.id + '_' + getISOWeek(now) + '_' + now.getFullYear()];
-    let cls = 'snack-card';
-    if (isClaimed) cls += ' unlocked';
-    else if (isUnlocked) cls += ' this-week';
-    else cls += ' locked';
-    const tag = isClaimed ? '<div class="snack-week-tag" style="background:#22c55e">GANADO ✓</div>'
-      : isUnlocked ? '<div class="snack-week-tag">¡DISPONIBLE!</div>' : '';
-    return '<div class="' + cls + '" onclick="' + (isUnlocked && !isClaimed ? 'claimWeeklySnack(\'' + s.id + '\')' : '') + '">'
-      + '<span class="snack-emoji">' + s.emoji + '</span>'
-      + '<div class="snack-name">' + s.name + '</div>'
-      + '<div class="snack-xp">' + s.xpThreshold + ' XP/sem</div>'
-      + tag
+  if (snacksGrid) {
+    // Hero card for this week's snack
+    let heroCard = '<div style="background:var(--surface2);border:2px solid ' + (snackClaimed ? '#22c55e' : snackUnlocked ? '#f59e0b' : 'var(--border)') + ';border-radius:16px;padding:20px;margin-bottom:16px;text-align:center;position:relative">'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:' + (snackClaimed ? '#22c55e' : '#f59e0b') + ';margin-bottom:8px">🎁 SNACK DE ESTA SEMANA</div>'
+      + '<div style="font-size:52px;margin:8px 0">' + weekSnack.emoji + '</div>'
+      + '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">' + weekSnack.name + '</div>'
+      + '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">Meta: <strong style="color:#f59e0b">' + SNACK_XP_GOAL + ' XP</strong> esta semana · Llevas <strong style="color:var(--accent)">' + wkXP + ' XP</strong></div>'
+      + '<div style="height:8px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:14px">'
+        + '<div style="height:100%;width:' + snackPct + '%;background:' + (snackClaimed ? '#22c55e' : snackUnlocked ? '#f59e0b' : 'var(--accent)') + ';border-radius:99px;transition:width .6s"></div>'
       + '</div>';
-  }).join('') + '</div>';
+    if (snackClaimed) {
+      heroCard += '<div style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);border-radius:10px;padding:10px;color:#22c55e;font-weight:700">✅ ¡Ya reclamaste este snack! Muéstrale la pantalla a tu jefe 🎉</div>';
+    } else if (snackUnlocked) {
+      heroCard += '<button onclick="claimWeeklySnack()" style="background:linear-gradient(135deg,#f59e0b,#f97316);border:none;border-radius:10px;padding:12px 28px;color:#0a0f1e;font-family:Syne,sans-serif;font-size:14px;font-weight:800;cursor:pointer;width:100%">🎁 ¡RECLAMAR ' + weekSnack.name.toUpperCase() + '!</button>';
+    } else {
+      heroCard += '<div style="font-size:12px;color:var(--text2)">Te faltan <strong style="color:#f59e0b">' + (SNACK_XP_GOAL - wkXP) + ' XP</strong> para ganar este snack — ¡registra más despachos hoy! 💪</div>';
+    }
+    heroCard += '</div>';
+
+    // Past snacks history grid
+    let historyHtml = '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text2);margin-bottom:10px">HISTORIAL — SNACKS GANADOS</div>';
+    const earnedSnacks = SNACKS.filter(s => {
+      // Check any week key for this snack
+      return Object.keys(claimedSnacks).some(k => k.startsWith(s.id + '_'));
+    });
+    if (earnedSnacks.length === 0) {
+      historyHtml += '<div style="font-size:12px;color:var(--meta);text-align:center;padding:16px">Aún no has ganado snacks. ¡El primero está a ' + (SNACK_XP_GOAL - wkXP) + ' XP!</div>';
+    } else {
+      historyHtml += '<div class="snack-grid">' + SNACKS.map(s => {
+        const hasEarned = Object.keys(claimedSnacks).some(k => k.startsWith(s.id + '_'));
+        const timesEarned = Object.keys(claimedSnacks).filter(k => k.startsWith(s.id + '_')).length;
+        if (!hasEarned) return '';
+        return '<div class="snack-card unlocked" style="position:relative">'
+          + '<span class="snack-emoji">' + s.emoji + '</span>'
+          + '<div class="snack-name">' + s.name + '</div>'
+          + (timesEarned > 1 ? '<div style="position:absolute;top:6px;right:6px;background:#f59e0b;color:#0a0f1e;border-radius:99px;font-size:9px;font-weight:800;padding:2px 6px">x' + timesEarned + '</div>' : '')
+          + '<div class="snack-week-tag" style="background:#22c55e">GANADO ✓</div>'
+          + '</div>';
+      }).filter(Boolean).join('') + '</div>';
+    }
+    snacksGrid.innerHTML = heroCard + historyHtml;
+  }
 
   // Badges
   const badgesCount = document.getElementById('badges-earned-count');
@@ -2976,21 +3095,26 @@ function renderGamePage() {
   }).join('');
 }
 
-function claimWeeklySnack(snackId) {
+function claimWeeklySnack() {
   if (!state.game) state.game = { xp:0, streakMax:0, earnedBadges:[], claimedSnacks:{} };
   if (!state.game.claimedSnacks) state.game.claimedSnacks = {};
   const now = new Date();
-  const weekKey = snackId + '_' + getISOWeek(now) + '_' + now.getFullYear();
-  if (state.game.claimedSnacks[weekKey]) {
-    notify('warning','⚠️','Ya reclamado','Ya canjeaste este snack esta semana.',{duration:3500});
+  const snack = getWeekSnack();
+  const weekKey = snack.id + '_' + getISOWeek(now) + '_' + now.getFullYear();
+  const { xp: wkXP } = getWeeklySalesData();
+  if (wkXP < SNACK_XP_GOAL) {
+    notify('warning','⚠️','Aún no lo ganaste','Necesitas ' + SNACK_XP_GOAL + ' XP esta semana. Llevas ' + wkXP + ' XP — ¡sigue vendiendo!',{duration:4000});
     return;
   }
-  const snack = SNACKS.find(s=>s.id===snackId) || SNACKS[0];
+  if (state.game.claimedSnacks[weekKey]) {
+    notify('warning','⚠️','Ya reclamado','Ya canjeaste el ' + snack.name + ' esta semana. ¡Vuelve el lunes!',{duration:3500});
+    return;
+  }
   state.game.claimedSnacks[weekKey] = true;
   saveState();
-  spawnConfetti(70);
+  spawnConfetti(80);
   screenFlash('gold');
-  showMilestonePopup(snack.emoji, '¡SNACK GANADO!', '¡Reclama tu ' + snack.name + '!', 'Muéstrale esto a tu jefe para canjear tu premio esta semana 🎉', true, closeMilestonePopup);
+  showMilestonePopup(snack.emoji, '¡SNACK GANADO!', '¡Reclama tu ' + snack.name + '!', 'Muéstrale esta pantalla a tu jefe para canjear tu premio 🎉 El lunes se revela el nuevo snack sorpresa.', true, closeMilestonePopup);
   notify('reward', snack.emoji, '¡' + snack.name + ' desbloqueado!', '¡Muéstrale esta pantalla a tu jefe para reclamar!', { duration: 8000 });
   renderGamePage();
 }
