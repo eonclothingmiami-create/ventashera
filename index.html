@@ -1933,8 +1933,8 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
 // ===================================================================
 // ===== CONFIG =====
 // ===================================================================
-function renderConfig(){
- function renderConfig(){
+
+  function renderConfig(){
   const emp = state.empresa || {};
   document.getElementById('config-content').innerHTML = `
     <div class="grid-2">
@@ -2068,6 +2068,7 @@ window.addEventListener('load',()=>{loadState()});
 </script>
 </body>
 </html>
+
 
 
 
