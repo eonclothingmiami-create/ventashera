@@ -385,7 +385,7 @@ let state = {
   nom_anticipos: [],
   nom_conceptos: [
     {id:'c1',nombre:'Salario Básico',tipo:'devengo',formula:'fijo',valor:0},
-    {id:'c2',nombre:'Auxilio Transporte',tipo:'devengo',formula:'fijo',valor:185000},
+    {id:'c2',nombre:'Auxilio Transporte',tipo:'devengo',formula:'fijo',valor:210000},
     {id:'c3',nombre:'Salud (4%)',tipo:'deduccion',formula:'porcentaje',valor:4},
     {id:'c4',nombre:'Pensión (4%)',tipo:'deduccion',formula:'porcentaje',valor:4}
   ],
@@ -2148,7 +2148,7 @@ function openEmpleadoModal(id = null) {
             <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion || ''}"></div>
             <div class="form-row">
                 <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo || ''}"></div>
-                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1450000}"></div>
+                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
             </div>
         </div>
         <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id || ''}')">💾 GUARDAR DATOS</button>
@@ -2235,7 +2235,7 @@ function openEmpleadoModal(id = null) {
       <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
-        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1450000}"></div>
+        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1750000}"></div>
       </div>
     </div>
     <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
@@ -2296,8 +2296,8 @@ function calcularNominaFinal(id) {
   const faltas = parseInt(document.getElementById('liq-faltas').value) || 0;
   const extras = parseFloat(document.getElementById('liq-extras').value) || 0;
 
-  const SMMLV = 1450000; 
-  const AUX_T = 185000;
+  const SMMLV = 1750000; 
+  const AUX_T = 210000;
 
   let sueldoReal = (emp.salarioBase / 30) * (dias - incap - faltas);
   let pagoIncap = incap > 0 ? (emp.salarioBase / 30) * incap * 0.6667 : 0;
@@ -2371,6 +2371,7 @@ function abrirAsistentePago(id) {
 </script>
 </body>
 </html>
+
 
 
 
