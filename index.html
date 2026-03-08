@@ -2153,26 +2153,6 @@ window.addEventListener('load',()=>{loadState()});
 // ===== MÓDULO DE TALENTO HUMANO HERA =====
 // ==========================================
 
-function openEmpleadoModal(id = null) {
-    const emp = id ? state.empleados.find(e => e.id === id) : null;
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">👤 FICHA DE COLABORADOR</div>
-        <div style="text-align:left; max-height: 70vh; overflow-y: auto;">
-            <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre || ''}"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula || ''}"></div>
-                <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono || ''}"></div>
-            </div>
-            <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion || ''}"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo || ''}"></div>
-                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
-            </div>
-        </div>
-        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id || ''}')">💾 GUARDAR DATOS</button>
-    `, true);
-}
-
 function saveEmpleado(id) {
     const data = {
         nombre: document.getElementById('emp-nombre').value.trim(),
@@ -2451,6 +2431,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
