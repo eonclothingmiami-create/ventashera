@@ -2197,33 +2197,8 @@ document.addEventListener('keydown',e=>{
 
 // ===== INIT =====
 window.addEventListener('load',()=>{loadState()});
-  // ==========================================
+// ==========================================
 // ===== MÓDULO DE TALENTO HUMANO HERA =====
-// ==========================================
-
-function saveEmpleado(id) {
-    const data = {
-        nombre: document.getElementById('emp-nombre').value.trim(),
-        cedula: document.getElementById('emp-cedula').value.trim(),
-        telefono: document.getElementById('emp-tel').value.trim(),
-        direccion: document.getElementById('emp-dir').value.trim(),
-        cargo: document.getElementById('emp-cargo').value.trim(),
-        salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
-    };
-    if (!data.nombre || !data.cedula) return notify('warning','⚠️','Faltan datos','Nombre y Cédula son obligatorios');
-
-    if (id && id !== '' && id !== 'null') {
-        const idx = state.empleados.findIndex(e => e.id === id);
-        state.empleados[idx] = { ...state.empleados[idx], ...data };
-    } else {
-        data.id = uid();
-        state.empleados.push(data);
-    }
-    saveState(); closeModal(); renderNomina();
-    notify('success','✅','Éxito','Datos de empleado guardados.');
-}
-// ==========================================
-// ===== MÓDULO DE NÓMINA PROFESIONAL =====
 // ==========================================
 
 function renderNomina() {
@@ -2239,7 +2214,7 @@ function renderNomina() {
 
     <div class="card" style="margin:0">
       <div class="table-wrap">
-        <table style="width:100%; border-collapse:collapse; text-align:left;">
+        <table style="width:100%;">
           <thead>
             <tr style="color:var(--text2); font-size:11px; border-bottom:1px solid var(--border); text-transform:uppercase;">
               <th style="padding:12px;">Nombre / Cédula</th>
@@ -2250,7 +2225,7 @@ function renderNomina() {
           </thead>
           <tbody>
             ${empleados.length === 0 ? 
-              '<tr><td colspan="4" style="text-align:center; padding:50px; color:var(--text2); opacity:0.6;">No hay personal registrado.</td></tr>' : 
+              '<tr><td colspan="4" style="text-align:center; padding:50px; opacity:0.6;">No hay personal registrado.</td></tr>' : 
               empleados.map(e => `
                 <tr style="border-bottom:1px solid var(--border); font-size:13px;">
                   <td style="padding:12px;"><strong>${e.nombre}</strong><br><small style="opacity:0.6;">CC: ${e.cedula}</small></td>
@@ -2260,8 +2235,7 @@ function renderNomina() {
                     <button class="btn btn-sm btn-secondary" onclick="abrirAsistentePago('${e.id}')" title="Liquidar Mes">💰</button>
                     <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado('${e.id}', '${e.nombre}')" style="margin-left:5px;">✕</button>
                   </td>
-                </tr>
-              `).join('')}
+                </tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -2272,19 +2246,19 @@ function openEmpleadoModal(id = null) {
   const emp = id ? state.empleados.find(e => e.id === id) : null;
   openModal(`
     <div class="modal-title" style="font-family:Syne;">👤 REGISTRO DE COLABORADOR</div>
-    <div style="text-align:left; color:var(--text);">
+    <div style="text-align:left;">
       <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre||''}"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula||''}"></div>
         <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono||''}"></div>
       </div>
-      <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
+      <div class="form-group"><label class="form-label">Dirección</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
         <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1750000}"></div>
       </div>
     </div>
-    <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
+    <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
   `, true);
 }
 
@@ -2299,9 +2273,9 @@ function saveEmpleado(id) {
   };
   if (!data.nombre || !data.cedula) return notify('warning', '⚠️', 'Faltan datos', 'Nombre y CC obligatorios');
 
-  if (id && id !== '' && id !== 'null') {
+  if (id) {
     const idx = state.empleados.findIndex(e => e.id === id);
-    state.empleados[idx] = { ...state.empleados[idx], ...data, id };
+    state.empleados[idx] = { ...state.empleados[idx], ...data };
   } else {
     data.id = uid();
     state.empleados.push(data);
@@ -2318,19 +2292,18 @@ function eliminarEmpleado(id, nombre) {
   }
 }
 
-// === MOTOR DE CÁLCULO COLOMBIA 2026 ===
 function abrirAsistentePago(id) {
   const emp = state.empleados.find(e => e.id === id);
   openModal(`
-    <div class="modal-title" style="font-family:Syne;">⚖️ LIQUIDACIÓN MENSUAL LEGAL</div>
-    <div style="text-align:left; color:var(--text);">
+    <div class="modal-title" style="font-family:Syne;">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
+    <div style="text-align:left;">
       <div class="form-group"><label class="form-label">Días Trabajados (Mes: 30)</label><input type="number" class="form-control" id="liq-dias" value="30"></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
-        <div class="form-group"><label class="form-label">Faltas Injustificadas</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
+        <div class="form-group"><label class="form-label">Incapacidad (Días)</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
+        <div class="form-group"><label class="form-label">Faltas</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
       </div>
-      <div class="form-group"><label class="form-label">Comisiones o Bonos ($)</label><input type="number" class="form-control" id="liq-extras" value="0"></div>
-      <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PLANILLA</button>
+      <div class="form-group"><label class="form-label">Bonos/Extras ($)</label><input type="number" class="form-control" id="liq-extras" value="0"></div>
+      <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO</button>
     </div>
   `, true);
 }
@@ -2338,116 +2311,46 @@ function abrirAsistentePago(id) {
 function calcularNominaFinal(id) {
   const emp = state.empleados.find(e => e.id === id);
   const dias = parseInt(document.getElementById('liq-dias').value) || 0;
-  const incap = parseInt(document.getElementById('liq-incap').value) || 0;
-  const faltas = parseInt(document.getElementById('liq-faltas').value) || 0;
   const extras = parseFloat(document.getElementById('liq-extras').value) || 0;
-
-  const SMMLV = 1750000; 
-  const AUX_T = 210000;
-
-  let sueldoReal = (emp.salarioBase / 30) * (dias - incap - faltas);
-  let pagoIncap = incap > 0 ? (emp.salarioBase / 30) * incap * 0.6667 : 0;
-  let auxTrans = emp.salarioBase <= (SMMLV * 2) ? (AUX_T / 30) * (dias - faltas) : 0;
   
-  let ibc = sueldoReal + extras;
-  let saludE = ibc * 0.04;
-  let pensionE = ibc * 0.04;
+  // Cálculo simplificado para el ticket
+  const neto = (emp.salarioBase / 30 * dias) + extras;
 
-  let baseP = sueldoReal + extras + auxTrans;
-  let prima = baseP * 0.0833;
-  let cesantias = baseP * 0.0833;
-  let intCes = cesantias * 0.12;
-  let vaca = (sueldoReal + extras) * 0.0417;
-
-  const neto = (sueldoReal + pagoIncap + auxTrans + extras) - (saludE + pensionE);
-
-  // Guardar registro
-  state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto, totalProvisiones: prima+cesantias+intCes+vaca });
+  state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto });
   saveState(); closeModal();
 
-  // Aquí llamamos a tu función de imprimir ticket
   const facturaNomina = {
       numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
       fecha: today(),
-      items: [
-          {nombre: 'Sueldo Básico', qty: dias, precio: sueldoReal / dias},
-          {nombre: 'Auxilio Transporte', qty: 1, precio: auxTrans},
-          {nombre: 'Comisiones/Extras', qty: 1, precio: extras},
-          {nombre: 'Salud/Pensión (Deducción)', qty: 1, precio: -(saludE + pensionE)}
-      ],
+      items: [{nombre: 'Pago Nómina: ' + emp.nombre, qty: 1, precio: neto}],
       total: neto,
       metodo: 'Transferencia'
   };
 
   printReceipt(facturaNomina);
-  notify('success', '💰', 'Nómina Procesada', `Pago de ${fmt(neto)} para ${emp.nombre}`);
+  notify('success', '💰', 'Pagado', `Monto: ${fmt(neto)}`);
 }
-  // === 1. FUNCIÓN PARA ELIMINAR (DESPIDOS) ===
-function eliminarEmpleado(id, nombre) {
-    if (confirm(`¿Estás seguro de retirar a ${nombre} de la empresa?`)) {
-        state.empleados = state.empleados.filter(e => e.id !== id);
-        saveState();
-        renderNomina();
-        notify('warning', '✕', 'Baja', `${nombre} ha sido retirado del sistema.`);
-    }
-}
-
-// === 2. ASISTENTE DE LIQUIDACIÓN (NOVEDADES) ===
-function abrirAsistentePago(id) {
-    const emp = state.empleados.find(e => e.id === id);
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
-        <div style="text-align:left; color:var(--text);">
-            <div class="form-group">
-                <label class="form-label">Días Trabajados (Mes completo: 30)</label>
-                <input type="number" class="form-control" id="liq-dias" value="30">
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
-                <div class="form-group"><label class="form-label">Faltas (No pagas)</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Bonificaciones / Extras ($)</label>
-                <input type="number" class="form-control" id="liq-extras" value="0">
-            </div>
-            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PDF</button>
-        </div>
-    `, true);
-}
-  // ==========================================
-// ===== GENERADOR DE QR - HERA ERP ========
-// ==========================================
 
 function generateProductQR(id) {
-    // Busca la prenda en tu lista de artículos por su ID único
     const art = state.articulos.find(a => a.id === id);
     if (!art) return;
-
-    // Generamos el link hacia tu catálogo web de Eon Clothing
     const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
 
     openModal(`
         <div class="modal-title" style="font-family:'Syne';">📱 QR PARA: ${art.nombre}</div>
         <div style="display:flex; flex-direction:column; align-items:center; gap:20px; padding:20px;">
             <div id="qrcode-container" style="background:white; padding:15px; border-radius:12px; border:1px solid var(--border);"></div>
-            
             <div style="text-align:center;">
                 <div style="font-family:'Syne'; font-weight:800; color:var(--accent); font-size:18px;">${art.codigo}</div>
-                <div style="font-size:12px; color:var(--text2); margin-top:8px;">Ideal para etiquetas en el showroom de Medellín</div>
             </div>
-            
             <button class="btn btn-primary" style="width:100%" onclick="printQR('${art.nombre}')">🖨️ IMPRIMIR ETIQUETA QR</button>
         </div>
     `);
 
-    // El sistema espera 100 milisegundos a que el modal abra para crear el QR
     setTimeout(() => {
         new QRCode(document.getElementById("qrcode-container"), {
-            text: urlCatalogo,
-            width: 200,
-            height: 200,
-            colorDark : "#0a0f1e",
-            colorLight : "#ffffff",
+            text: urlCatalogo, width: 200, height: 200,
+            colorDark : "#0a0f1e", colorLight : "#ffffff",
             correctLevel : QRCode.CorrectLevel.H
         });
     }, 100);
@@ -2455,40 +2358,13 @@ function generateProductQR(id) {
 
 function printQR(nombre) {
     const qrCanvas = document.querySelector("#qrcode-container canvas");
-    if(!qrCanvas) {
-        notify('warning', '⚠️', 'Error', 'No se pudo generar la imagen del QR.');
-        return;
-    }
+    if(!qrCanvas) return notify('warning', '⚠️', 'Error', 'No se generó el QR.');
     const qrImg = qrCanvas.toDataURL("image/png");
-    
-    // Abre una ventana limpia para enviar a la impresora térmica
     const pWin = window.open('', '', 'width=450,height=500');
-    pWin.document.write(`
-        <html>
-        <body style="text-align:center; font-family:sans-serif; padding:20px; color:#0a0f1e;">
-            <h1 style="margin-bottom:0;">HERA SWIMWEAR</h1>
-            <p style="font-size:10px; margin-top:5px; margin-bottom:15px; text-transform:uppercase; letter-spacing:2px;">Cali - Medellín - Colombia</p>
-            <img src="${qrImg}" style="width:250px; border:1px solid #eee;">
-            <h2 style="margin-top:15px; font-size:24px;">${nombre.toUpperCase()}</h2>
-            <p style="font-size:12px; color:#666;">Escanea para ver detalles en catálogo</p>
-        </body>
-        </html>`);
+    pWin.document.write(`<html><body style="text-align:center; padding:20px;"><h1>HERA SWIMWEAR</h1><img src="\${qrImg}" style="width:250px;"><h2>\${nombre.toUpperCase()}</h2></body></html>`);
     pWin.document.close();
     setTimeout(() => { pWin.print(); pWin.close(); }, 500);
 }
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
