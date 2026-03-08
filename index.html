@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VentasHera — ERP Moda & Catálogo Sync</title>
@@ -142,24 +142,25 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .pos-item-qty{display:flex;align-items:center;gap:4px}
 .pos-item-qty button{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
 .pos-item-qty span{width:28px;text-align:center;font-size:12px;font-weight:700}
+
+/* CATÁLOGO TABS Y CARDS */
+.catalogo-tabs { display: flex; gap: 10px; margin-bottom: 20px; padding-bottom: 5px; overflow-x: auto; }
+.tab-btn { background: var(--card); border: 1px solid var(--border); color: var(--text2); padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: 'Syne'; transition: 0.3s; white-space: nowrap; font-size: 12px; font-weight: 700;}
+.tab-btn:hover { background: var(--card2); color: var(--text); }
+.tab-btn.active { background: rgba(0,229,180,.1); color: var(--accent); border-color: rgba(0,229,180,.3); }
+
 .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.product-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;transition:all .15s;text-align:center;overflow:hidden;}
-.product-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,229,180,.1)}
-.product-card .p-emoji{font-size:36px;margin-bottom:8px}
-.product-card .p-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:4px;color:var(--text)}
-.product-card .p-price{font-size:14px;font-weight:700;color:var(--accent)}
-.product-card .p-stock{font-size:10px;color:var(--text2);margin-top:4px}
+.product-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;transition:all .2s, box-shadow .2s;text-align:center;overflow:hidden;}
+.product-card:hover{border-color:var(--accent);transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,229,180,.15)}
 .product-card.low-stock{border-color:rgba(248,113,113,.3)}
-.product-card.no-stock{opacity:.4;pointer-events:none}
+.product-card.no-stock{opacity:.5;filter: grayscale(1); pointer-events:none}
+
 .search-bar{position:relative;margin-bottom:16px}
 .search-bar input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px 16px 12px 40px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;transition:border-color .2s}
 .search-bar input:focus{border-color:var(--accent)}
 .search-bar .search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text2);font-size:14px}
 .search-bar .scanner-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
-.tabs{display:flex;gap:4px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px}
-.tab{padding:8px 16px;border-radius:10px;cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text2);background:var(--card);border:1px solid var(--border);transition:all .15s;white-space:nowrap}
-.tab:hover{color:var(--text);background:var(--card2)}
-.tab.active{color:var(--accent);background:rgba(0,229,180,.1);border-color:rgba(0,229,180,.3)}
+
 @media print{body *{visibility:hidden}#print-area,#print-area *{visibility:visible}#print-area{position:absolute;left:0;top:0;width:80mm;font-size:10px}}
 @media(max-width:768px){
   .sidebar{position:fixed;left:-240px;top:0;bottom:0;z-index:3000;transition:left .3s;height:100vh}
@@ -332,6 +333,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="print-area" style="display:none"></div>
 
 <script>
+// ===== CONFIGURACIÓN DE CATÁLOGOS =====
+const CATALOGOS_CONFIG = {
+    'Trajes de Baño': { folder: 'swimwear', emoji: '👙', prefix: 'SW' },
+    'Pijamas':        { folder: 'pajamas',  emoji: '🌙', prefix: 'PJ' },
+    'Ropa Casual':    { folder: 'casual',   emoji: '👗', prefix: 'CS' }
+};
+
 // ===== FIREBASE CONFIG =====
 const firebaseConfig = {
   apiKey: "AIzaSyAzWG2WmSldVRw4JtjfHv-e3CLbjwnvbNk",
@@ -343,32 +351,26 @@ const firebaseConfig = {
   appId: "1:1950402952:web:f343b2b0cc56b7cdd0523d"
 };
 
-// 1. INICIALIZAR APP PRINCIPAL PRIMERO
-if(typeof firebase==='undefined'){
-    document.body.innerHTML='<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0f1e;font-family:Syne,sans-serif;text-align:center;padding:32px"><div style="font-size:52px">📡</div><div style="font-size:22px;font-weight:800;color:#f87171;margin-top:16px">Error Firebase</div><button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne;font-size:15px;font-weight:800;cursor:pointer">🔄 Reintentar</button></div>';
-} else {
-    firebase.initializeApp(firebaseConfig);
-}
-
-// 2. INICIALIZAR APP DEL CATÁLOGO DESPUÉS
+// Conexión con Catálogo Web
 const catalogApp = firebase.initializeApp({
     apiKey: "AIzaSyBtynjEseNqWrY13LMFn2MI7ddbNMP58TI",
     authDomain: "hera-swimwear-catalogo.firebaseapp.com",
     projectId: "hera-swimwear-catalogo",
 }, "CatalogApp");
-
 const dbWeb = catalogApp.firestore();
+
+if(typeof firebase==='undefined'){document.body.innerHTML='<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0f1e;font-family:Syne,sans-serif;text-align:center;padding:32px"><div style="font-size:52px">📡</div><div style="font-size:22px;font-weight:800;color:#f87171;margin-top:16px">Error Firebase</div><button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne;font-size:15px;font-weight:800;cursor:pointer">🔄 Reintentar</button></div>';}
+else{firebase.initializeApp(firebaseConfig);}
 const database=firebase.database();
 const stateRef=database.ref('ventacontrol_state_v3');
 
-  // ===== STATE =====
-  
+// ===== STATE =====
 let state = {
   meta: 34000000, 
   diasLocal: 1, 
   diasInter: 5,
   empleados: [],      
-  nomina_pagos: [],   // Coma corregida aquí
+  nomina_pagos: [],
   ventas: [], 
   currentMonth: null,
   game: { xp:0, streakMax:0, earnedBadges:[], claimedSnacks:{} },
@@ -417,7 +419,7 @@ let posFormState = {
 const CUENTAS_BANCARIAS = ['Bancolombia Principal', 'Bancolombia 2', 'Nequi', 'Daviplata'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
 let _tempGaleria = []; let _portadaIndex = 0;
-  let _tempLogoBase64 = null; // Almacena el logo procesado para 80mm
+let _tempLogoBase64 = null; 
 
 // ===== CONSTANTS =====
 const LEVELS=[{level:1,name:'Novata',avatar:'🌱',minXp:0},{level:2,name:'Activa',avatar:'✨',minXp:200},{level:3,name:'Vendedora',avatar:'💫',minXp:500},{level:4,name:'Destacada',avatar:'🌟',minXp:1000},{level:5,name:'Pro',avatar:'⚡',minXp:1800},{level:6,name:'Experta',avatar:'🔥',minXp:3000},{level:7,name:'Campeona',avatar:'💎',minXp:4500},{level:8,name:'Leyenda',avatar:'👑',minXp:6500},{level:9,name:'Élite',avatar:'🏆',minXp:9000},{level:10,name:'Mega Vendedora',avatar:'🚀',minXp:12000}];
@@ -470,7 +472,7 @@ function loadState(){
     if(data){
       const defaults={...state};
       state={...defaults,...data};
-    const arrFields=['ventas','articulos','bodegas','inv_movimientos','inv_ajustes','inv_traslados','cotizaciones','ordenes_venta','facturas','notas_credito','notas_debito','remisiones','devoluciones','anticipos_clientes','empleados','nomina_pagos','nom_ausencias','nom_anticipos','nom_conceptos','nom_nominas','cajas','tes_movimientos','tes_impuestos','tes_retenciones','tes_comp_retencion','tes_comp_ingreso','tes_comp_egreso','tes_transferencias','pos_cart'];
+      const arrFields=['ventas','articulos','bodegas','inv_movimientos','inv_ajustes','inv_traslados','cotizaciones','ordenes_venta','facturas','notas_credito','notas_debito','remisiones','devoluciones','anticipos_clientes','empleados','nom_ausencias','nom_anticipos','nom_conceptos','nom_nominas','cajas','tes_movimientos','tes_impuestos','tes_retenciones','tes_comp_retencion','tes_comp_ingreso','tes_comp_egreso','tes_transferencias','pos_cart'];
       arrFields.forEach(f=>{if(!Array.isArray(state[f]))state[f]=defaults[f]||[]});
       if(!state.game)state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};
       if(!state.game.earnedBadges)state.game.earnedBadges=[];
@@ -696,12 +698,9 @@ function renderPOS(){
   const cart = state.pos_cart || [];
   const articulos = state.articulos || [];
   
-  // Sincroniza el estado del formulario antes de repintar
   syncPOSFormState();
 
-  // CÁLCULOS DE VALORES
   const subtotal = cart.reduce((a, item) => a + (item.precio * item.qty), 0);
-  // El IVA es opcional: solo se calcula si applyIva es true
   const iva = posFormState.applyIva ? subtotal * 0.19 : 0;
   const total = subtotal + iva;
 
@@ -713,7 +712,14 @@ function renderPOS(){
           <input type="text" id="pos-search" placeholder="Buscar artículo o escanear..." oninput="filterPOSProducts()" onkeydown="handlePOSScan(event)">
           <button class="btn btn-sm btn-secondary scanner-btn" onclick="openScannerOverlay()" title="Escanear código de barras">📡</button>
         </div>
-        <div class="tabs" id="pos-cat-tabs"></div>
+        
+        <div class="catalogo-tabs">
+            <button onclick="filtrarCatalogo('')" class="tab-btn active" id="btn-all">Todos</button>
+            <button onclick="filtrarCatalogo('Trajes de Baño')" class="tab-btn">👙 Swimwear</button>
+            <button onclick="filtrarCatalogo('Pijamas')" class="tab-btn">🌙 Pijamas</button>
+            <button onclick="filtrarCatalogo('Casual')" class="tab-btn">👗 Casual</button>
+        </div>
+
         <div class="product-grid" id="pos-product-grid"></div>
         ${articulos.length === 0 ? `
           <div class="empty-state">
@@ -837,16 +843,10 @@ function renderPOS(){
       </div>
     </div>`;
 
-  // Renderizado de componentes secundarios
   renderPOSProductGrid();
-  renderPOSCategoryTabs();
   handlePOSShippingUI();
 }
 
-/** * NUEVAS FUNCIONES DE APOYO PARA PRECIOS E IVA 
- */
-
-// Actualiza el precio de un ítem específico en el carrito y repinta
 function updatePOSCartPrice(idx, val) {
     const nuevoPrecio = parseFloat(val) || 0;
     if (state.pos_cart && state.pos_cart[idx]) {
@@ -855,7 +855,6 @@ function updatePOSCartPrice(idx, val) {
     }
 }
 
-// Control manual del IVA
 function toggleIVA() {
     const checkbox = document.getElementById('pos-apply-iva');
     if (checkbox) {
@@ -892,42 +891,50 @@ function handlePOSEmpresa() {
   posFormState.empresa = document.getElementById('pos-empresa').value;
 }
 
-function renderPOSCategoryTabs(){
-  const cats=[...new Set((state.articulos||[]).map(a=>a.categoria).filter(Boolean))];
-  const el=document.getElementById('pos-cat-tabs');
-  if(!el)return;
-  el.innerHTML=`<div class="tab active" onclick="filterPOSByCategory('')">Todos</div>`+cats.map(c=>`<div class="tab" onclick="filterPOSByCategory('${c}')">${c}</div>`).join('');
-}
-
 let _posFilter='';let _posCatFilter='';
 function filterPOSProducts(){_posFilter=(document.getElementById('pos-search')?.value||'').toLowerCase();renderPOSProductGrid()}
-function filterPOSByCategory(cat){
-  _posCatFilter=cat;
-  document.querySelectorAll('#pos-cat-tabs .tab').forEach(t=>t.classList.remove('active'));
-  event.target.classList.add('active');
-  renderPOSProductGrid();
+
+function filtrarCatalogo(cat) {
+    _posCatFilter = cat;
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.innerText.includes(cat) || (cat==='' && b.innerText==='Todos'));
+    });
+    renderPOSProductGrid();
 }
 
 function renderPOSProductGrid(){
-  const el=document.getElementById('pos-product-grid');if(!el)return;
-  let items=(state.articulos||[]).filter(a=>a.activo!==false);
-  if(_posFilter)items=items.filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(_posFilter));
-  if(_posCatFilter)items=items.filter(a=>a.categoria===_posCatFilter);
+  const el = document.getElementById('pos-product-grid');
+  if(!el) return;
+  
+  let items = (state.articulos || []).filter(a => a.activo !== false);
+  if(_posFilter) items = items.filter(a => (a.nombre + a.codigo + a.categoria + a.seccion).toLowerCase().includes(_posFilter));
+  if(_posCatFilter) items = items.filter(a => a.seccion === _posCatFilter);
 
-  el.innerHTML=items.map(a=>{
-    const stock=getArticuloStock(a.id);
-    const low=stock<=a.stockMinimo;const out=stock<=0;
-    const bgImg = a.imagen ? `background-image: linear-gradient(to top, rgba(0,0,0,0.8), transparent), url('${a.imagen}'); background-size: cover; background-position: center; color: white; border: none;` : '';
-    const videoIcon = a.video ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border-radius:50%;padding:4px;font-size:12px;">▶️</div>` : '';
+  el.innerHTML = items.map(a => {
+    const stock = getArticuloStock(a.id);
+    const low = stock <= a.stockMinimo;
+    const out = stock <= 0;
+    
+    const bgImg = a.imagen 
+      ? `background-image: linear-gradient(to top, rgba(10,15,30,0.9) 0%, rgba(10,15,30,0.2) 50%, transparent 100%), url('${a.imagen}'); background-size: cover; background-position: top center; border: none;` 
+      : 'background: var(--card2);';
+      
+    const videoIcon = a.video ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,229,180,0.2);color:var(--accent);border-radius:50%;padding:4px 6px;font-size:10px;backdrop-filter:blur(4px);">▶ VIDEO</div>` : '';
 
-    return`<div class="product-card ${out?'no-stock':low?'low-stock':''}" style="position:relative; min-height:140px; display:flex; flex-direction:column; justify-content:flex-end; ${bgImg}" onclick="promptTallaYAgregar('${a.id}')">
+    return `<div class="product-card ${out ? 'no-stock' : low ? 'low-stock' : ''}" style="position:relative; min-height:160px; display:flex; flex-direction:column; justify-content:flex-end; padding:12px; ${bgImg} transition: transform 0.2s;" onclick="promptTallaYAgregar('${a.id}')">
       ${videoIcon}
-      ${!a.imagen ? `<div class="p-emoji">${a.emoji||'👙'}</div>` : ''}
-      <div class="p-name" style="${a.imagen ? 'text-shadow: 0 1px 3px rgba(0,0,0,0.8);' : ''}">${a.nombre}</div>
-      <div class="p-price" style="${a.imagen ? 'color:#00e5b4; text-shadow: 0 1px 2px rgba(0,0,0,0.8);' : ''}">${fmt(a.precioVenta)}</div>
-      <div class="p-stock" style="${a.imagen ? 'color:#ddd;' : ''}">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
-      ${a.codigo&&!a.imagen?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+a.codigo+'</div>':''}
-    </div>`}).join('')||'<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
+      ${!a.imagen ? `<div class="p-emoji" style="font-size:40px; margin-bottom:auto; margin-top:10px;">${a.emoji||'👙'}</div>` : ''}
+      
+      <div style="position:relative; z-index:2; text-align:left;">
+        <div class="p-name" style="${a.imagen ? 'color:#fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);' : 'color:var(--text);'} font-size:13px; line-height:1.2; margin-bottom:4px;">${a.nombre}</div>
+        <div class="p-price" style="color:var(--accent); font-size:15px; font-weight:800; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${fmt(a.precioVenta)}</div>
+        <div class="p-stock" style="${a.imagen ? 'color:#ddd;' : 'color:var(--text2);'} font-size:10px; margin-top:4px; display:flex; align-items:center; gap:4px;">
+          <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${out ? 'var(--red)' : low ? 'var(--yellow)' : 'var(--green)'};"></span>
+          ${out ? 'Agotado' : stock + ' disponibles' + (low ? ' (¡Bajo!)' : '')}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:40px"><div style="font-size:32px;margin-bottom:10px;">🔍</div>No se encontraron prendas</div>';
 }
 
 function promptTallaYAgregar(artId){
@@ -1069,8 +1076,6 @@ function handlePOSScan(e){
 function printReceipt(factura){
   const emp = state.empresa || {};
   const logoHtml = emp.logoBase64 ? `<img src="${emp.logoBase64}" style="width:100%; max-width:200px; display:block; margin:0 auto 10px; filter: grayscale(1);">` : '';
-  
-  // Link del QR: Puedes usar tu WhatsApp de ventas o Instagram
   const qrLink = `https://wa.me/573000000000?text=Hola!%20Adjunto%20mi%20pago%20de%20la%20factura%20${factura.numero}`;
 
   const receiptHTML = `
@@ -1121,7 +1126,6 @@ function printReceipt(factura){
     </div>`;
 
   const pWin = window.open('', '', 'width=450,height=700');
-  // Inyectamos la librería en el popup para que pueda renderizar el QR
   pWin.document.write(`
     <html>
       <head>
@@ -1139,7 +1143,6 @@ function printReceipt(factura){
               colorLight : "#ffffff",
               correctLevel : 2
             });
-            // Esperamos un momento para que el QR se dibuje antes de imprimir
             setTimeout(() => { 
               window.print(); 
               window.close(); 
@@ -1172,6 +1175,7 @@ function previewReceipt(){
   };
   printReceipt(factura);
 }
+
 function openCashDrawer(){
   try{
     const encoder=new TextEncoder();
@@ -1191,25 +1195,22 @@ function renderArticulos(){
       <button class="btn btn-primary" onclick="openArticuloModal()">+ Nueva Prenda</button>
     </div>
     <div class="card"><div class="card-title">CATÁLOGO DE PRENDAS (${items.length})</div>
-      <div class="table-wrap"><table><thead><tr><th>Foto</th><th>Referencia</th><th>Nombre</th><th>Categoría</th><th>P.Compra</th><th>P.Venta</th><th>Stock</th><th>Min</th><th></th></tr></thead><tbody id="art-tbody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Foto</th><th>Referencia</th><th>Nombre</th><th>Sección</th><th>P.Compra</th><th>P.Venta</th><th>Stock</th><th>Min</th><th></th></tr></thead><tbody id="art-tbody"></tbody></table></div>
     </div>`;
   renderArticulosList();
 }
 
 function renderArticulosList(){
   const search=(document.getElementById('art-search')?.value||'').toLowerCase();
-  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
-  
-  document.getElementById('art-tbody').innerHTML = items.map(a => {
-    const stock = getArticuloStock(a.id);
-    const low = stock <= a.stockMinimo;
-    const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
-    
-    return `<tr>
+  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.seccion).toLowerCase().includes(search));
+  document.getElementById('art-tbody').innerHTML=items.map(a=>{
+    const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
+    const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">${a.emoji||'👙'}</div>`;
+   return `<tr>
         <td style="width:50px">${thumb}</td>
         <td>${a.codigo || '—'}</td>
         <td style="font-weight:700">${a.nombre}</td>
-        <td><span class="badge badge-info">${a.categoria || '—'}</span></td>
+        <td><span class="badge badge-info">${a.seccion || '—'}</span></td>
         <td>${fmt(a.precioCompra)}</td>
         <td style="color:var(--accent); font-weight:700">${fmt(a.precioVenta)}</td>
         <td style="color:${low ? 'var(--red)' : 'var(--green)'}; font-weight:700">${stock}</td>
@@ -1222,16 +1223,15 @@ function renderArticulosList(){
           </div>
         </td>
       </tr>`;
-  }).join(''); 
+    }).join('');
 }
 
-    // ===================================================================
+// ===================================================================
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
-
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
-    _tempGaleria = art && art.galeria ? [...art.galeria] : [];
+    _tempGaleria = art && art.galeria ? [...art.galeria] : (art && art.imagen ? [art.imagen] : []);
     _portadaIndex = 0; 
     
     openModal(`
@@ -1242,25 +1242,24 @@ function openArticuloModal(id){
                 <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
                     <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br>
-                    <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada.</span>
+                    <span style="font-size:10px; opacity:0.6;">Toca la imagen para elegir la foto de portada.</span>
                     <input type="file" multiple accept="image/*,video/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="uploadGalleryImages(this)">
                 </div>
                 <div id="m-art-galeria-visual" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;"></div>
             </div>
 
             <div class="form-row">
-                <div class="form-group"><label class="form-label">REFERENCIA (REF)</label><input class="form-control" id="m-art-codigo" value="${art?.codigo || ''}"></div>
+                <div class="form-group"><label class="form-label">REFERENCIA (REF)</label><input class="form-control" id="m-art-codigo" value="${art?.codigo || ''}" placeholder="Dejar vacío para auto-generar"></div>
                 <div class="form-group"><label class="form-label">COLECCIÓN / TEMPORADA</label><input class="form-control" id="m-art-coleccion" value="${art?.coleccion || ''}" placeholder="Ej: Verano 2026"></div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">SECCIÓN WEB</label>
+                    <label class="form-label">LÍNEA WEB / CATÁLOGO</label>
                     <select class="form-control" id="m-art-seccion" onchange="actualizarCatsERP()">
                         <option value="Trajes de Baño" ${art?.seccion === 'Trajes de Baño' ? 'selected' : ''}>Trajes de Baño</option>
-                        <option value="Pijamas" ${art?.seccion === 'Pijamas' ? 'selected' : ''}>Resort & Pijamas</option>
-                        <option value="Ropa Deportiva" ${art?.seccion === 'Ropa Deportiva' ? 'selected' : ''}>Activewear</option>
-                        <option value="Casual" ${art?.seccion === 'Casual' ? 'selected' : ''}>Casual</option>
+                        <option value="Pijamas" ${art?.seccion === 'Pijamas' ? 'selected' : ''}>Pijamas</option>
+                        <option value="Ropa Casual" ${art?.seccion === 'Ropa Casual' ? 'selected' : ''}>Ropa Casual</option>
                     </select>
                 </div>
                 <div class="form-group"><label class="form-label">CATEGORÍA</label><select class="form-control" id="m-art-cat"></select></div>
@@ -1274,13 +1273,11 @@ function openArticuloModal(id){
                 <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art?.colors?.join(', ') || ''}"></div>
             </div>
 
-            <div class="form-group"><label class="form-label">LINK DE VIDEO (Opcional)</label><input class="form-control" id="m-art-video" value="${art?.video || ''}" placeholder="URL mp4 o YouTube"></div>
-
             <div class="card-title" style="margin-top:10px; border-top:1px solid var(--border); padding-top:15px; color:var(--accent);">💰 INVENTARIO Y PRECIOS</div>
             <div class="form-row-3">
                 <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra || 0}"></div>
                 <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta || 0}"></div>
-                <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva ?? 19}"></div>
+                <div class="form-group"><label class="form-label">STOCK MÍN</label><input type="number" class="form-control" id="m-art-smin" value="${art?.stockMinimo ?? 5}"></div>
             </div>
 
             <div class="form-row">
@@ -1288,29 +1285,33 @@ function openArticuloModal(id){
                 <div class="form-group"><label class="form-label">${art ? 'AJUSTE DE STOCK' : 'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
             </div>
         </div>
-        <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveArticulo('${id || ''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
+        <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveArticulo('${id || ''}')">💾 GUARDAR EN CATÁLOGO</button>
     `, true);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
 }
 
-function removeMainImg(){
-    document.getElementById('m-art-img-preview-container').style.display = 'none';
-}
-
 function renderGaleriaVisual(){
     const container = document.getElementById('m-art-galeria-visual');
     if(!container) return;
+    
     container.innerHTML = _tempGaleria.map((url, idx) => {
-        const esVideo = url.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
-        const media = esVideo 
-            ? `<video src="${url}" style="width:100%; height:100%; object-fit:cover;"></video>`
-            : `<img src="${url}" style="width:100%; height:100%; object-fit:cover;">`;
+        const isUploading = url.startsWith('data:') || url === 'loading';
+        const esVideo = !isUploading && url.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
+        
+        const media = isUploading
+            ? `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,229,180,0.1); color:var(--accent); font-size:24px;">⏳</div>`
+            : esVideo 
+                ? `<video src="${url}" style="width:100%; height:100%; object-fit:cover;"></video>`
+                : `<img src="${url}" style="width:100%; height:100%; object-fit:cover;">`;
+                
         return `
-            <div style="position:relative; width:72px; height:96px; border-radius:6px; overflow:hidden; border:2px solid ${idx === _portadaIndex ? 'var(--accent)' : 'transparent'}; cursor:pointer;" onclick="_portadaIndex=${idx}; renderGaleriaVisual();">
+            <div style="position:relative; width:80px; height:106px; border-radius:8px; overflow:hidden; border:2px solid ${idx === _portadaIndex ? 'var(--accent)' : 'var(--border)'}; cursor:pointer; transition:all 0.2s;" onclick="_portadaIndex=${idx}; renderGaleriaVisual();">
                 ${media}
-                <button class="btn-danger" style="position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%; border:none; font-size:9px;" onclick="event.stopPropagation(); _tempGaleria.splice(${idx},1); if(_portadaIndex>=${idx})_portadaIndex=0; renderGaleriaVisual();">✕</button>
-                <div style="position:absolute; bottom:2px; left:2px; background:${idx === _portadaIndex ? 'var(--accent)' : 'rgba(0,0,0,0.5)'}; color:#000; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px;">⭐</div>
+                ${!isUploading ? `
+                <button class="btn-danger" style="position:absolute; top:4px; right:4px; width:20px; height:20px; border-radius:50%; border:none; font-size:10px; display:flex; align-items:center; justify-content:center; background:rgba(248,113,113,0.9); color:white;" onclick="event.stopPropagation(); _tempGaleria.splice(${idx},1); if(_portadaIndex>=${idx})_portadaIndex=0; renderGaleriaVisual();">✕</button>
+                <div style="position:absolute; bottom:4px; left:4px; background:${idx === _portadaIndex ? 'var(--accent)' : 'rgba(0,0,0,0.6)'}; color:${idx === _portadaIndex ? '#000' : '#fff'}; border-radius:4px; padding:2px 6px; font-size:9px; font-weight:bold; font-family:Syne;">${idx === _portadaIndex ? 'PORTADA' : 'FOTO '+(idx+1)}</div>
+                ` : ''}
             </div>`;
     }).join('');
 }
@@ -1321,7 +1322,6 @@ function actualizarCatsERP(selectedCat){
     let opciones = [];
     if(sec === 'Trajes de Baño') opciones = ['Enterizos','Bikinis','Tankinis','Asoleadores','Salidas de Baño','3 Piezas'];
     else if(sec === 'Pijamas') opciones = ['Batas','Pantalones Largos','Shorts','Sets 2 Piezas'];
-    else if(sec === 'Ropa Deportiva') opciones = ['Leggings','Tops','Conjuntos'];
     else opciones = ['Vestidos','Faldas','Tops','Pantalones'];
     
     cat.innerHTML = opciones.map(o => `<option value="${o}" ${selectedCat === o ? 'selected' : ''}>${o}</option>`).join('');
@@ -1330,31 +1330,46 @@ function actualizarCatsERP(selectedCat){
 async function uploadGalleryImages(input) {
     const files = input.files;
     if(!files.length) return;
-    showLoadingOverlay('connecting');
+    
     try {
         let added = 0;
         for(let i=0; i<files.length; i++) {
-            if(_tempGaleria.length >= 15) break;
+            if(_tempGaleria.length >= 15) {
+                notify('warning', '⚠️', 'Límite alcanzado', 'Máximo 15 archivos por prenda.');
+                break;
+            }
             const file = files[i];
-            const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
+            
+            const tempIdx = _tempGaleria.length;
+            _tempGaleria.push('loading'); 
+            renderGaleriaVisual();
+
+            const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name.replace(/[^a-zA-Z0-9.]/g, "_"));
             await ref.put(file);
             const url = await ref.getDownloadURL();
-            _tempGaleria.push(url);
+            
+            _tempGaleria[tempIdx] = url;
             added++;
+            renderGaleriaVisual();
         }
-        renderGaleriaVisual();
-        showLoadingOverlay('hide');
-        notify('success', '📸', 'Galería cargada', `+${added} fotos.`);
+        notify('success', '📸', 'Galería actualizada', `Se agregaron ${added} archivos.`);
     } catch(e) {
-        showLoadingOverlay('hide');
-        notify('danger', '⚠️', 'Error', e.message);
+        _tempGaleria = _tempGaleria.filter(url => url !== 'loading');
+        renderGaleriaVisual();
+        notify('danger', '⚠️', 'Error de subida', e.message);
     }
+    input.value = '';
 }
 
 async function saveArticulo(existingId){
     const nombre = document.getElementById('m-art-nombre').value.trim();
-    const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
-    if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
+    const seccion = document.getElementById('m-art-seccion').value;
+    const conf = CATALOGOS_CONFIG[seccion] || { folder: 'otros', emoji: '📦', prefix: 'GEN' };
+    
+    let refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
+    if(!refID) refID = conf.prefix + Math.floor(Math.random()*10000);
+
+    if(!nombre) return alert('El nombre es obligatorio.');
     
     let galeriaFinal = [..._tempGaleria];
     if(galeriaFinal.length > 0 && _portadaIndex < galeriaFinal.length){
@@ -1368,20 +1383,23 @@ async function saveArticulo(existingId){
         nombre: nombre,
         name: nombre,
         coleccion: document.getElementById('m-art-coleccion').value.trim(),
-        seccion: document.getElementById('m-art-seccion').value,
+        seccion: seccion,
         cat: document.getElementById('m-art-cat').value,
+        categoria: document.getElementById('m-art-cat').value, // Para compatibilidad ERP
         descripcion: document.getElementById('m-art-desc').value.trim(),
-        video: document.getElementById('m-art-video').value.trim(),
+        video: galeriaFinal.find(url => url.includes('.mp4')) || '',
         tallas: document.getElementById('m-art-tallas').value.trim(),
         sizes: document.getElementById('m-art-tallas').value.trim(),
         colors: document.getElementById('m-art-colores').value.split(',').map(c=>c.trim()).filter(Boolean),
         imagen: galeriaFinal[0] || '',
         images: galeriaFinal,
+        galeria: galeriaFinal,
         precioCompra: parseFloat(document.getElementById('m-art-pc').value)||0,
         precioVenta: parseFloat(document.getElementById('m-art-pv').value)||0,
         price: parseFloat(document.getElementById('m-art-pv').value)||0,
-        iva: parseFloat(document.getElementById('m-art-iva').value)||19,
-        stockMinimo: 5, activo: true,
+        stockMinimo: parseInt(document.getElementById('m-art-smin').value)||5,
+        emoji: conf.emoji,
+        activo: true,
         lastUpdate: firebase.firestore.Timestamp.now()
     };
 
@@ -1412,11 +1430,64 @@ async function saveArticulo(existingId){
         }
         saveState(); closeModal(); renderArticulos();
         showLoadingOverlay('hide');
-        notify('success','🌐','Sincronizado', `${refID} actualizado en Web y ERP.`);
+        notify('success', conf.emoji, 'Catálogo Actualizado', `${refID} guardado en ${seccion}.`);
     } catch(e) {
         showLoadingOverlay('hide');
         alert("Error: " + e.message);
     }
+}
+
+// ==========================================
+// ===== GENERADOR DE QR - HERA ERP ========
+// ==========================================
+function generateProductQR(id) {
+    const art = state.articulos.find(a => a.id === id);
+    if (!art) return;
+    const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
+
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">📱 QR PARA: ${art.nombre}</div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:20px; padding:20px;">
+            <div id="qrcode-container" style="background:white; padding:15px; border-radius:12px; border:1px solid var(--border); min-height:200px; min-width:200px; display:flex; align-items:center; justify-content:center;"></div>
+            
+            <div style="text-align:center;">
+                <div style="font-family:'Syne'; font-weight:800; color:var(--accent); font-size:18px;">${art.codigo}</div>
+                <div style="font-size:12px; color:var(--text2); margin-top:8px;">Ideal para etiquetas en el showroom</div>
+            </div>
+            
+            <button class="btn btn-primary" style="width:100%" onclick="printQR('${art.nombre}')">🖨️ IMPRIMIR ETIQUETA QR</button>
+        </div>
+    `);
+
+    setTimeout(() => {
+        const qrContainer = document.getElementById("qrcode-container");
+        if (qrContainer) {
+            qrContainer.innerHTML = "";
+            new QRCode(qrContainer, {
+                text: urlCatalogo, width: 200, height: 200,
+                colorDark : "#0a0f1e", colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        }
+    }, 300);
+}
+
+function printQR(nombre) {
+    const qrCanvas = document.querySelector("#qrcode-container canvas");
+    if(!qrCanvas) return notify('warning', '⚠️', 'Error', 'No se generó el QR. Cierra y vuelve a intentar.');
+    
+    const qrImg = qrCanvas.toDataURL("image/png");
+    const pWin = window.open('', '', 'width=450,height=500');
+    pWin.document.write(`<html><body style="text-align:center; padding:20px; font-family:sans-serif; color:#0a0f1e;">
+        <h1 style="margin-bottom:0;">HERA SWIMWEAR</h1>
+        <p style="font-size:10px; margin-top:5px; margin-bottom:15px; text-transform:uppercase; letter-spacing:2px;">Colombia</p>
+        <img src="${qrImg}" style="width:250px; border:1px solid #eee; margin-bottom:15px;">
+        <h2 style="font-size:20px; margin-top:0;">${nombre.toUpperCase()}</h2>
+        <p style="font-size:12px; color:#666;">Escanea para ver detalles en catálogo</p>
+    </body></html>`);
+    
+    pWin.document.close();
+    setTimeout(() => { pWin.print(); pWin.close(); }, 500);
 }
 
 // ===================================================================
@@ -1671,6 +1742,167 @@ function marcarLiquidado(id){
 // ===================================================================
 // ===== NÓMINA =====
 // ===================================================================
+function renderNomina() {
+  const empleados = state.empleados || [];
+  const container = document.getElementById('dashboard-content');
+  if(!container) return;
+
+  container.innerHTML = `
+    <div class="header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="font-family:Syne; color:var(--text); font-weight:800;">👥 GESTIÓN DE PERSONAL</h2>
+      <button class="btn btn-primary" onclick="openEmpleadoModal()" style="font-weight:800;">+ VINCULAR COLABORADOR</button>
+    </div>
+
+    <div class="card" style="margin:0">
+      <div class="table-wrap">
+        <table style="width:100%; border-collapse:collapse; text-align:left;">
+          <thead>
+            <tr style="color:var(--text2); font-size:11px; border-bottom:1px solid var(--border); text-transform:uppercase;">
+              <th style="padding:12px;">Nombre / Cédula</th>
+              <th>Cargo</th>
+              <th>Contacto / Dirección</th>
+              <th style="text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${empleados.length === 0 ? 
+              '<tr><td colspan="4" style="text-align:center; padding:50px; color:var(--text2); opacity:0.6;">No hay personal registrado.</td></tr>' : 
+              empleados.map(e => `
+                <tr style="border-bottom:1px solid var(--border); font-size:13px;">
+                  <td style="padding:12px;"><strong>${e.nombre}</strong><br><small style="opacity:0.6;">CC: ${e.cedula}</small></td>
+                  <td><span class="badge" style="background:var(--accent); color:#000; font-weight:600;">${e.cargo}</span></td>
+                  <td><small>📞 ${e.telefono}</small><br><small>📍 ${e.direccion}</small></td>
+                  <td style="text-align:right; padding:12px;">
+                    <button class="btn btn-sm btn-secondary" onclick="abrirAsistentePago('${e.id}')" title="Liquidar Mes">💰</button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado('${e.id}', '${e.nombre}')" style="margin-left:5px;">✕</button>
+                  </td>
+                </tr>
+              `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function openEmpleadoModal(id = null) {
+  const emp = id ? state.empleados.find(e => e.id === id) : null;
+  openModal(`
+    <div class="modal-title" style="font-family:Syne;">👤 REGISTRO DE COLABORADOR</div>
+    <div style="text-align:left; color:var(--text);">
+      <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre||''}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula||''}"></div>
+        <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono||''}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
+        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1750000}"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
+  `, true);
+}
+
+function saveEmpleado(id) {
+  const data = {
+    nombre: document.getElementById('emp-nombre').value.trim(),
+    cedula: document.getElementById('emp-cedula').value.trim(),
+    telefono: document.getElementById('emp-tel').value.trim(),
+    direccion: document.getElementById('emp-dir').value.trim(),
+    cargo: document.getElementById('emp-cargo').value.trim(),
+    salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
+  };
+  if (!data.nombre || !data.cedula) return notify('warning', '⚠️', 'Faltan datos', 'Nombre y CC obligatorios');
+
+  if (id && id !== '' && id !== 'null') {
+    const idx = state.empleados.findIndex(e => e.id === id);
+    state.empleados[idx] = { ...state.empleados[idx], ...data, id };
+  } else {
+    data.id = uid();
+    state.empleados.push(data);
+  }
+  saveState(); closeModal(); renderNomina();
+  notify('success', '✅', 'Éxito', 'Empleado guardado.');
+}
+
+function eliminarEmpleado(id, nombre) {
+    if (confirm(`¿Estás seguro de retirar a ${nombre} de la empresa?`)) {
+        state.empleados = state.empleados.filter(e => e.id !== id);
+        saveState();
+        renderNomina();
+        notify('warning', '✕', 'Baja', `${nombre} ha sido retirado del sistema.`);
+    }
+}
+
+function abrirAsistentePago(id) {
+    const emp = state.empleados.find(e => e.id === id);
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
+        <div style="text-align:left; color:var(--text);">
+            <div class="form-group">
+                <label class="form-label">Días Trabajados (Mes completo: 30)</label>
+                <input type="number" class="form-control" id="liq-dias" value="30">
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
+                <div class="form-group"><label class="form-label">Faltas (No pagas)</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bonificaciones / Extras ($)</label>
+                <input type="number" class="form-control" id="liq-extras" value="0">
+            </div>
+            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PDF</button>
+        </div>
+    `, true);
+}
+
+function calcularNominaFinal(id) {
+  const emp = state.empleados.find(e => e.id === id);
+  const dias = parseInt(document.getElementById('liq-dias').value) || 0;
+  const incap = parseInt(document.getElementById('liq-incap').value) || 0;
+  const faltas = parseInt(document.getElementById('liq-faltas').value) || 0;
+  const extras = parseFloat(document.getElementById('liq-extras').value) || 0;
+
+  const SMMLV = 1750000; 
+  const AUX_T = 210000;
+
+  let sueldoReal = (emp.salarioBase / 30) * (dias - incap - faltas);
+  let pagoIncap = incap > 0 ? (emp.salarioBase / 30) * incap * 0.6667 : 0;
+  let auxTrans = emp.salarioBase <= (SMMLV * 2) ? (AUX_T / 30) * (dias - faltas) : 0;
+  
+  let ibc = sueldoReal + extras;
+  let saludE = ibc * 0.04;
+  let pensionE = ibc * 0.04;
+
+  let baseP = sueldoReal + extras + auxTrans;
+  let prima = baseP * 0.0833;
+  let cesantias = baseP * 0.0833;
+  let intCes = cesantias * 0.12;
+  let vaca = (sueldoReal + extras) * 0.0417;
+
+  const neto = (sueldoReal + pagoIncap + auxTrans + extras) - (saludE + pensionE);
+
+  state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto, totalProvisiones: prima+cesantias+intCes+vaca });
+  saveState(); closeModal();
+
+  const facturaNomina = {
+      numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
+      fecha: today(),
+      items: [
+          {nombre: 'Sueldo Básico', qty: dias, precio: sueldoReal / dias},
+          {nombre: 'Auxilio Transporte', qty: 1, precio: auxTrans},
+          {nombre: 'Comisiones/Extras', qty: 1, precio: extras},
+          {nombre: 'Salud/Pensión (Deducción)', qty: 1, precio: -(saludE + pensionE)}
+      ],
+      total: neto,
+      metodo: 'Transferencia'
+  };
+
+  printReceipt(facturaNomina);
+  notify('success', '💰', 'Nómina Procesada', `Pago de ${fmt(neto)} para ${emp.nombre}`);
+}
+
 function renderNomAusencias(){
   const items=[...(state.nom_ausencias||[])].reverse();
   document.getElementById('nom_ausencias-content').innerHTML=`
@@ -1863,7 +2095,6 @@ function renderTesDinero(){
     </tbody></table></div></div>`;
 }
 
-// GENERIC SIMPLE RENDERERS FOR TESORERÍA SUB-MODULES
 function renderSimpleCollection(pageId,title,collection,columns){
   const items=[...(state[collection]||[])].reverse();
   const el=document.getElementById(pageId+'-content');if(!el)return;
@@ -1992,9 +2223,9 @@ function renderHistorial(){
         <label class="form-label">FILTRAR CATEGORÍA</label>
         <select class="form-control" id="hist-cat" onchange="updateHistFilters()">
           <option value="">Todas</option>
-          <option value="Trajes de baño" ${histFilters.cat==='Trajes de baño'?'selected':''}>Trajes de baño</option>
+          <option value="Trajes de Baño" ${histFilters.cat==='Trajes de Baño'?'selected':''}>Trajes de Baño</option>
           <option value="Pijamas" ${histFilters.cat==='Pijamas'?'selected':''}>Pijamas</option>
-          <option value="Deportiva" ${histFilters.cat==='Deportiva'?'selected':''}>Deportiva</option>
+          <option value="Ropa Casual" ${histFilters.cat==='Ropa Casual'?'selected':''}>Ropa Casual</option>
           <option value="Varias" ${histFilters.cat==='Varias'?'selected':''}>Varias</option>
         </select>
       </div>
@@ -2075,7 +2306,7 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
 // ===== CONFIG =====
 // ===================================================================
 
-  function renderConfig(){
+function renderConfig(){
   const emp = state.empresa || {};
   document.getElementById('config-content').innerHTML = `
     <div class="grid-2">
@@ -2144,7 +2375,8 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
       </div>
     </div>`;
 }
-  function processLogoUpload(input) {
+
+function processLogoUpload(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -2152,7 +2384,7 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
     const img = new Image();
     img.onload = function() {
       const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 280; // Ancho máximo seguro para papel de 80mm
+      const MAX_WIDTH = 280; 
       const scale = MAX_WIDTH / img.width;
       canvas.width = MAX_WIDTH;
       canvas.height = img.height * scale;
@@ -2167,6 +2399,7 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
   };
   reader.readAsDataURL(file);
 }
+
 function guardarConfig(){
   state.meta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
   state.diasLocal = parseInt(document.getElementById('cfg-dias-local').value) || 1;
@@ -2180,7 +2413,7 @@ function guardarConfig(){
     ciudad: document.getElementById('cfg-emp-ciudad').value.trim(),
     social: document.getElementById('cfg-emp-social').value.trim(),
     mensajePie: document.getElementById('cfg-emp-footer').value.trim(),
-    logoBase64: _tempLogoBase64 || state.empresa.logoBase64 || '' // Mantiene el logo si no se sube uno nuevo
+    logoBase64: _tempLogoBase64 || state.empresa.logoBase64 || '' 
   };
   
   saveState();
@@ -2206,189 +2439,6 @@ document.addEventListener('keydown',e=>{
 
 // ===== INIT =====
 window.addEventListener('load',()=>{loadState()});
-// ==========================================
-// ===== MÓDULO DE TALENTO HUMANO HERA =====
-// ==========================================
-
-function renderNomina() {
-  const empleados = state.empleados || [];
-  const container = document.getElementById('dashboard-content');
-  if(!container) return;
-
-  container.innerHTML = `
-    <div class="header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-      <h2 style="font-family:Syne; color:var(--text); font-weight:800;">👥 GESTIÓN DE PERSONAL</h2>
-      <button class="btn btn-primary" onclick="openEmpleadoModal()" style="font-weight:800;">+ VINCULAR COLABORADOR</button>
-    </div>
-
-    <div class="card" style="margin:0">
-      <div class="table-wrap">
-        <table style="width:100%;">
-          <thead>
-            <tr style="color:var(--text2); font-size:11px; border-bottom:1px solid var(--border); text-transform:uppercase;">
-              <th style="padding:12px;">Nombre / Cédula</th>
-              <th>Cargo</th>
-              <th>Contacto / Dirección</th>
-              <th style="text-align:right;">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${empleados.length === 0 ? 
-              '<tr><td colspan="4" style="text-align:center; padding:50px; opacity:0.6;">No hay personal registrado.</td></tr>' : 
-              empleados.map(e => `
-                <tr style="border-bottom:1px solid var(--border); font-size:13px;">
-                  <td style="padding:12px;"><strong>${e.nombre}</strong><br><small style="opacity:0.6;">CC: ${e.cedula}</small></td>
-                  <td><span class="badge" style="background:var(--accent); color:#000; font-weight:600;">${e.cargo}</span></td>
-                  <td><small>📞 ${e.telefono}</small><br><small>📍 ${e.direccion}</small></td>
-                  <td style="text-align:right; padding:12px;">
-                    <button class="btn btn-sm btn-secondary" onclick="abrirAsistentePago('${e.id}')" title="Liquidar Mes">💰</button>
-                    <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado('${e.id}', '${e.nombre}')" style="margin-left:5px;">✕</button>
-                  </td>
-                </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-function openEmpleadoModal(id = null) {
-  const emp = id ? state.empleados.find(e => e.id === id) : null;
-  openModal(`
-    <div class="modal-title" style="font-family:Syne;">👤 REGISTRO DE COLABORADOR</div>
-    <div style="text-align:left;">
-      <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre||''}"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula||''}"></div>
-        <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono||''}"></div>
-      </div>
-      <div class="form-group"><label class="form-label">Dirección</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
-        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
-      </div>
-    </div>
-    <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
-  `, true);
-}
-
-function saveEmpleado(id) {
-  const data = {
-    nombre: document.getElementById('emp-nombre').value.trim(),
-    cedula: document.getElementById('emp-cedula').value.trim(),
-    telefono: document.getElementById('emp-tel').value.trim(),
-    direccion: document.getElementById('emp-dir').value.trim(),
-    cargo: document.getElementById('emp-cargo').value.trim(),
-    salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
-  };
-  if (!data.nombre || !data.cedula) return notify('warning', '⚠️', 'Faltan datos', 'Nombre y CC obligatorios');
-
-  if (id) {
-    const idx = state.empleados.findIndex(e => e.id === id);
-    state.empleados[idx] = { ...state.empleados[idx], ...data };
-  } else {
-    data.id = uid();
-    state.empleados.push(data);
-  }
-  saveState(); closeModal(); renderNomina();
-  notify('success', '✅', 'Éxito', 'Empleado guardado.');
-}
-
-function eliminarEmpleado(id, nombre) {
-  if (confirm(`¿Retirar a ${nombre} de la empresa?`)) {
-    state.empleados = state.empleados.filter(e => e.id !== id);
-    saveState(); renderNomina();
-    notify('warning', '✕', 'Baja', nombre + " ha sido eliminado.");
-  }
-}
-
-function abrirAsistentePago(id) {
-  const emp = state.empleados.find(e => e.id === id);
-  openModal(`
-    <div class="modal-title" style="font-family:Syne;">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
-    <div style="text-align:left;">
-      <div class="form-group"><label class="form-label">Días Trabajados (Mes: 30)</label><input type="number" class="form-control" id="liq-dias" value="30"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Incapacidad (Días)</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
-        <div class="form-group"><label class="form-label">Faltas</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
-      </div>
-      <div class="form-group"><label class="form-label">Bonos/Extras ($)</label><input type="number" class="form-control" id="liq-extras" value="0"></div>
-      <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO</button>
-    </div>
-  `, true);
-}
-
-function calcularNominaFinal(id) {
-  const emp = state.empleados.find(e => e.id === id);
-  const dias = parseInt(document.getElementById('liq-dias').value) || 0;
-  const extras = parseFloat(document.getElementById('liq-extras').value) || 0;
-  
-  // Cálculo simplificado para el ticket
-  const neto = (emp.salarioBase / 30 * dias) + extras;
-
-  state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto });
-  saveState(); closeModal();
-
-  const facturaNomina = {
-      numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
-      fecha: today(),
-      items: [{nombre: 'Pago Nómina: ' + emp.nombre, qty: 1, precio: neto}],
-      total: neto,
-      metodo: 'Transferencia'
-  };
-
-  printReceipt(facturaNomina);
-  notify('success', '💰', 'Pagado', `Monto: ${fmt(neto)}`);
-}
-
-function generateProductQR(id) {
-    const art = state.articulos.find(a => a.id === id);
-    if (!art) return;
-    const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
-
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">📱 QR PARA: ${art.nombre}</div>
-        <div style="display:flex; flex-direction:column; align-items:center; gap:20px; padding:20px;">
-            <div id="qrcode-container" style="background:white; padding:15px; border-radius:12px; border:1px solid var(--border); min-height:200px; min-width:200px; display:flex; align-items:center; justify-content:center;"></div>
-            <div style="text-align:center;">
-                <div style="font-family:'Syne'; font-weight:800; color:var(--accent); font-size:18px;">${art.codigo}</div>
-            </div>
-            <button class="btn btn-primary" style="width:100%" onclick="printQR('${art.nombre}')">🖨️ IMPRIMIR ETIQUETA QR</button>
-        </div>
-    `);
-
-    // BUG 4 FIX: Aumentamos a 300ms y validamos que el modal exista en el DOM
-    setTimeout(() => {
-        const qrContainer = document.getElementById("qrcode-container");
-        if (qrContainer) {
-            qrContainer.innerHTML = ""; // Limpiamos por si acaso
-            new QRCode(qrContainer, {
-                text: urlCatalogo, width: 200, height: 200,
-                colorDark : "#0a0f1e", colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.H
-            });
-        }
-    }, 300);
-}
-
-function printQR(nombre) {
-    const qrCanvas = document.querySelector("#qrcode-container canvas");
-    if(!qrCanvas) return notify('warning', '⚠️', 'Error', 'No se generó el QR. Cierra y vuelve a intentar.');
-    
-    const qrImg = qrCanvas.toDataURL("image/png");
-    const pWin = window.open('', '', 'width=450,height=500');
-    
-    // BUG 2 FIX: Eliminado el backslash \ antes del $nombre
-    pWin.document.write(`<html><body style="text-align:center; padding:20px; font-family:sans-serif;">
-        <h1 style="margin-bottom:20px;">HERA SWIMWEAR</h1>
-        <img src="${qrImg}" style="width:250px; margin-bottom:15px;">
-        <h2 style="font-size:18px;">${nombre.toUpperCase()}</h2>
-    </body></html>`);
-    
-    pWin.document.close();
-    setTimeout(() => { pWin.print(); pWin.close(); }, 500);
-}
 </script>
 </body>
 </html>
-
-
