@@ -1703,7 +1703,7 @@ function openNominaModal(){
       <div class="form-group"><label class="form-label">EMPLEADO</label><input class="form-control" id="m-nom-emp" placeholder="Nombre"></div>
       <div class="form-group"><label class="form-label">PERIODO</label><input class="form-control" id="m-nom-periodo" placeholder="Ej: Mar 1-15 2026" value="${new Date().toLocaleDateString('es-CO',{month:'short',year:'numeric'})}"></div>
     </div>
-    <div class="form-group"><label class="form-label">SALARIO BASE</label><input type="number" class="form-control" id="m-nom-salario" value="1300000"></div>
+    <div class="form-group"><label class="form-label">SALARIO BASE</label><input type="number" class="form-control" id="m-nom-salario" value="1750000"></div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Los conceptos configurados se aplicarán automáticamente.</div>
     <button class="btn btn-primary" style="width:100%" onclick="saveNomina()">Generar Nómina</button>
   `);
@@ -2451,3 +2451,4 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
