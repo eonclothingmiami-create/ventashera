@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VentasHera — ERP Moda & Catálogo Sync</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.coFm/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
@@ -1165,6 +1165,7 @@ function renderArticulosList(){
           </div>
         </td>
       </tr>`;
+    }).join('');
 }
 
 // ===================================================================
@@ -2385,9 +2386,72 @@ function abrirAsistentePago(id) {
         </div>
     `, true);
 }
+  // ==========================================
+// ===== GENERADOR DE QR - HERA ERP ========
+// ==========================================
+
+function generateProductQR(id) {
+    // Busca la prenda en tu lista de artículos por su ID único
+    const art = state.articulos.find(a => a.id === id);
+    if (!art) return;
+
+    // Generamos el link hacia tu catálogo web de Eon Clothing
+    const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
+
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">📱 QR PARA: ${art.nombre}</div>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:20px; padding:20px;">
+            <div id="qrcode-container" style="background:white; padding:15px; border-radius:12px; border:1px solid var(--border);"></div>
+            
+            <div style="text-align:center;">
+                <div style="font-family:'Syne'; font-weight:800; color:var(--accent); font-size:18px;">${art.codigo}</div>
+                <div style="font-size:12px; color:var(--text2); margin-top:8px;">Ideal para etiquetas en el showroom de Medellín</div>
+            </div>
+            
+            <button class="btn btn-primary" style="width:100%" onclick="printQR('${art.nombre}')">🖨️ IMPRIMIR ETIQUETA QR</button>
+        </div>
+    `);
+
+    // El sistema espera 100 milisegundos a que el modal abra para crear el QR
+    setTimeout(() => {
+        new QRCode(document.getElementById("qrcode-container"), {
+            text: urlCatalogo,
+            width: 200,
+            height: 200,
+            colorDark : "#0a0f1e",
+            colorLight : "#ffffff",
+            correctLevel : QRCode.CorrectLevel.H
+        });
+    }, 100);
+}
+
+function printQR(nombre) {
+    const qrCanvas = document.querySelector("#qrcode-container canvas");
+    if(!qrCanvas) {
+        notify('warning', '⚠️', 'Error', 'No se pudo generar la imagen del QR.');
+        return;
+    }
+    const qrImg = qrCanvas.toDataURL("image/png");
+    
+    // Abre una ventana limpia para enviar a la impresora térmica
+    const pWin = window.open('', '', 'width=450,height=500');
+    pWin.document.write(`
+        <html>
+        <body style="text-align:center; font-family:sans-serif; padding:20px; color:#0a0f1e;">
+            <h1 style="margin-bottom:0;">HERA SWIMWEAR</h1>
+            <p style="font-size:10px; margin-top:5px; margin-bottom:15px; text-transform:uppercase; letter-spacing:2px;">Cali - Medellín - Colombia</p>
+            <img src="${qrImg}" style="width:250px; border:1px solid #eee;">
+            <h2 style="margin-top:15px; font-size:24px;">${nombre.toUpperCase()}</h2>
+            <p style="font-size:12px; color:#666;">Escanea para ver detalles en catálogo</p>
+        </body>
+        </html>`);
+    pWin.document.close();
+    setTimeout(() => { pWin.print(); pWin.close(); }, 500);
+}
 </script>
 </body>
 </html>
+
 
 
 
