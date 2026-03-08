@@ -357,15 +357,22 @@ const stateRef=database.ref('ventacontrol_state_v3');
 
 // ===== STATE =====
 let state = {
-  meta: 34000000, diasLocal: 1, diasInter: 5,
-  ventas: [], currentMonth: null,
+  meta: 34000000, 
+  diasLocal: 1, 
+  diasInter: 5,
+  empleados: [],      
+  nomina_pagos: [],   // Coma corregida aquí
+  ventas: [], 
+  currentMonth: null,
   game: { xp:0, streakMax:0, earnedBadges:[], claimedSnacks:{} },
-  rewards: {}, notifEnabled: false, notifHour: 21,
+  rewards: {}, 
+  notifEnabled: false, 
+  notifHour: 21,
   articulos: [],        
   bodegas: [{id:'bodega_main',name:'Bodega Principal',ubicacion:'Local'},{id:'bodega_vitrina',name:'Vitrina',ubicacion:'Vitrina'}],
   inv_movimientos: [],   
-  inv_ajustes: [],       
-  inv_traslados: [],     
+  inv_ajustes: [],        
+  inv_traslados: [],      
   cotizaciones: [],
   ordenes_venta: [],
   facturas: [],
@@ -374,12 +381,11 @@ let state = {
   remisiones: [],
   devoluciones: [],
   anticipos_clientes: [],
-  empleados: [],
   nom_ausencias: [],
   nom_anticipos: [],
   nom_conceptos: [
     {id:'c1',nombre:'Salario Básico',tipo:'devengo',formula:'fijo',valor:0},
-    {id:'c2',nombre:'Auxilio Transporte',tipo:'devengo',formula:'fijo',valor:162000},
+    {id:'c2',nombre:'Auxilio Transporte',tipo:'devengo',formula:'fijo',valor:185000},
     {id:'c3',nombre:'Salud (4%)',tipo:'deduccion',formula:'porcentaje',valor:4},
     {id:'c4',nombre:'Pensión (4%)',tipo:'deduccion',formula:'porcentaje',valor:4}
   ],
@@ -392,7 +398,7 @@ let state = {
   tes_comp_ingreso: [],
   tes_comp_egreso: [],
   tes_transferencias: [],
-  empresa: {nombre:'Hera',nit:'',direccion:'',telefono:'',ciudad:''},
+  empresa: {nombre:'Hera Swimwear',nit:'',direccion:'',telefono:'',ciudad:''},
   consecutivos: {factura:1,cotizacion:1,orden:1,nc:1,nd:1,remision:1,devolucion:1,ingreso:1,egreso:1,retencion:1},
   pos_cart: []
 };
@@ -598,11 +604,12 @@ function renderDashboard(){
   const cajaSaldo=(state.cajas||[]).reduce((a,c)=>a+c.saldo,0);
 
   document.getElementById('dashboard-content').innerHTML=`
-    <div class="quick-actions">
+   <div class="quick-actions">
       <div class="quick-action" onclick="showPage('pos')"><span class="qa-icon">🖥</span>Nueva Venta POS</div>
       <div class="quick-action" onclick="showPage('facturas')"><span class="qa-icon">🧾</span>Nueva Factura</div>
       <div class="quick-action" onclick="showPage('articulos')"><span class="qa-icon">👙</span>Catálogo</div>
       <div class="quick-action" onclick="showPage('tes_cajas')"><span class="qa-icon">🏧</span>Cajas</div>
+      <div class="quick-action" onclick="renderNomina()" style="border-top: 2px solid var(--accent);"><span class="qa-icon">👥</span>Nómina</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 260px;gap:20px;margin-bottom:20px">
       <div class="card" style="margin:0">
@@ -2065,9 +2072,247 @@ document.addEventListener('keydown',e=>{
 
 // ===== INIT =====
 window.addEventListener('load',()=>{loadState()});
+  // ==========================================
+// ===== MÓDULO DE TALENTO HUMANO HERA =====
+// ==========================================
+
+function openEmpleadoModal(id = null) {
+    const emp = id ? state.empleados.find(e => e.id === id) : null;
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">👤 FICHA DE COLABORADOR</div>
+        <div style="text-align:left; max-height: 70vh; overflow-y: auto;">
+            <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre || ''}"></div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula || ''}"></div>
+                <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono || ''}"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion || ''}"></div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo || ''}"></div>
+                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1450000}"></div>
+            </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id || ''}')">💾 GUARDAR DATOS</button>
+    `, true);
+}
+
+function saveEmpleado(id) {
+    const data = {
+        nombre: document.getElementById('emp-nombre').value.trim(),
+        cedula: document.getElementById('emp-cedula').value.trim(),
+        telefono: document.getElementById('emp-tel').value.trim(),
+        direccion: document.getElementById('emp-dir').value.trim(),
+        cargo: document.getElementById('emp-cargo').value.trim(),
+        salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
+    };
+    if (!data.nombre || !data.cedula) return notify('warning','⚠️','Faltan datos','Nombre y Cédula son obligatorios');
+
+    if (id && id !== '' && id !== 'null') {
+        const idx = state.empleados.findIndex(e => e.id === id);
+        state.empleados[idx] = { ...state.empleados[idx], ...data };
+    } else {
+        data.id = uid();
+        state.empleados.push(data);
+    }
+    saveState(); closeModal(); renderNomina();
+    notify('success','✅','Éxito','Datos de empleado guardados.');
+}
+// ==========================================
+// ===== MÓDULO DE NÓMINA PROFESIONAL =====
+// ==========================================
+
+function renderNomina() {
+  const empleados = state.empleados || [];
+  const container = document.getElementById('dashboard-content');
+  if(!container) return;
+
+  container.innerHTML = `
+    <div class="header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="font-family:Syne; color:var(--text); font-weight:800;">👥 GESTIÓN DE PERSONAL</h2>
+      <button class="btn btn-primary" onclick="openEmpleadoModal()" style="font-weight:800;">+ VINCULAR COLABORADOR</button>
+    </div>
+
+    <div class="card" style="margin:0">
+      <div class="table-wrap">
+        <table style="width:100%; border-collapse:collapse; text-align:left;">
+          <thead>
+            <tr style="color:var(--text2); font-size:11px; border-bottom:1px solid var(--border); text-transform:uppercase;">
+              <th style="padding:12px;">Nombre / Cédula</th>
+              <th>Cargo</th>
+              <th>Contacto / Dirección</th>
+              <th style="text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${empleados.length === 0 ? 
+              '<tr><td colspan="4" style="text-align:center; padding:50px; color:var(--text2); opacity:0.6;">No hay personal registrado.</td></tr>' : 
+              empleados.map(e => `
+                <tr style="border-bottom:1px solid var(--border); font-size:13px;">
+                  <td style="padding:12px;"><strong>${e.nombre}</strong><br><small style="opacity:0.6;">CC: ${e.cedula}</small></td>
+                  <td><span class="badge" style="background:var(--accent); color:#000; font-weight:600;">${e.cargo}</span></td>
+                  <td><small>📞 ${e.telefono}</small><br><small>📍 ${e.direccion}</small></td>
+                  <td style="text-align:right; padding:12px;">
+                    <button class="btn btn-sm btn-secondary" onclick="abrirAsistentePago('${e.id}')" title="Liquidar Mes">💰</button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado('${e.id}', '${e.nombre}')" style="margin-left:5px;">✕</button>
+                  </td>
+                </tr>
+              `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function openEmpleadoModal(id = null) {
+  const emp = id ? state.empleados.find(e => e.id === id) : null;
+  openModal(`
+    <div class="modal-title" style="font-family:Syne;">👤 REGISTRO DE COLABORADOR</div>
+    <div style="text-align:left; color:var(--text);">
+      <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre||''}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula||''}"></div>
+        <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono||''}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
+        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1450000}"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
+  `, true);
+}
+
+function saveEmpleado(id) {
+  const data = {
+    nombre: document.getElementById('emp-nombre').value.trim(),
+    cedula: document.getElementById('emp-cedula').value.trim(),
+    telefono: document.getElementById('emp-tel').value.trim(),
+    direccion: document.getElementById('emp-dir').value.trim(),
+    cargo: document.getElementById('emp-cargo').value.trim(),
+    salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
+  };
+  if (!data.nombre || !data.cedula) return notify('warning', '⚠️', 'Faltan datos', 'Nombre y CC obligatorios');
+
+  if (id && id !== '' && id !== 'null') {
+    const idx = state.empleados.findIndex(e => e.id === id);
+    state.empleados[idx] = { ...state.empleados[idx], ...data, id };
+  } else {
+    data.id = uid();
+    state.empleados.push(data);
+  }
+  saveState(); closeModal(); renderNomina();
+  notify('success', '✅', 'Éxito', 'Empleado guardado.');
+}
+
+function eliminarEmpleado(id, nombre) {
+  if (confirm(`¿Retirar a ${nombre} de la empresa?`)) {
+    state.empleados = state.empleados.filter(e => e.id !== id);
+    saveState(); renderNomina();
+    notify('warning', '✕', 'Baja', nombre + " ha sido eliminado.");
+  }
+}
+
+// === MOTOR DE CÁLCULO COLOMBIA 2026 ===
+function abrirAsistentePago(id) {
+  const emp = state.empleados.find(e => e.id === id);
+  openModal(`
+    <div class="modal-title" style="font-family:Syne;">⚖️ LIQUIDACIÓN MENSUAL LEGAL</div>
+    <div style="text-align:left; color:var(--text);">
+      <div class="form-group"><label class="form-label">Días Trabajados (Mes: 30)</label><input type="number" class="form-control" id="liq-dias" value="30"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
+        <div class="form-group"><label class="form-label">Faltas Injustificadas</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Comisiones o Bonos ($)</label><input type="number" class="form-control" id="liq-extras" value="0"></div>
+      <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PLANILLA</button>
+    </div>
+  `, true);
+}
+
+function calcularNominaFinal(id) {
+  const emp = state.empleados.find(e => e.id === id);
+  const dias = parseInt(document.getElementById('liq-dias').value) || 0;
+  const incap = parseInt(document.getElementById('liq-incap').value) || 0;
+  const faltas = parseInt(document.getElementById('liq-faltas').value) || 0;
+  const extras = parseFloat(document.getElementById('liq-extras').value) || 0;
+
+  const SMMLV = 1450000; 
+  const AUX_T = 185000;
+
+  let sueldoReal = (emp.salarioBase / 30) * (dias - incap - faltas);
+  let pagoIncap = incap > 0 ? (emp.salarioBase / 30) * incap * 0.6667 : 0;
+  let auxTrans = emp.salarioBase <= (SMMLV * 2) ? (AUX_T / 30) * (dias - faltas) : 0;
+  
+  let ibc = sueldoReal + extras;
+  let saludE = ibc * 0.04;
+  let pensionE = ibc * 0.04;
+
+  let baseP = sueldoReal + extras + auxTrans;
+  let prima = baseP * 0.0833;
+  let cesantias = baseP * 0.0833;
+  let intCes = cesantias * 0.12;
+  let vaca = (sueldoReal + extras) * 0.0417;
+
+  const neto = (sueldoReal + pagoIncap + auxTrans + extras) - (saludE + pensionE);
+
+  // Guardar registro
+  state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto, totalProvisiones: prima+cesantias+intCes+vaca });
+  saveState(); closeModal();
+
+  // Aquí llamamos a tu función de imprimir ticket
+  const facturaNomina = {
+      numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
+      fecha: today(),
+      items: [
+          {nombre: 'Sueldo Básico', qty: dias, precio: sueldoReal / dias},
+          {nombre: 'Auxilio Transporte', qty: 1, precio: auxTrans},
+          {nombre: 'Comisiones/Extras', qty: 1, precio: extras},
+          {nombre: 'Salud/Pensión (Deducción)', qty: 1, precio: -(saludE + pensionE)}
+      ],
+      total: neto,
+      metodo: 'Transferencia'
+  };
+
+  printReceipt(facturaNomina);
+  notify('success', '💰', 'Nómina Procesada', `Pago de ${fmt(neto)} para ${emp.nombre}`);
+}
+  // === 1. FUNCIÓN PARA ELIMINAR (DESPIDOS) ===
+function eliminarEmpleado(id, nombre) {
+    if (confirm(`¿Estás seguro de retirar a ${nombre} de la empresa?`)) {
+        state.empleados = state.empleados.filter(e => e.id !== id);
+        saveState();
+        renderNomina();
+        notify('warning', '✕', 'Baja', `${nombre} ha sido retirado del sistema.`);
+    }
+}
+
+// === 2. ASISTENTE DE LIQUIDACIÓN (NOVEDADES) ===
+function abrirAsistentePago(id) {
+    const emp = state.empleados.find(e => e.id === id);
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
+        <div style="text-align:left; color:var(--text);">
+            <div class="form-group">
+                <label class="form-label">Días Trabajados (Mes completo: 30)</label>
+                <input type="number" class="form-control" id="liq-dias" value="30">
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
+                <div class="form-group"><label class="form-label">Faltas (No pagas)</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bonificaciones / Extras ($)</label>
+                <input type="number" class="form-control" id="liq-extras" value="0">
+            </div>
+            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PDF</button>
+        </div>
+    `, true);
+}
 </script>
 </body>
 </html>
+
 
 
 
