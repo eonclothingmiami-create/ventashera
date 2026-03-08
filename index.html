@@ -1193,10 +1193,13 @@ function renderArticulos(){
 function renderArticulosList(){
   const search=(document.getElementById('art-search')?.value||'').toLowerCase();
   let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
-  document.getElementById('art-tbody').innerHTML=items.map(a=>{
-    const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
+  
+  document.getElementById('art-tbody').innerHTML = items.map(a => {
+    const stock = getArticuloStock(a.id);
+    const low = stock <= a.stockMinimo;
     const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
-   return `<tr>
+    
+    return `<tr>
         <td style="width:50px">${thumb}</td>
         <td>${a.codigo || '—'}</td>
         <td style="font-weight:700">${a.nombre}</td>
@@ -1209,14 +1212,14 @@ function renderArticulosList(){
           <div class="btn-group">
             <button class="btn btn-xs btn-secondary" onclick="generateProductQR('${a.id}')" title="Generar QR">📱 QR</button>
             <button class="btn btn-xs btn-secondary" onclick="openArticuloModal('${a.id}')" title="Editar">✏️</button>
-            <button class="btn btn-xs btn-danger" onclick="deleteArticulo('${a.id}')" title="Eliminar">✕</button>
+            <button class="btn btn-xs btn-danger" onclick="deleteFromCollection('articulos','${a.id}','articulos')" title="Eliminar">✕</button>
           </div>
         </td>
       </tr>`;
-    }).join('');
+  }).join(''); 
 }
 
-// ===================================================================
+    // ===================================================================
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
 
@@ -2255,7 +2258,7 @@ function openEmpleadoModal(id = null) {
       <div class="form-group"><label class="form-label">Dirección</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
-        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1750000}"></div>
+        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
       </div>
     </div>
     <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
@@ -2361,10 +2364,11 @@ function printQR(nombre) {
     if(!qrCanvas) return notify('warning', '⚠️', 'Error', 'No se generó el QR.');
     const qrImg = qrCanvas.toDataURL("image/png");
     const pWin = window.open('', '', 'width=450,height=500');
-    pWin.document.write(`<html><body style="text-align:center; padding:20px;"><h1>HERA SWIMWEAR</h1><img src="\${qrImg}" style="width:250px;"><h2>\${nombre.toUpperCase()}</h2></body></html>`);
+    pWin.document.write(`<html><body style="text-align:center; padding:20px;"><h1>HERA SWIMWEAR</h1><img src="${qrImg}" style="width:250px;"><h2>\${nombre.toUpperCase()}</h2></body></html>`);
     pWin.document.close();
     setTimeout(() => { pWin.print(); pWin.close(); }, 500);
 }
 </script>
 </body>
 </html>
+
