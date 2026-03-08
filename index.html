@@ -404,6 +404,7 @@ let posFormState = {
 const CUENTAS_BANCARIAS = ['Bancolombia Principal', 'Bancolombia 2', 'Nequi', 'Daviplata'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
 let _tempGaleria = []; let _portadaIndex = 0;
+  let _tempLogoBase64 = null; // Almacena el logo procesado para 80mm
 
 // ===== CONSTANTS =====
 const LEVELS=[{level:1,name:'Novata',avatar:'🌱',minXp:0},{level:2,name:'Activa',avatar:'✨',minXp:200},{level:3,name:'Vendedora',avatar:'💫',minXp:500},{level:4,name:'Destacada',avatar:'🌟',minXp:1000},{level:5,name:'Pro',avatar:'⚡',minXp:1800},{level:6,name:'Experta',avatar:'🔥',minXp:3000},{level:7,name:'Campeona',avatar:'💎',minXp:4500},{level:8,name:'Leyenda',avatar:'👑',minXp:6500},{level:9,name:'Élite',avatar:'🏆',minXp:9000},{level:10,name:'Mega Vendedora',avatar:'🚀',minXp:12000}];
@@ -993,40 +994,55 @@ function handlePOSScan(e){
 
 // ===== RECEIPT PRINTING =====
 function printReceipt(factura){
-  const emp=state.empresa||{};
-  const receiptHTML=`
-    <div style="width:80mm;font-family:'Courier New',monospace;font-size:11px;padding:8px;color:#000;background:#fff">
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:16px;font-weight:700">${emp.nombre||'VentasHera'}</div>
-        ${emp.nit?'<div>NIT: '+emp.nit+'</div>':''}
-        ${emp.direccion?'<div>'+emp.direccion+'</div>':''}
-        ${emp.telefono?'<div>Tel: '+emp.telefono+'</div>':''}
+  const emp = state.empresa || {};
+  const logoHtml = emp.logoBase64 ? `<img src="${emp.logoBase64}" style="width:100%; max-width:200px; display:block; margin:0 auto 10px; filter: grayscale(1);">` : '';
+  
+  const receiptHTML = `
+    <div style="width:80mm; font-family:'Courier New', monospace; font-size:11px; padding:5px; color:#000; background:#fff;">
+      <div style="text-align:center;">
+        ${logoHtml}
+        <div style="font-size:16px; font-weight:900;">${emp.nombre || 'HERA'}</div>
+        <div>NIT: ${emp.nit || ''}</div>
+        <div>${emp.direccion || ''}</div>
+        <div>${emp.ciudad || ''} - Tel: ${emp.telefono || ''}</div>
       </div>
-      <div style="border-top:1px dashed #000;margin:8px 0"></div>
-      <div style="font-weight:700">Factura: ${factura.numero}</div>
-      <div>Fecha: ${formatDate(factura.fecha)} ${new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
-      ${factura.cliente?'<div>Cliente: '+factura.cliente+'</div>':''}
-      ${factura.telefono?'<div>Tel Cliente: '+factura.telefono+'</div>':''}
-      <div style="border-top:1px dashed #000;margin:8px 0"></div>
-      <table style="width:100%;font-size:10px;border-collapse:collapse">
-        <tr style="border-bottom:1px solid #ccc"><th style="text-align:left;padding:2px">Art.</th><th style="text-align:center;padding:2px">Cant</th><th style="text-align:right;padding:2px">Total</th></tr>
-        ${(factura.items||[]).map(item=>`<tr><td style="padding:2px">${item.nombre} ${item.talla ? `(${item.talla})` : ''}</td><td style="text-align:center;padding:2px">${item.qty}</td><td style="text-align:right;padding:2px">${fmtN(item.precio*item.qty)}</td></tr>`).join('')}
+      
+      <div style="border-top:1px dashed #000; margin:10px 0;"></div>
+      
+      <div style="font-weight:bold;">FACTURA: ${factura.numero}</div>
+      <div>Fecha: ${formatDate(factura.fecha)} ${new Date().toLocaleTimeString()}</div>
+      
+      <div style="border-top:1px dashed #000; margin:8px 0;"></div>
+      
+      <table style="width:100%; font-size:11px; border-collapse:collapse;">
+        ${(factura.items || []).map(i => `
+          <tr>
+            <td style="padding:2px 0;">${i.nombre} (${i.talla || 'U'})</td>
+            <td style="text-align:center;">x${i.qty}</td>
+            <td style="text-align:right;">${fmtN(i.precio * i.qty)}</td>
+          </tr>
+        `).join('')}
       </table>
-      <div style="border-top:1px dashed #000;margin:8px 0"></div>
-      <div style="display:flex;justify-content:space-between"><span>Subtotal:</span><span>${fmt(factura.subtotal)}</span></div>
-      <div style="display:flex;justify-content:space-between"><span>IVA:</span><span>${fmt(factura.iva)}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;margin-top:4px"><span>TOTAL:</span><span>${fmt(factura.total)}</span></div>
-      <div style="margin-top:4px;font-size:10px">Método: ${factura.metodo}</div>
-      <div style="border-top:1px dashed #000;margin:8px 0"></div>
-      <div style="text-align:center;font-size:10px">¡Gracias por su compra!<br>VentasHera POS</div>
-    </div>`;
-  const printWin=window.open('','','width=320,height=600');
-  printWin.document.write('<html><head><title>Factura</title></head><body style="margin:0">'+receiptHTML+'</body></html>');
-  printWin.document.close();
-  printWin.focus();
-  setTimeout(()=>{printWin.print();printWin.close()},500);
-}
+      
+      <div style="border-top:1px dashed #000; margin:10px 0;"></div>
+      <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px;">
+        <span>TOTAL:</span><span>${fmt(factura.total)}</span>
+      </div>
+      <div style="text-align:center; font-size:10px; margin-top:5px;">Método: ${factura.metodo}</div>
 
+      <div style="border-top:1px dashed #000; margin:10px 0;"></div>
+      
+      <div style="text-align:center; font-size:10px;">
+        ${emp.mensajePie ? `<div>${emp.mensajePie}</div>` : '¡Gracias por elegirnos!'}
+        <div style="margin-top:5px; font-weight:bold;">${emp.social || ''}</div>
+      </div>
+    </div>`;
+
+  const pWin = window.open('', '', 'width=320,height=600');
+  pWin.document.write('<html><body style="margin:0;">' + receiptHTML + '</body></html>');
+  pWin.document.close();
+  setTimeout(() => { pWin.print(); pWin.close(); }, 500);
+}
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
   const subtotal=cart.reduce((a,i)=>a+(i.precio*i.qty),0);
@@ -1918,6 +1934,7 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
 // ===== CONFIG =====
 // ===================================================================
 function renderConfig(){
+ function renderConfig(){
   const emp = state.empresa || {};
   document.getElementById('config-content').innerHTML = `
     <div class="grid-2">
@@ -1936,7 +1953,14 @@ function renderConfig(){
 
       <div class="card" style="margin:0">
         <div class="card-title">🎨 DISEÑO DE TICKET POS</div>
-        <div class="form-group"><label class="form-label">URL DEL LOGO (JPG/PNG)</label><input class="form-control" id="cfg-emp-logo" value="${emp.logoUrl||''}" placeholder="https://tuweb.com/logo.png"></div>
+        <div class="form-group">
+          <label class="form-label">LOGO DEL TICKET (80mm)</label>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cfg-logo-file').click()">📁 Subir Logo</button>
+            <input type="file" id="cfg-logo-file" accept="image/*" style="display:none" onchange="processLogoUpload(this)">
+            <div id="cfg-logo-preview" style="width:64px; height:64px; border:1px solid var(--border); border-radius:8px; background: ${emp.logoBase64 ? `url('${emp.logoBase64}') center/contain no-repeat` : 'var(--bg3)'}; background-color:white;"></div>
+          </div>
+        </div>
         <div class="form-group"><label class="form-label">INSTAGRAM / REDES</label><input class="form-control" id="cfg-emp-social" value="${emp.social||''}" placeholder="@heraswimwear"></div>
         <div class="form-group"><label class="form-label">MENSAJE AL PIE DE FACTURA</label><textarea class="form-control" id="cfg-emp-footer" rows="2" placeholder="Gracias por elegirnos.">${emp.mensajePie||''}</textarea></div>
       </div>
@@ -1979,6 +2003,29 @@ function renderConfig(){
       </div>
     </div>`;
 }
+  function processLogoUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const MAX_WIDTH = 280; // Ancho máximo seguro para papel de 80mm
+      const scale = MAX_WIDTH / img.width;
+      canvas.width = MAX_WIDTH;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      _tempLogoBase64 = canvas.toDataURL('image/png');
+      document.getElementById('cfg-logo-preview').style.background = `url('${_tempLogoBase64}') center/contain no-repeat`;
+      document.getElementById('cfg-logo-preview').style.backgroundColor = 'white';
+      notify('success', '🎨', 'Logo procesado', 'Tamaño ajustado para el ticket.');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
 function guardarConfig(){
   state.meta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
   state.diasLocal = parseInt(document.getElementById('cfg-dias-local').value) || 1;
@@ -1990,13 +2037,13 @@ function guardarConfig(){
     direccion: document.getElementById('cfg-emp-dir').value.trim(),
     telefono: document.getElementById('cfg-emp-tel').value.trim(),
     ciudad: document.getElementById('cfg-emp-ciudad').value.trim(),
-    logoUrl: document.getElementById('cfg-emp-logo').value.trim(),
     social: document.getElementById('cfg-emp-social').value.trim(),
-    mensajePie: document.getElementById('cfg-emp-footer').value.trim()
+    mensajePie: document.getElementById('cfg-emp-footer').value.trim(),
+    logoBase64: _tempLogoBase64 || state.empresa.logoBase64 || '' // Mantiene el logo si no se sube uno nuevo
   };
   
   saveState();
-  notify('success','✅','Guardado','Configuración y diseño de ticket actualizados.',{duration:3000});
+  notify('success','✅','Guardado','Configuración total actualizada.',{duration:3000});
   renderDashboard();
 }
 
@@ -2021,6 +2068,7 @@ window.addEventListener('load',()=>{loadState()});
 </script>
 </body>
 </html>
+
 
 
 
