@@ -1064,6 +1064,9 @@ function printReceipt(factura){
   const emp = state.empresa || {};
   const logoHtml = emp.logoBase64 ? `<img src="${emp.logoBase64}" style="width:100%; max-width:200px; display:block; margin:0 auto 10px; filter: grayscale(1);">` : '';
   
+  // Link del QR: Puedes usar tu WhatsApp de ventas o Instagram
+  const qrLink = `https://wa.me/573000000000?text=Hola!%20Adjunto%20mi%20pago%20de%20la%20factura%20${factura.numero}`;
+
   const receiptHTML = `
     <div style="width:80mm; font-family:'Courier New', monospace; font-size:11px; padding:5px; color:#000; background:#fff;">
       <div style="text-align:center;">
@@ -1098,6 +1101,12 @@ function printReceipt(factura){
       <div style="text-align:center; font-size:10px; margin-top:5px;">Método: ${factura.metodo}</div>
 
       <div style="border-top:1px dashed #000; margin:10px 0;"></div>
+      <div style="display:flex; flex-direction:column; align-items:center; margin:10px 0;">
+          <div id="receipt-qr-container"></div>
+          <div style="font-size:9px; margin-top:5px; font-weight:bold;">ESCANEA PARA PAGAR O SOPORTE</div>
+      </div>
+
+      <div style="border-top:1px dashed #000; margin:10px 0;"></div>
       
       <div style="text-align:center; font-size:10px;">
         ${emp.mensajePie ? `<div>${emp.mensajePie}</div>` : '¡Gracias por elegirnos!'}
@@ -1105,19 +1114,58 @@ function printReceipt(factura){
       </div>
     </div>`;
 
-  const pWin = window.open('', '', 'width=320,height=600');
-  pWin.document.write('<html><body style="margin:0;">' + receiptHTML + '</body></html>');
+  const pWin = window.open('', '', 'width=450,height=700');
+  // Inyectamos la librería en el popup para que pueda renderizar el QR
+  pWin.document.write(`
+    <html>
+      <head>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+      </head>
+      <body style="margin:0;">
+        ${receiptHTML}
+        <script>
+          window.onload = function() {
+            new QRCode(document.getElementById("receipt-qr-container"), {
+              text: "${qrLink}",
+              width: 100,
+              height: 100,
+              colorDark : "#000000",
+              colorLight : "#ffffff",
+              correctLevel : 2
+            });
+            // Esperamos un momento para que el QR se dibuje antes de imprimir
+            setTimeout(() => { 
+              window.print(); 
+              window.close(); 
+            }, 600);
+          };
+        </script>
+      </body>
+    </html>`);
   pWin.document.close();
-  setTimeout(() => { pWin.print(); pWin.close(); }, 500);
-}
-function previewReceipt(){
-  const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
-  const subtotal=cart.reduce((a,i)=>a+(i.precio*i.qty),0);
-  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
-  const factura={numero:'PREVIEW',fecha:today(),cliente:document.getElementById('pos-cliente')?.value||'',telefono:document.getElementById('pos-telefono')?.value||'',items:cart,subtotal,iva,total:subtotal+iva,metodo:posFormState.metodo};
-  printReceipt(factura);
 }
 
+function previewReceipt(){
+  const cart=state.pos_cart||[];
+  if(cart.length===0){
+    notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});
+    return;
+  }
+  const subtotal=cart.reduce((a,i)=>a+(i.precio*i.qty),0);
+  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
+  const factura={
+    numero:'PREVIEW',
+    fecha:today(),
+    cliente:document.getElementById('pos-cliente')?.value||'',
+    telefono:document.getElementById('pos-telefono')?.value||'',
+    items:cart,
+    subtotal,
+    iva,
+    total:subtotal+iva,
+    metodo:posFormState.metodo
+  };
+  printReceipt(factura);
+}
 function openCashDrawer(){
   try{
     const encoder=new TextEncoder();
@@ -2431,6 +2479,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
