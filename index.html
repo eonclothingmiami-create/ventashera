@@ -2174,8 +2174,12 @@ function addBodega(){
   state.bodegas.push({id:uid(),name:nombre,ubicacion:'Adicional'});
   saveState();renderConfig();
 }
-
-function resetGame(){if(!confirm('¿Reiniciar XP e insignias?'))return;state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};saveState();notify('success','🔄','Reset','Juego reiniciado.',{duration:3000})}
+function resetGame(){
+  if(!confirm('¿Reiniciar XP e insignias?'))return;
+  state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};
+  saveState();
+  notify('success','🔄','Reset','Juego reiniciado.',{duration:3000});
+}
 
 // ===== KEYBOARD SHORTCUTS =====
 document.addEventListener('keydown',e=>{
@@ -2416,3 +2420,4 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
