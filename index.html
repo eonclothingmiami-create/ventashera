@@ -2632,9 +2632,94 @@ function printQR(nombre) {
     console.error("Error sincronizando visibilidad:", error);
   }
 }
+  async function importarDesdeCatalogo() {
+  if (!confirm('¿Importar todos los productos del catálogo web al ERP?\n\nSe importarán sin stock ni costo. Los que ya existan (por referencia) se omitirán.')) return;
+
+  notify('⬇️ Importando catálogo...', 'Conectando con Firestore...', 'info');
+
+  const SECCION_MAP = {
+    'Trajes de Baño': 'Trajes de baño',
+    'Resort & Pijamas': 'Pijamas',
+    'Pijamas': 'Pijamas',
+    'Ropa Deportiva': 'Deportiva',
+    'Activewear': 'Deportiva',
+    'Casual': 'Varias'
+  };
+
+  try {
+    // Leer todos los productos de Firestore (catálogo web)
+    const snap = await dbWeb.collection('products').orderBy('createdAt', 'desc').get();
+    const productosWeb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (!productosWeb.length) {
+      notify('⚠️ Sin productos', 'El catálogo web está vacío.', 'warning');
+      return;
+    }
+
+    // Referencias ya existentes en el ERP
+    const refsExistentes = new Set((state.articulos || []).map(a => (a.ref || '').toUpperCase()));
+
+    let importados = 0;
+    let omitidos = 0;
+
+    for (const p of productosWeb) {
+      const refKey = (p.ref || '').toUpperCase();
+
+      // Omitir si ya existe por referencia
+      if (refKey && refsExistentes.has(refKey)) {
+        omitidos++;
+        continue;
+      }
+
+      // Construir artículo para el ERP
+      const articulo = {
+        id: uid(),
+        ref: p.ref || '',
+        nombre: p.name || '',
+        categoria: SECCION_MAP[p.seccion] || 'Varias',
+        subcategoria: p.cat || '',
+        precio: Number(p.price) || 0,
+        costo: 0,
+        tallas: p.sizes || '',
+        colores: Array.isArray(p.colors) ? p.colors.join(', ') : (p.colors || ''),
+        images: Array.isArray(p.images) ? p.images : [],
+        stock: 0,
+        stockMin: 0,
+        bodegaId: (state.bodegas && state.bodegas[0]) ? state.bodegas[0].id : '',
+        activo: true,
+        enCatalogo: true,
+        catalogoId: p.id, // referencia al doc de Firestore
+        importadoDeCatalogo: true,
+        createdAt: today()
+      };
+
+      state.articulos = state.articulos || [];
+      state.articulos.push(articulo);
+
+      // Agregar a referencias conocidas para no duplicar en esta misma importación
+      if (refKey) refsExistentes.add(refKey);
+      importados++;
+    }
+
+    if (importados > 0) {
+      await saveState();
+      notify('✅ Importación completa',
+        `${importados} producto(s) importados. ${omitidos > 0 ? omitidos + ' ya existían y se omitieron.' : ''}`,
+        'success');
+      renderArticulos(); // refresca la lista
+    } else {
+      notify('ℹ️ Sin cambios', `Todos los productos (${omitidos}) ya estaban en el ERP.`, 'info');
+    }
+
+  } catch (err) {
+    console.error('Error importando catálogo:', err);
+    notify('❌ Error', 'No se pudo conectar con el catálogo web: ' + err.message, 'danger');
+  }
+}
 </script>
 </body>
 </html>
+
 
 
 
