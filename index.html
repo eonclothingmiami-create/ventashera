@@ -1142,7 +1142,7 @@ function renderArticulos(){
   renderArticulosList();
 }
 
-function renderArticulosList(){
+ffunction renderArticulosList(){
   const search=(document.getElementById('art-search')?.value||'').toLowerCase();
   let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
   document.getElementById('art-tbody').innerHTML=items.map(a=>{
@@ -1166,16 +1166,24 @@ function renderArticulosList(){
         </td>
       </tr>`;
     }).join('');
- 
-    // 3. Eliminar la prenda del estado local del ERP
+}
+
+async function deleteArticulo(id) {
+  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará del ERP y del Catálogo Web.')) return;
+  const art = (state.articulos || []).find(a => a.id === id);
+  if (!art) return;
+  
+  showLoadingOverlay('connecting');
+  try {
+    if (art.codigo) {
+      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
+      if (!queryWeb.empty) {
+        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
+      }
+    }
     state.articulos = state.articulos.filter(a => a.id !== id);
-
-    // 4. Guardar los cambios en la base de datos principal del ERP
     saveState();
-
-    // 5. Volver a pintar la tabla para que desaparezca visualmente
     renderArticulos();
-    
     showLoadingOverlay('hide');
     notify('success', '🗑️', 'Prenda eliminada', `${art.nombre} eliminada del sistema.`);
   } catch (error) {
@@ -1183,7 +1191,7 @@ function renderArticulosList(){
     notify('danger', '⚠️', 'Error al eliminar', error.message);
   }
 }
-
+  
 // ===================================================================
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
@@ -2467,6 +2475,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
