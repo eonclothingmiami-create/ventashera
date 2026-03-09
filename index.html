@@ -1596,14 +1596,55 @@ function saveTraslado(){
 // ===== GENERIC DOCUMENT RENDERER (Cotizaciones, Órdenes, etc) =====
 // ===================================================================
 function renderDocumentList(pageId,title,collection,tipo,fields){
-  const items=[...(state[collection]||[])].reverse();
   const el=document.getElementById(pageId+'-content');if(!el)return;
+
+  // Leer filtros actuales
+  const q=(document.getElementById(pageId+'-search')?.value||'').toLowerCase();
+  const desdeEl=document.getElementById(pageId+'-desde');
+  const hastaEl=document.getElementById(pageId+'-hasta');
+  const desde=desdeEl?.value||'';
+  const hasta=hastaEl?.value||'';
+
+  let items=[...(state[collection]||[])].reverse();
+
+  // Aplicar filtros
+  if(q) items=items.filter(d=>(d.numero||'').toLowerCase().includes(q)||(d.cliente||'').toLowerCase().includes(q));
+  if(desde) items=items.filter(d=>d.fecha&&d.fecha>=desde);
+  if(hasta) items=items.filter(d=>d.fecha&&d.fecha<=hasta);
+
+  const total=[...(state[collection]||[])].length;
+
   el.innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openDocModal('${collection}','${tipo}')">+ ${title}</button>
-    <div class="card"><div class="card-title">${title.toUpperCase()} (${items.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>
-    ${items.map(d=>`<tr><td style="font-weight:700">${d.numero||'—'}</td><td>${formatDate(d.fecha)}</td><td>${d.cliente||'—'}</td><td style="color:var(--accent);font-weight:700">${fmt(d.total||0)}</td><td><span class="badge badge-${d.estado==='pagada'||d.estado==='aprobada'?'ok':d.estado==='anulada'?'pend':'warn'}">${d.estado||'borrador'}</span></td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="viewDoc('${collection}','${d.id}')">👁</button><button class="btn btn-xs btn-secondary" onclick="printDoc('${collection}','${d.id}')">🖨</button><button class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d.id}')">✕</button></div></td></tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>`}
-    </tbody></table></div></div>`;
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+      <button class="btn btn-primary" onclick="openDocModal('${collection}','${tipo}')">+ ${title}</button>
+      <div class="search-bar" style="flex:1;min-width:180px;max-width:300px;margin:0">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="${pageId}-search" placeholder="Buscar # o cliente..." value="${q}" oninput="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <input type="date" id="${pageId}-desde" class="form-control" style="width:140px;padding:8px" value="${desde}" onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Desde">
+        <span style="color:var(--text2);font-size:11px;">hasta</span>
+        <input type="date" id="${pageId}-hasta" class="form-control" style="width:140px;padding:8px" value="${hasta}" onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Hasta">
+        ${(desde||hasta||q)?`<button class="btn btn-xs btn-secondary" onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">✕ Limpiar</button>`:''}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">${title.toUpperCase()} — ${items.length} de ${total}</div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${items.map(d=>`<tr>
+        <td style="font-weight:700">${d.numero||'—'}</td>
+        <td>${formatDate(d.fecha)}</td>
+        <td>${d.cliente||'—'}</td>
+        <td style="color:var(--accent);font-weight:700">${fmt(d.total||0)}</td>
+        <td><span class="badge badge-${d.estado==='pagada'||d.estado==='aprobada'?'ok':d.estado==='anulada'?'pend':'warn'}">${d.estado||'borrador'}</span></td>
+        <td><div class="btn-group">
+          <button class="btn btn-xs btn-secondary" onclick="viewDoc('${collection}','${d.id}')">👁</button>
+          <button class="btn btn-xs btn-secondary" onclick="printDoc('${collection}','${d.id}')">🖨</button>
+          <button class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d.id}')">✕</button>
+        </div></td>
+      </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>`}
+      </tbody></table></div>
+    </div>`;
 }
 
 function openDocModal(collection,tipo,existingId){
@@ -2819,6 +2860,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
