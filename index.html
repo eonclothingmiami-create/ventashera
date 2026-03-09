@@ -1007,7 +1007,7 @@ function procesarVentaPOS(){
   };
   state.ventas.push(venta);
  
-  cart.forEach(item=>{
+  cartcart.forEach(item=>{
         state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
         updateCatalogVisibility(item.articuloId, true);
     });
@@ -1317,7 +1317,6 @@ async function saveArticulo(existingId){
     }
 
     const data = {
-      id: existingId || uid(), //
         codigo: refID,
         ref: refID,
         nombre: nombre,
@@ -1353,7 +1352,10 @@ async function saveArticulo(existingId){
         if(existingId){
             const idx = state.articulos.findIndex(a => a.id === existingId);
             state.articulos[idx] = { ...state.articulos[idx], ...data };
-        } else
+        } else {
+            data.id = uid();
+            state.articulos.push(data);
+        }
 
         const qty = parseInt(document.getElementById('m-art-stock0').value)||0;
         if(qty !== 0){
@@ -2632,8 +2634,6 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
-
-
 
 
 
