@@ -758,7 +758,7 @@ function renderPOS(){
             </div>`).join('')}
         </div>
 
-        <div class="pos-cart-footer">
+        <div class="pos-cart-footer" style="max-height:calc(100vh - 520px); overflow-y:auto;">
           <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text2); margin-bottom:10px; cursor:pointer;">
             <input type="checkbox" id="pos-apply-iva" ${posFormState.applyIva ? 'checked' : ''} onchange="toggleIVA()"> 
             Aplicar IVA (19%) e Impuestos
@@ -788,9 +788,9 @@ function renderPOS(){
             </select>
           </div>
 
-          <div id="pos-shipping-fields" style="display:${posFormState.canal !== 'vitrina' ? 'flex' : 'none'}; flex-direction:column; gap:8px; margin-bottom:12px; background:var(--bg3); padding:10px; border-radius:10px; border:1px solid var(--border)">
-             <select class="form-control" id="pos-empresa" onchange="handlePOSEmpresa()"></select>
-             <select class="form-control" id="pos-transportadora" style="display:none">
+          <div id="pos-shipping-fields" style="display:${posFormState.canal !== 'vitrina' ? 'flex' : 'none'}; flex-direction:column; gap:6px; margin-bottom:10px; background:var(--bg3); padding:8px; border-radius:8px; border:1px solid var(--border)">
+             <select class="form-control" id="pos-empresa" onchange="handlePOSEmpresa()" style="padding:6px; font-size:12px;"></select>
+             <select class="form-control" id="pos-transportadora" style="display:none; padding:6px; font-size:12px;">
                 <option value="">— Transportadora —</option>
                 <option value="TCC" ${posFormState.transportadora === 'TCC' ? 'selected' : ''}>TCC</option>
                 <option value="Coordinadora" ${posFormState.transportadora === 'Coordinadora' ? 'selected' : ''}>Coordinadora</option>
@@ -798,13 +798,13 @@ function renderPOS(){
                 <option value="Interrapidisimo" ${posFormState.transportadora === 'Interrapidisimo' ? 'selected' : ''}>Inter Rapidísimo</option>
                 <option value="Servientrega" ${posFormState.transportadora === 'Servientrega' ? 'selected' : ''}>Servientrega</option>
              </select>
-             <input type="text" class="form-control" id="pos-guia" placeholder="Número de Guía" value="${posFormState.guia}">
-             <input type="text" class="form-control" id="pos-ciudad" placeholder="Ciudad / Dirección" value="${posFormState.ciudad}">
-             <div id="pos-liq-info" style="font-size:10px; color:var(--accent); margin-top:4px"></div>
+             <input type="text" class="form-control" id="pos-guia" placeholder="Número de Guía" value="${posFormState.guia}" style="padding:6px; font-size:12px;">
+             <input type="text" class="form-control" id="pos-ciudad" placeholder="Ciudad / Dirección" value="${posFormState.ciudad}" style="padding:6px; font-size:12px;">
+             <div id="pos-liq-info" style="font-size:9px; color:var(--accent); margin-top:2px"></div>
           </div>
 
-          <div class="form-group" style="margin-bottom:10px; display:flex; gap:8px;">
-            <select class="form-control" id="pos-metodo-pago" style="padding:8px 12px" onchange="renderPOS()">
+          <div class="form-group" style="margin-bottom:8px; display:flex; gap:6px;">
+            <select class="form-control" id="pos-metodo-pago" style="padding:6px; font-size:12px;" onchange="renderPOS()">
               <option value="efectivo" ${posFormState.metodo === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>
               <option value="tarjeta" ${posFormState.metodo === 'tarjeta' ? 'selected' : ''}>💳 Tarjeta</option>
               <option value="transferencia" ${posFormState.metodo === 'transferencia' ? 'selected' : ''}>📱 Transferencia</option>
@@ -812,26 +812,24 @@ function renderPOS(){
               <option value="mixto" ${posFormState.metodo === 'mixto' ? 'selected' : ''}>🔄 Mixto</option>
             </select>
             ${posFormState.metodo === 'transferencia' ? `
-            <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
+            <select class="form-control" id="pos-cuenta" style="padding:6px; font-size:12px;">
               ${CUENTAS_BANCARIAS.map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>` : ''}
           </div>
 
-          <div class="form-row" style="gap:8px; margin-bottom:10px">
-            <input type="text" class="form-control" id="pos-cliente" placeholder="Cliente (opcional)" style="padding:8px 12px" value="${posFormState.cliente}">
-            <input type="tel" class="form-control" id="pos-telefono" placeholder="Teléfono (opcional)" style="padding:8px 12px" value="${posFormState.telefono}">
+          <div class="form-row" style="gap:6px; margin-bottom:8px">
+            <input type="text" class="form-control" id="pos-cliente" placeholder="Cliente (opcional)" style="padding:6px; font-size:12px;" value="${posFormState.cliente}">
+            <input type="tel" class="form-control" id="pos-telefono" placeholder="Teléfono (opcional)" style="padding:6px; font-size:12px;" value="${posFormState.telefono}">
           </div>
 
-          <button class="btn btn-primary" style="width:100%" onclick="procesarVentaPOS()" ${cart.length === 0 ? 'disabled' : ''}>💰 Cobrar ${fmt(total)}</button>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-secondary btn-sm" style="flex:1" onclick="previewReceipt()">🧾 Vista Previa</button>
-            <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCashDrawer()">🏧 Abrir Cajón</button>
+          <button class="btn btn-primary" style="width:100%; position:sticky; bottom:0; z-index:10; box-shadow: 0 -2px 10px rgba(0,0,0,0.3);" onclick="procesarVentaPOS()" ${cart.length === 0 ? 'disabled' : ''}>💰 Cobrar ${fmt(total)}</button>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn btn-secondary btn-sm" style="flex:1; font-size:11px; padding:6px;" onclick="previewReceipt()">🧾 Vista</button>
+            <button class="btn btn-secondary btn-sm" style="flex:1; font-size:11px; padding:6px;" onclick="openCashDrawer()">🏧 Cajón</button>
           </div>
         </div>
-      </div>
-    </div>`;
 
-  // Renderizado de componentes secundarios
+// Renderizado de componentes secundarios
   renderPOSProductGrid();
   renderPOSCategoryTabs();
   handlePOSShippingUI();
@@ -1167,8 +1165,35 @@ function renderArticulosList(){
       </tr>`;
     }).join('');
 }
+  function deleteArticulo(id){
+  const art = state.articulos.find(a => a.id === id);
+  if(!art) return;
+  
+  // Verifica si tiene movimientos de inventario
+  const tieneMovimientos = (state.inv_movimientos || []).some(m => m.articuloId === id);
+  
+  if(tieneMovimientos) {
+    if(!confirm(`⚠️ ${art.nombre} tiene movimientos de inventario registrados.\n\n¿Deseas eliminarlo de todos modos?`)) {
+      return;
+    }
+  } else {
+    if(!confirm(`¿Eliminar ${art.nombre} del catálogo?`)) {
+      return;
+    }
+  }
+  
+  // Eliminar artículo
+  state.articulos = state.articulos.filter(a => a.id !== id);
+  
+  // Opcional: eliminar también sus movimientos de inventario
+  state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.articuloId !== id);
+  
+  saveState();
+  renderArticulos();
+  notify('success', '✅', 'Eliminado', `${art.nombre} ha sido eliminado del catálogo.`, {duration: 3000});
+}
 
-// ===================================================================
+  // ===================================================================
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
 
@@ -2451,4 +2476,5 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
