@@ -1166,6 +1166,34 @@ function renderArticulosList(){
         </td>
       </tr>`;
     }).join('');
+  
+  function deleteArticulo(id){
+  const art = state.articulos.find(a => a.id === id);
+  if(!art) return;
+  
+  // Verifica si tiene movimientos de inventario
+  const tieneMovimientos = (state.inv_movimientos || []).some(m => m.articuloId === id);
+  
+  if(tieneMovimientos) {
+    if(!confirm(`⚠️ ${art.nombre} tiene movimientos de inventario registrados.\n\n¿Deseas eliminarlo de todos modos?`)) {
+      return;
+    }
+  } else {
+    if(!confirm(`¿Eliminar ${art.nombre} del catálogo?`)) {
+      return;
+    }
+  }
+  
+  // Eliminar artículo
+  state.articulos = state.articulos.filter(a => a.id !== id);
+  
+  // Opcional: eliminar también sus movimientos de inventario
+  state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.articuloId !== id);
+  
+  saveState();
+  renderArticulos();
+  notify('success', '✅', 'Eliminado', `${art.nombre} ha sido eliminado del catálogo.`, {duration: 3000});
+}
 }
 
 // ===================================================================
@@ -2451,3 +2479,4 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
