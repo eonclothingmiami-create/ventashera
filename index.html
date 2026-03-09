@@ -1384,9 +1384,25 @@ function renderInvAjustes(){
   document.getElementById('inv_ajustes-content').innerHTML=`
     <button class="btn btn-primary" style="margin-bottom:16px" onclick="openAjusteModal()">+ Nuevo Ajuste</button>
     <div class="card"><div class="card-title">AJUSTES DE INVENTARIO</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th></tr></thead><tbody>
-    ${[...(state.inv_ajustes||[])].reverse().map(a=>{const art=(state.articulos||[]).find(x=>x.id===a.articuloId);return`<tr><td>${formatDate(a.fecha)}</td><td>${art?.nombre||'—'}</td><td><span class="badge ${a.tipo==='entrada'?'badge-ok':'badge-pend'}">${a.tipo}</span></td><td style="font-weight:700;color:${a.tipo==='entrada'?'var(--green)':'var(--red)'}">${a.tipo==='entrada'?'+':'−'}${a.cantidad}</td><td>${a.motivo||'—'}</td></tr>`}).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:24px">Sin ajustes</td></tr>'}
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th><th></th></tr></thead><tbody>
+    ${[...(state.inv_ajustes||[])].reverse().map(a=>{const art=(state.articulos||[]).find(x=>x.id===a.articuloId);return`<tr><td>${formatDate(a.fecha)}</td><td>${art?.nombre||'—'}</td><td><span class="badge ${a.tipo==='entrada'?'badge-ok':'badge-pend'}">${a.tipo}</span></td><td style="font-weight:700;color:${a.tipo==='entrada'?'var(--green)':'var(--red)'}">${a.tipo==='entrada'?'+':'−'}${a.cantidad}</td><td>${a.motivo||'—'}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarAjuste('${a.id}')">✕</button></td></tr>`}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin ajustes</td></tr>'}
     </tbody></table></div></div>`;
+}
+
+function eliminarAjuste(id) {
+  if(!confirm('¿Eliminar este ajuste? El stock de la prenda se recalculará automáticamente.')) return;
+  const a = state.inv_ajustes.find(x => x.id === id);
+  if(!a) return;
+
+  // Buscar el movimiento interno y borrarlo para restaurar el stock
+  const tipoMov = 'ajuste_' + a.tipo;
+  const movIndex = state.inv_movimientos.findIndex(m => m.articuloId === a.articuloId && m.bodegaId === a.bodegaId && m.tipo === tipoMov && m.nota === a.motivo);
+  if(movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
+
+  // Borrar el registro visual
+  state.inv_ajustes = state.inv_ajustes.filter(x => x.id !== id);
+  saveState(); renderInvAjustes();
+  notify('success', '🗑️', 'Ajuste eliminado', 'El stock ha vuelto a la normalidad.');
 }
 
 function openAjusteModal(){
@@ -1421,9 +1437,28 @@ function renderInvTraslados(){
   document.getElementById('inv_traslados-content').innerHTML=`
     <button class="btn btn-primary" style="margin-bottom:16px" onclick="openTrasladoModal()">+ Nuevo Traslado</button>
     <div class="card"><div class="card-title">TRASLADOS</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Origen</th><th>Destino</th><th>Cantidad</th><th>Nota</th></tr></thead><tbody>
-    ${[...(state.inv_traslados||[])].reverse().map(t=>{const art=(state.articulos||[]).find(a=>a.id===t.articuloId);const o=(state.bodegas||[]).find(b=>b.id===t.origenId);const d=(state.bodegas||[]).find(b=>b.id===t.destinoId);return`<tr><td>${formatDate(t.fecha)}</td><td>${art?.nombre||'—'}</td><td>${o?.name||'—'}</td><td>${d?.name||'—'}</td><td style="font-weight:700">${t.cantidad}</td><td>${t.nota||'—'}</td></tr>`}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin traslados</td></tr>'}
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Origen</th><th>Destino</th><th>Cantidad</th><th>Nota</th><th></th></tr></thead><tbody>
+    ${[...(state.inv_traslados||[])].reverse().map(t=>{const art=(state.articulos||[]).find(a=>a.id===t.articuloId);const o=(state.bodegas||[]).find(b=>b.id===t.origenId);const d=(state.bodegas||[]).find(b=>b.id===t.destinoId);return`<tr><td>${formatDate(t.fecha)}</td><td>${art?.nombre||'—'}</td><td>${o?.name||'—'}</td><td>${d?.name||'—'}</td><td style="font-weight:700">${t.cantidad}</td><td>${t.nota||'—'}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarTraslado('${t.id}')">✕</button></td></tr>`}).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Sin traslados</td></tr>'}
     </tbody></table></div></div>`;
+}
+
+function eliminarTraslado(id) {
+  if(!confirm('¿Eliminar este traslado? Las prendas volverán automáticamente a su bodega de origen.')) return;
+  const t = state.inv_traslados.find(x => x.id === id);
+  if(!t) return;
+
+  // Revertir la salida de la bodega origen
+  const idxSalida = state.inv_movimientos.findIndex(m => m.articuloId === t.articuloId && m.bodegaId === t.origenId && m.tipo === 'traslado_salida' && m.nota === t.nota);
+  if(idxSalida !== -1) state.inv_movimientos.splice(idxSalida, 1);
+
+  // Revertir la entrada a la bodega destino
+  const idxEntrada = state.inv_movimientos.findIndex(m => m.articuloId === t.articuloId && m.bodegaId === t.destinoId && m.tipo === 'traslado_entrada' && m.nota === t.nota);
+  if(idxEntrada !== -1) state.inv_movimientos.splice(idxEntrada, 1);
+
+  // Borrar registro visual
+  state.inv_traslados = state.inv_traslados.filter(x => x.id !== id);
+  saveState(); renderInvTraslados();
+  notify('success', '🗑️', 'Traslado revertido', 'Inventario actualizado.');
 }
 
 function openTrasladoModal(){
@@ -2562,6 +2597,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
