@@ -1011,7 +1011,6 @@ function procesarVentaPOS(){
         state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
         updateCatalogVisibility(item.articuloId, true);
     });
-  });
 
   if(liquidado) {
     const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
@@ -2635,6 +2634,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
