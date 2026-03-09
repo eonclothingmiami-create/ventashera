@@ -1167,24 +1167,6 @@ function renderArticulosList(){
       </tr>`;
     }).join('');
  
-  async function deleteArticulo(id) {
-  // 1. Pedir confirmación para evitar borrados accidentales
-  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará del ERP y del Catálogo Web.')) return;
-
-  const art = (state.articulos || []).find(a => a.id === id);
-  if (!art) return;
-
-  showLoadingOverlay('connecting');
-
-  try {
-    // 2. Eliminar la prenda del Catálogo Web (Firebase Firestore) usando su Referencia
-    if (art.codigo) {
-      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
-      if (!queryWeb.empty) {
-        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
-      }
-    }
-
     // 3. Eliminar la prenda del estado local del ERP
     state.articulos = state.articulos.filter(a => a.id !== id);
 
@@ -2485,5 +2467,6 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
