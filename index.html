@@ -136,7 +136,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .pos-cart-items{flex:1;overflow-y:auto;padding:12px}
 .pos-cart-items::-webkit-scrollbar{width:3px}
 .pos-cart-items::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.pos-cart-footer{border-top:1px solid var(--border);padding:16px;background:var(--bg2)}
+.pos-cart-footer{border-top:1px solid var(--border);padding:16px;background:var(--bg2);overflow-y:auto;max-height:50vh}
+.pos-cart-footer::-webkit-scrollbar{width:3px}
+.pos-cart-footer::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .pos-item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;margin-bottom:6px;background:rgba(255,255,255,.03);border:1px solid transparent;transition:all .15s}
 .pos-item:hover{border-color:var(--border)}
 .pos-item-qty{display:flex;align-items:center;gap:4px}
@@ -2483,4 +2485,5 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
