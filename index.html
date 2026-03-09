@@ -1006,9 +1006,11 @@ function procesarVentaPOS(){
     metodoPago: cuentaStr
   };
   state.ventas.push(venta);
-
-  cart.forEach(item=>{
-    state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
+ 
+  cartcart.forEach(item=>{
+        state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
+        updateCatalogVisibility(item.articuloId, true);
+    });
   });
 
   if(liquidado) {
@@ -1228,6 +1230,12 @@ function openArticuloModal(id){
                 <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta || 0}"></div>
                 <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva ?? 19}"></div>
             </div>
+            <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
+  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
+    <input type="checkbox" id="art-mostrar-web" style="width: 18px; height: 18px;"> 
+    🌐 Mostrar esta prenda en el Catálogo Web
+  </label>
+</div>
 
             <div class="form-row">
                 <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas || []).map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
@@ -1236,6 +1244,7 @@ function openArticuloModal(id){
         </div>
         <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveArticulo('${id || ''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
     `, true);
+  setTimeout(() => { document.getElementById('art-mostrar-web').checked = art ? (art.mostrarEnWeb !== false) : true; }, 10);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
 }
@@ -1328,6 +1337,7 @@ async function saveArticulo(existingId){
         price: parseFloat(document.getElementById('m-art-pv').value)||0,
         iva: parseFloat(document.getElementById('m-art-iva').value)||19,
         stockMinimo: 5, activo: true,
+      mostrarEnWeb: document.getElementById('art-mostrar-web').checked,
         lastUpdate: firebase.firestore.Timestamp.now()
     };
 
@@ -1356,7 +1366,10 @@ async function saveArticulo(existingId){
                 fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
             });
         }
-        saveState(); closeModal(); renderArticulos();
+        saveState();
+  updateCatalogVisibility(existingId || data.id);
+  closeModal();
+  renderArticulos();
         showLoadingOverlay('hide');
         notify('success','🌐','Sincronizado', `${refID} actualizado en Web y ERP.`);
     } catch(e) {
@@ -2591,12 +2604,39 @@ function printQR(nombre) {
     console.log("Sonido no soportado");
   }
 }
+  async function updateCatalogVisibility(articuloId, fromSale = false) {
+  const art = (state.articulos || []).find(a => a.id === articuloId);
+  if (!art || !art.codigo) return;
+
+  const stock = getArticuloStock(articuloId);
+  
+  // 1. Validar si se quedó sin stock después de una venta en el POS
+  if (fromSale && stock <= 0) {
+    alert(`⚠️ STOCK AGOTADO: La prenda ${art.nombre} (Ref: ${art.codigo}) llegó a 0. Se ha ocultado automáticamente de tu catálogo web para evitar ventas sin inventario.`);
+    art.mostrarEnWeb = false;
+    saveState();
+  }
+
+  // 2. Ejecutar la acción en Firebase (Catálogo Web)
+  try {
+    const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
+    
+    // Si el usuario quitó el "chulo" (checkbox) o el stock es 0, lo eliminamos de la web
+    if (art.mostrarEnWeb === false || stock <= 0) {
+      if (!queryWeb.empty) {
+        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
+      }
+    } 
+    // Nota: Si el checkbox está activo y hay stock > 0, asumo que tu código actual ya lo sube normalmente.
+  } catch (error) {
+    console.error("Error sincronizando visibilidad:", error);
+  }
+}
 </script>
 </body>
 </html>
-</script>
-</body>
-</html>
+
+
 
 
 
