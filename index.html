@@ -1178,7 +1178,7 @@ function renderArticulosList(){
 
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
-    _tempGaleria = art && art.galeria ? [...art.galeria] : [];
+    _tempGaleria = art ? [...(art.images || art.galeria || [])] : [];
     _portadaIndex = 0; 
     
     openModal(`
@@ -1349,9 +1349,10 @@ async function saveArticulo(existingId){
             await dbWeb.collection('products').add({ ...data, createdAt: firebase.firestore.Timestamp.now() });
         }
 
-        if(existingId){
-            const idx = state.articulos.findIndex(a => a.id === existingId);
-            state.articulos[idx] = { ...state.articulos[idx], ...data };
+       if(existingId){
+    data.id = existingId;
+    const idx = state.articulos.findIndex(a => a.id === existingId);
+    state.articulos[idx] = { ...state.articulos[idx], ...data };
         } else {
             data.id = uid();
             state.articulos.push(data);
@@ -2634,6 +2635,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
