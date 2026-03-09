@@ -1979,7 +1979,53 @@ function renderHistorial(){
     </div>`;
 }
 
-function eliminarVenta(id){if(!confirm('¿Eliminar?'))return;state.ventas=state.ventas.filter(v=>v.id!==id);saveState();renderHistorial();renderDashboard()}
+function eliminarVenta(id) {
+  // 1. Confirmación de seguridad
+  if (!confirm('¿Estás seguro de eliminar esta venta? Esto devolverá la prenda al inventario, restará el dinero de la caja y borrará la factura para mantener tu ERP cuadrado.')) return;
+
+  const venta = (state.ventas || []).find(v => v.id === id);
+  if (!venta) return;
+
+  // En tu sistema, la variable 'desc' guarda el número de factura (ej: POS-00001)
+  const numFactura = venta.desc; 
+
+  // 2. Revertir el inventario: Eliminar los movimientos de salida de esta factura
+  if (numFactura) {
+    state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.referencia !== numFactura);
+  }
+
+  // 3. Revertir la caja: Si la venta ya había entrado a caja, sacamos la plata
+  if (venta.liquidado && numFactura) {
+    const movTes = (state.tes_movimientos || []).find(m => m.concepto.includes(numFactura));
+    if (movTes) {
+      const caja = (state.cajas || []).find(c => c.id === movTes.cajaId);
+      if (caja) caja.saldo -= movTes.valor; // Restamos la plata
+      state.tes_movimientos = state.tes_movimientos.filter(m => m.id !== movTes.id); // Borramos el registro
+    }
+  }
+
+  // 4. Borrar el documento físico del módulo de Facturas
+  if (numFactura) {
+    state.facturas = (state.facturas || []).filter(f => f.numero !== numFactura);
+  }
+
+  // 5. Restar la XP ganada en el juego (para que sea justo)
+  const xpToDeduct = calcXP(venta.canal, venta.valor);
+  if (state.game && state.game.xp >= xpToDeduct) {
+     state.game.xp -= xpToDeduct;
+  }
+
+  // 6. Finalmente, borrar la venta del historial
+  state.ventas = state.ventas.filter(v => v.id !== id);
+
+  // Guardar y actualizar la pantalla
+  saveState();
+  renderHistorial();
+  renderDashboard();
+  updateNavBadges();
+  
+  notify('success', '🗑️', 'Venta Anulada', 'Inventario, caja y facturas actualizados correctamente.');
+}
 
 function exportCSV(){
   const ventas=(state.ventas||[]).filter(v=>!v.archived);
@@ -2485,5 +2531,6 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
