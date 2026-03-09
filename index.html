@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VentasHera — ERP Moda & Catálogo Sync</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.coFm/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
@@ -1166,44 +1166,6 @@ function renderArticulosList(){
         </td>
       </tr>`;
     }).join('');
-  
-  function deleteArticulo(id){
-  const art = state.articulos.find(a => a.id === id);
-  if(!art) return;
-  
-  // Verifica si tiene movimientos de inventario
-  const tieneMovimientos = (state.inv_movimientos || []).some(m => m.articuloId === id);
-  
-  if(tieneMovimientos) {
-    if(!confirm(`⚠️ ${art.nombre} tiene movimientos de inventario registrados.\n\n¿Deseas eliminarlo de todos modos?`)) {
-      return;
-    }
-  } else {
-    if(!confirm(`¿Eliminar ${art.nombre} del catálogo?`)) {
-      return;
-    }
-  }
-  
- // Eliminar artículo del ERP local
-  state.articulos = state.articulos.filter(a => a.id !== id);
-  
-  // Opcional: eliminar también sus movimientos de inventario
-  state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.articuloId !== id);
-  
-  // Eliminar del catálogo web (Firebase)
-  try {
-    dbWeb.collection('products').where('ref', '==', art.codigo).get().then(snapshot => {
-      snapshot.forEach(doc => {
-        doc.ref.delete();
-      });
-    });
-  } catch(e) {
-    console.log('No se pudo eliminar del catálogo web:', e);
-  }
-  
-  saveState();
-  renderArticulos();
-  notify('success', '✅', 'Eliminado', `${art.nombre} ha sido eliminado del catálogo.`, {duration: 3000});
 }
 
 // ===================================================================
@@ -2174,20 +2136,8 @@ function addBodega(){
   state.bodegas.push({id:uid(),name:nombre,ubicacion:'Adicional'});
   saveState();renderConfig();
 }
-function resetGame(){
-  if(!confirm('¿Reiniciar XP e insignias?'))return;
-  state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};
-  saveState();
-  notify('success','🔄','Reset','Juego reiniciado.',{duration:3000});
-}
 
-// ===== KEYBOARD SHORTCUTS =====
-document.addEventListener('keydown',e=>{
-  if(e.ctrlKey||e.metaKey){
-    if(e.key==='k'){e.preventDefault();showPage('pos');setTimeout(()=>document.getElementById('pos-search')?.focus(),100)}
-  }
-  if(e.key==='Escape'){closeModal();closeScannerOverlay();closeCelebration()}
-});
+function resetGame(){if(!confirm('¿Reiniciar XP e insignias?'))return;state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};saveState();notify('success','🔄','Reset','Juego reiniciado.',{duration:3000})}
 
 // ===== KEYBOARD SHORTCUTS =====
 document.addEventListener('keydown',e=>{
@@ -2199,7 +2149,51 @@ document.addEventListener('keydown',e=>{
 
 // ===== INIT =====
 window.addEventListener('load',()=>{loadState()});
+  // ==========================================
+// ===== MÓDULO DE TALENTO HUMANO HERA =====
+// ==========================================
 
+function openEmpleadoModal(id = null) {
+    const emp = id ? state.empleados.find(e => e.id === id) : null;
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">👤 FICHA DE COLABORADOR</div>
+        <div style="text-align:left; max-height: 70vh; overflow-y: auto;">
+            <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre || ''}"></div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula || ''}"></div>
+                <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono || ''}"></div>
+            </div>
+            <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion || ''}"></div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo || ''}"></div>
+                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
+            </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id || ''}')">💾 GUARDAR DATOS</button>
+    `, true);
+}
+
+function saveEmpleado(id) {
+    const data = {
+        nombre: document.getElementById('emp-nombre').value.trim(),
+        cedula: document.getElementById('emp-cedula').value.trim(),
+        telefono: document.getElementById('emp-tel').value.trim(),
+        direccion: document.getElementById('emp-dir').value.trim(),
+        cargo: document.getElementById('emp-cargo').value.trim(),
+        salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
+    };
+    if (!data.nombre || !data.cedula) return notify('warning','⚠️','Faltan datos','Nombre y Cédula son obligatorios');
+
+    if (id && id !== '' && id !== 'null') {
+        const idx = state.empleados.findIndex(e => e.id === id);
+        state.empleados[idx] = { ...state.empleados[idx], ...data };
+    } else {
+        data.id = uid();
+        state.empleados.push(data);
+    }
+    saveState(); closeModal(); renderNomina();
+    notify('success','✅','Éxito','Datos de empleado guardados.');
+}
 // ==========================================
 // ===== MÓDULO DE NÓMINA PROFESIONAL =====
 // ==========================================
@@ -2296,6 +2290,7 @@ function eliminarEmpleado(id, nombre) {
   }
 }
 
+// === MOTOR DE CÁLCULO COLOMBIA 2026 ===
 function abrirAsistentePago(id) {
   const emp = state.empleados.find(e => e.id === id);
   openModal(`
@@ -2338,10 +2333,11 @@ function calcularNominaFinal(id) {
 
   const neto = (sueldoReal + pagoIncap + auxTrans + extras) - (saludE + pensionE);
 
-  if(!state.nomina_pagos) state.nomina_pagos = [];
+  // Guardar registro
   state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto, totalProvisiones: prima+cesantias+intCes+vaca });
   saveState(); closeModal();
 
+  // Aquí llamamos a tu función de imprimir ticket
   const facturaNomina = {
       numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
       fecha: today(),
@@ -2358,15 +2354,48 @@ function calcularNominaFinal(id) {
   printReceipt(facturaNomina);
   notify('success', '💰', 'Nómina Procesada', `Pago de ${fmt(neto)} para ${emp.nombre}`);
 }
+  // === 1. FUNCIÓN PARA ELIMINAR (DESPIDOS) ===
+function eliminarEmpleado(id, nombre) {
+    if (confirm(`¿Estás seguro de retirar a ${nombre} de la empresa?`)) {
+        state.empleados = state.empleados.filter(e => e.id !== id);
+        saveState();
+        renderNomina();
+        notify('warning', '✕', 'Baja', `${nombre} ha sido retirado del sistema.`);
+    }
+}
 
-// ==========================================
+// === 2. ASISTENTE DE LIQUIDACIÓN (NOVEDADES) ===
+function abrirAsistentePago(id) {
+    const emp = state.empleados.find(e => e.id === id);
+    openModal(`
+        <div class="modal-title" style="font-family:'Syne';">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
+        <div style="text-align:left; color:var(--text);">
+            <div class="form-group">
+                <label class="form-label">Días Trabajados (Mes completo: 30)</label>
+                <input type="number" class="form-control" id="liq-dias" value="30">
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
+                <div class="form-group"><label class="form-label">Faltas (No pagas)</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bonificaciones / Extras ($)</label>
+                <input type="number" class="form-control" id="liq-extras" value="0">
+            </div>
+            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PDF</button>
+        </div>
+    `, true);
+}
+  // ==========================================
 // ===== GENERADOR DE QR - HERA ERP ========
 // ==========================================
 
 function generateProductQR(id) {
+    // Busca la prenda en tu lista de artículos por su ID único
     const art = state.articulos.find(a => a.id === id);
     if (!art) return;
 
+    // Generamos el link hacia tu catálogo web de Eon Clothing
     const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
 
     openModal(`
@@ -2383,6 +2412,7 @@ function generateProductQR(id) {
         </div>
     `);
 
+    // El sistema espera 100 milisegundos a que el modal abra para crear el QR
     setTimeout(() => {
         new QRCode(document.getElementById("qrcode-container"), {
             text: urlCatalogo,
@@ -2403,7 +2433,8 @@ function printQR(nombre) {
     }
     const qrImg = qrCanvas.toDataURL("image/png");
     
-    const pWin = window.open('', '', 'width:450,height:500');
+    // Abre una ventana limpia para enviar a la impresora térmica
+    const pWin = window.open('', '', 'width=450,height=500');
     pWin.document.write(`
         <html>
         <body style="text-align:center; font-family:sans-serif; padding:20px; color:#0a0f1e;">
@@ -2413,12 +2444,10 @@ function printQR(nombre) {
             <h2 style="margin-top:15px; font-size:24px;">${nombre.toUpperCase()}</h2>
             <p style="font-size:12px; color:#666;">Escanea para ver detalles en catálogo</p>
         </body>
-        </html>
+        </html>`);
     pWin.document.close();
     setTimeout(() => { pWin.print(); pWin.close(); }, 500);
 }
 </script>
 </body>
 </html>
-
-
