@@ -2185,53 +2185,17 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeModal();closeScannerOverlay();closeCelebration()}
 });
 
+// ===== KEYBOARD SHORTCUTS =====
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey){
+    if(e.key==='k'){e.preventDefault();showPage('pos');setTimeout(()=>document.getElementById('pos-search')?.focus(),100)}
+  }
+  if(e.key==='Escape'){closeModal();closeScannerOverlay();closeCelebration()}
+});
+
 // ===== INIT =====
 window.addEventListener('load',()=>{loadState()});
-  // ==========================================
-// ===== MÓDULO DE TALENTO HUMANO HERA =====
-// ==========================================
 
-function openEmpleadoModal(id = null) {
-    const emp = id ? state.empleados.find(e => e.id === id) : null;
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">👤 FICHA DE COLABORADOR</div>
-        <div style="text-align:left; max-height: 70vh; overflow-y: auto;">
-            <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre || ''}"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula || ''}"></div>
-                <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono || ''}"></div>
-            </div>
-            <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion || ''}"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo || ''}"></div>
-                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
-            </div>
-        </div>
-        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id || ''}')">💾 GUARDAR DATOS</button>
-    `, true);
-}
-
-function saveEmpleado(id) {
-    const data = {
-        nombre: document.getElementById('emp-nombre').value.trim(),
-        cedula: document.getElementById('emp-cedula').value.trim(),
-        telefono: document.getElementById('emp-tel').value.trim(),
-        direccion: document.getElementById('emp-dir').value.trim(),
-        cargo: document.getElementById('emp-cargo').value.trim(),
-        salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
-    };
-    if (!data.nombre || !data.cedula) return notify('warning','⚠️','Faltan datos','Nombre y Cédula son obligatorios');
-
-    if (id && id !== '' && id !== 'null') {
-        const idx = state.empleados.findIndex(e => e.id === id);
-        state.empleados[idx] = { ...state.empleados[idx], ...data };
-    } else {
-        data.id = uid();
-        state.empleados.push(data);
-    }
-    saveState(); closeModal(); renderNomina();
-    notify('success','✅','Éxito','Datos de empleado guardados.');
-}
 // ==========================================
 // ===== MÓDULO DE NÓMINA PROFESIONAL =====
 // ==========================================
@@ -2328,7 +2292,6 @@ function eliminarEmpleado(id, nombre) {
   }
 }
 
-// === MOTOR DE CÁLCULO COLOMBIA 2026 ===
 function abrirAsistentePago(id) {
   const emp = state.empleados.find(e => e.id === id);
   openModal(`
@@ -2371,11 +2334,10 @@ function calcularNominaFinal(id) {
 
   const neto = (sueldoReal + pagoIncap + auxTrans + extras) - (saludE + pensionE);
 
-  // Guardar registro
+  if(!state.nomina_pagos) state.nomina_pagos = [];
   state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto, totalProvisiones: prima+cesantias+intCes+vaca });
   saveState(); closeModal();
 
-  // Aquí llamamos a tu función de imprimir ticket
   const facturaNomina = {
       numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
       fecha: today(),
@@ -2392,48 +2354,15 @@ function calcularNominaFinal(id) {
   printReceipt(facturaNomina);
   notify('success', '💰', 'Nómina Procesada', `Pago de ${fmt(neto)} para ${emp.nombre}`);
 }
-  // === 1. FUNCIÓN PARA ELIMINAR (DESPIDOS) ===
-function eliminarEmpleado(id, nombre) {
-    if (confirm(`¿Estás seguro de retirar a ${nombre} de la empresa?`)) {
-        state.empleados = state.empleados.filter(e => e.id !== id);
-        saveState();
-        renderNomina();
-        notify('warning', '✕', 'Baja', `${nombre} ha sido retirado del sistema.`);
-    }
-}
 
-// === 2. ASISTENTE DE LIQUIDACIÓN (NOVEDADES) ===
-function abrirAsistentePago(id) {
-    const emp = state.empleados.find(e => e.id === id);
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
-        <div style="text-align:left; color:var(--text);">
-            <div class="form-group">
-                <label class="form-label">Días Trabajados (Mes completo: 30)</label>
-                <input type="number" class="form-control" id="liq-dias" value="30">
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
-                <div class="form-group"><label class="form-label">Faltas (No pagas)</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Bonificaciones / Extras ($)</label>
-                <input type="number" class="form-control" id="liq-extras" value="0">
-            </div>
-            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PDF</button>
-        </div>
-    `, true);
-}
-  // ==========================================
+// ==========================================
 // ===== GENERADOR DE QR - HERA ERP ========
 // ==========================================
 
 function generateProductQR(id) {
-    // Busca la prenda en tu lista de artículos por su ID único
     const art = state.articulos.find(a => a.id === id);
     if (!art) return;
 
-    // Generamos el link hacia tu catálogo web de Eon Clothing
     const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
 
     openModal(`
@@ -2450,7 +2379,6 @@ function generateProductQR(id) {
         </div>
     `);
 
-    // El sistema espera 100 milisegundos a que el modal abra para crear el QR
     setTimeout(() => {
         new QRCode(document.getElementById("qrcode-container"), {
             text: urlCatalogo,
@@ -2471,8 +2399,7 @@ function printQR(nombre) {
     }
     const qrImg = qrCanvas.toDataURL("image/png");
     
-    // Abre una ventana limpia para enviar a la impresora térmica
-    const pWin = window.open('', '', 'width=450,height=500');
+    const pWin = window.open('', '', 'width:450,height:500');
     pWin.document.write(`
         <html>
         <body style="text-align:center; font-family:sans-serif; padding:20px; color:#0a0f1e;">
@@ -2489,6 +2416,3 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
-
-
-
