@@ -490,6 +490,16 @@ function loadState(){
 
 function saveState(){stateRef.set(state).catch(err=>{notify('danger','⚠️','Error','No se pudo guardar.',{duration:5000})})}
 
+// Guarda un registro individual sin sobreescribir todo el estado
+function saveRecord(collection, id, data) {
+  return stateRef.child(collection).child(id).set(data)
+    .catch(err => notify('danger','⚠️','Error',`No se pudo guardar ${collection}: ${err.message}`,{duration:5000}));
+}
+function deleteRecord(collection, id) {
+  return stateRef.child(collection).child(id).remove()
+    .catch(err => console.error('deleteRecord error:', err));
+}
+
 function checkMonthReset(){const now=new Date();const ym=now.getFullYear()+'-'+now.getMonth();if(state.currentMonth&&state.currentMonth!==ym){state.ventas=state.ventas.map(v=>({...v,archived:true}));notify('milestone','🌙','¡Nuevo Mes!','Ventas archivadas.',{duration:6000})}state.currentMonth=ym}
 
 function renderAll(){
@@ -996,28 +1006,33 @@ function procesarVentaPOS(){
     telefono: posFormState.telefono, items:cart.map(c=>({...c})), 
     subtotal, iva, total, metodo: cuentaStr, estado:liquidado?'pagada':'pendiente', tipo:'pos'
   };
+  // Guardar individualmente — seguro para múltiples vendedoras simultáneas
   state.facturas.push(factura);
+  saveRecord('facturas', factura.id, factura);
 
-  const venta={
-    id:uid(), canal, valor:total, fecha:fechaActual, fechaLiquidacion, 
-    guia: posFormState.guia, empresa: posFormState.empresa, transportadora: posFormState.transportadora, 
-    categoria:catGlobal, desc:numFactura, cliente: posFormState.cliente, 
-    telefono: posFormState.telefono, ciudad: posFormState.ciudad, liquidado, archived:false,
-    metodoPago: cuentaStr
-  };
   state.ventas.push(venta);
- 
-  cart.forEach(item=>{
-        state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
-        updateCatalogVisibility(item.articuloId, true);
-    });
+  saveRecord('ventas', venta.id, venta);
+
+  cart.forEach(item => {
+    const mov = {id:uid(), articuloId:item.articuloId, bodegaId:'bodega_main',
+      cantidad:-item.qty, tipo:'venta', fecha:fechaActual,
+      referencia:numFactura, nota:`Talla: ${item.talla}`};
+    state.inv_movimientos.push(mov);
+    saveRecord('inv_movimientos', mov.id, mov);
+    updateCatalogVisibility(item.articuloId, true);
+  });
 
   if(liquidado) {
     const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
     if(cajaAbierta){
       cajaAbierta.saldo+=total;
-      state.tes_movimientos.push({id:uid(),cajaId:cajaAbierta.id,tipo:'ingreso',valor:total,concepto:'Venta POS '+numFactura,fecha:fechaActual,metodo: cuentaStr});
+      const tesMov = {id:uid(), cajaId:cajaAbierta.id, tipo:'ingreso', valor:total,
+        concepto:'Venta POS '+numFactura, fecha:fechaActual, metodo:cuentaStr};
+      state.tes_movimientos.push(tesMov);
+      saveRecord('tes_movimientos', tesMov.id, tesMov);
+      saveRecord('cajas', cajaAbierta.id, cajaAbierta);
     }
+  }
   }
 
   const xpGained=calcXP(canal,total);
@@ -2730,6 +2745,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
