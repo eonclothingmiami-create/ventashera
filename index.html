@@ -1566,10 +1566,18 @@ function changeDocStatus(collection,id,newStatus){
   notify('success','✅','Estado actualizado',doc.numero+' → '+newStatus,{duration:3000});
 }
 
-function deleteDoc(collection,id){
-  if(!confirm('¿Eliminar este documento?'))return;
-  state[collection]=(state[collection]||[]).filter(d=>d.id!==id);saveState();
-  renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
+function deleteDoc(collection, id) {
+  // --- CANDADO DE SEGURIDAD PARA FACTURAS ---
+  if (collection === 'facturas') {
+    alert('⚠️ ¡Alto ahí! Para mantener tu inventario y caja perfectamente cuadrados, las facturas solo se pueden anular desde la pestaña: SISTEMA > Historial.');
+    return; // Detiene la acción inmediatamente
+  }
+  // ------------------------------------------
+
+  if (!confirm('¿Eliminar este documento?')) return;
+  state[collection] = (state[collection] || []).filter(d => d.id !== id);
+  saveState();
+  renderPage(document.querySelector('.page.active')?.id.replace('page-', ''));
 }
 
 function printDoc(collection,id){
@@ -2531,6 +2539,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
