@@ -1166,6 +1166,40 @@ function renderArticulosList(){
         </td>
       </tr>`;
     }).join('');
+ 
+  async function deleteArticulo(id) {
+  // 1. Pedir confirmación para evitar borrados accidentales
+  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará del ERP y del Catálogo Web.')) return;
+
+  const art = (state.articulos || []).find(a => a.id === id);
+  if (!art) return;
+
+  showLoadingOverlay('connecting');
+
+  try {
+    // 2. Eliminar la prenda del Catálogo Web (Firebase Firestore) usando su Referencia
+    if (art.codigo) {
+      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
+      if (!queryWeb.empty) {
+        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
+      }
+    }
+
+    // 3. Eliminar la prenda del estado local del ERP
+    state.articulos = state.articulos.filter(a => a.id !== id);
+
+    // 4. Guardar los cambios en la base de datos principal del ERP
+    saveState();
+
+    // 5. Volver a pintar la tabla para que desaparezca visualmente
+    renderArticulos();
+    
+    showLoadingOverlay('hide');
+    notify('success', '🗑️', 'Prenda eliminada', `${art.nombre} eliminada del sistema.`);
+  } catch (error) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error al eliminar', error.message);
+  }
 }
 
 // ===================================================================
@@ -2451,4 +2485,5 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
