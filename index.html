@@ -1184,16 +1184,26 @@ function renderArticulosList(){
     }
   }
   
-  // Eliminar artículo
+ // Eliminar artículo del ERP local
   state.articulos = state.articulos.filter(a => a.id !== id);
   
   // Opcional: eliminar también sus movimientos de inventario
   state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.articuloId !== id);
   
+  // Eliminar del catálogo web (Firebase)
+  try {
+    dbWeb.collection('products').where('ref', '==', art.codigo).get().then(snapshot => {
+      snapshot.forEach(doc => {
+        doc.ref.delete();
+      });
+    });
+  } catch(e) {
+    console.log('No se pudo eliminar del catálogo web:', e);
+  }
+  
   saveState();
   renderArticulos();
   notify('success', '✅', 'Eliminado', `${art.nombre} ha sido eliminado del catálogo.`, {duration: 3000});
-}
 }
 
 // ===================================================================
@@ -2479,4 +2489,5 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
