@@ -2448,6 +2448,39 @@ function printQR(nombre) {
     pWin.document.close();
     setTimeout(() => { pWin.print(); pWin.close(); }, 500);
 }
+  async function deleteArticulo(id) {
+  // Pedir confirmación por seguridad
+  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará de tu ERP y del catálogo web.')) return;
+
+  const art = (state.articulos || []).find(a => a.id === id);
+  if (!art) return;
+
+  showLoadingOverlay('connecting');
+
+  try {
+    // 1. Eliminar del catálogo web (Firebase Firestore)
+    if (art.codigo) {
+      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
+      if (!queryWeb.empty) {
+        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
+      }
+    }
+
+    // 2. Eliminar localmente del ERP
+    state.articulos = state.articulos.filter(a => a.id !== id);
+    saveState();
+    
+    // 3. Refrescar la vista
+    renderArticulos();
+
+    showLoadingOverlay('hide');
+    notify('success', '🗑️', 'Prenda eliminada', `${art.nombre} fue eliminada exitosamente.`);
+  } catch (error) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error al eliminar', error.message);
+  }
+}
 </script>
 </body>
 </html>
+
