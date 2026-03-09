@@ -2623,7 +2623,7 @@ function printQR(nombre) {
     const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
     
     // Si el usuario quitó el "chulo" (checkbox) o el stock es 0, lo eliminamos de la web
-    if (art.mostrarEnWeb === false || stock <= 0) {
+   if (art.mostrarEnWeb === false || (stock <= 0 && !art.importadoDeCatalogo)) {
       if (!queryWeb.empty) {
         await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
       }
@@ -2720,6 +2720,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
