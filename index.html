@@ -1143,53 +1143,29 @@ function renderArticulos(){
 }
 
 function renderArticulosList(){
-  const search=(document.getElementById('art-search')?.value||'').toLowerCase();
-  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
-  document.getElementById('art-tbody').innerHTML=items.map(a=>{
-    const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
-    const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
-   return `<tr>
-        <td style="width:50px">${thumb}</td>
-        <td>${a.codigo || '—'}</td>
-        <td style="font-weight:700">${a.nombre}</td>
-        <td><span class="badge badge-info">${a.categoria || '—'}</span></td>
-        <td>${fmt(a.precioCompra)}</td>
-        <td style="color:var(--accent); font-weight:700">${fmt(a.precioVenta)}</td>
-        <td style="color:${low ? 'var(--red)' : 'var(--green)'}; font-weight:700">${stock}</td>
-        <td>${a.stockMinimo}</td>
-        <td>
-          <div class="btn-group">
-            <button class="btn btn-xs btn-secondary" onclick="generateProductQR('${a.id}')" title="Generar QR">📱 QR</button>
-            <button class="btn btn-xs btn-secondary" onclick="openArticuloModal('${a.id}')" title="Editar">✏️</button>
-            <button class="btn btn-xs btn-danger" onclick="deleteArticulo('${a.id}')" title="Eliminar">✕</button>
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
-}
-
-async function deleteArticulo(id) {
-  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará del ERP y del Catálogo Web.')) return;
-  const art = (state.articulos || []).find(a => a.id === id);
-  if (!art) return;
-  
-  showLoadingOverlay('connecting');
-  try {
-    if (art.codigo) {
-      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
-      if (!queryWeb.empty) {
-        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
-      }
-    }
-    state.articulos = state.articulos.filter(a => a.id !== id);
-    saveState();
-    renderArticulos();
-    showLoadingOverlay('hide');
-    notify('success', '🗑️', 'Prenda eliminada', `${art.nombre} eliminada del sistema.`);
-  } catch (error) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error al eliminar', error.message);
-  }
+  const search=(document.getElementById('art-search')?.value||'').toLowerCase();
+  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
+  document.getElementById('art-tbody').innerHTML=items.map(a=>{
+    const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
+    const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
+   return `<tr>
+        <td style="width:50px">${thumb}</td>
+        <td>${a.codigo || '—'}</td>
+        <td style="font-weight:700">${a.nombre}</td>
+        <td><span class="badge badge-info">${a.categoria || '—'}</span></td>
+        <td>${fmt(a.precioCompra)}</td>
+        <td style="color:var(--accent); font-weight:700">${fmt(a.precioVenta)}</td>
+        <td style="color:${low ? 'var(--red)' : 'var(--green)'}; font-weight:700">${stock}</td>
+        <td>${a.stockMinimo}</td>
+        <td>
+          <div class="btn-group">
+            <button class="btn btn-xs btn-secondary" onclick="generateProductQR('${a.id}')" title="Generar QR">📱 QR</button>
+            <button class="btn btn-xs btn-secondary" onclick="openArticuloModal('${a.id}')" title="Editar">✏️</button>
+            <button class="btn btn-xs btn-danger" onclick="deleteArticulo('${a.id}')" title="Eliminar">✕</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
 }
 
 // ===================================================================
@@ -2471,6 +2447,38 @@ function printQR(nombre) {
         </html>`);
     pWin.document.close();
     setTimeout(() => { pWin.print(); pWin.close(); }, 500);
+}
+async function deleteArticulo(id) {
+  // Pedir confirmación por seguridad
+  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará de tu ERP y del catálogo web.')) return;
+
+  const art = (state.articulos || []).find(a => a.id === id);
+  if (!art) return;
+
+  showLoadingOverlay('connecting');
+
+  try {
+    // 1. Eliminar del catálogo web (Firebase Firestore)
+    if (art.codigo) {
+      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
+      if (!queryWeb.empty) {
+        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
+      }
+    }
+
+    // 2. Eliminar localmente del ERP
+    state.articulos = state.articulos.filter(a => a.id !== id);
+    saveState();
+    
+    // 3. Refrescar la vista
+    renderArticulos();
+
+    showLoadingOverlay('hide');
+    notify('success', '🗑️', 'Prenda eliminada', `${art.nombre} fue eliminada exitosamente.`);
+  } catch (error) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error al eliminar', error.message);
+  }
 }
 </script>
 </body>
