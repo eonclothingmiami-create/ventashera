@@ -1138,7 +1138,8 @@ function renderArticulos(){
   document.getElementById('articulos-content').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div class="search-bar" style="flex:1;max-width:400px;margin:0"><span class="search-icon">🔍</span><input type="text" id="art-search" placeholder="Buscar artículo..." oninput="renderArticulosList()"></div>
-      <button class="btn btn-primary" onclick="openArticuloModal()">+ Nueva Prenda</button>
+     <button class="btn btn-primary" onclick="openArticuloModal()">+ Nueva Prenda</button>
+      <button class="btn btn-secondary btn-sm" onclick="importarDesdeCatalogo()" style="margin-left:8px;border-color:rgba(0,229,180,.3);color:var(--accent);">⬇️ Importar Catálogo</button>
     </div>
     <div class="card"><div class="card-title">CATÁLOGO DE PRENDAS (${items.length})</div>
       <div class="table-wrap"><table><thead><tr><th>Foto</th><th>Referencia</th><th>Nombre</th><th>Categoría</th><th>P.Compra</th><th>P.Venta</th><th>Stock</th><th>Min</th><th></th></tr></thead><tbody id="art-tbody"></tbody></table></div>
@@ -2719,6 +2720,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
