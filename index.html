@@ -1007,7 +1007,7 @@ function procesarVentaPOS(){
   };
   state.ventas.push(venta);
  
-  cartcart.forEach(item=>{
+  cart.forEach(item=>{
         state.inv_movimientos.push({id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`});
         updateCatalogVisibility(item.articuloId, true);
     });
@@ -2634,6 +2634,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
