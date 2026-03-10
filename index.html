@@ -2104,65 +2104,68 @@ function importarUsuariosCSV(collection, tipo, pageId){
 
 function procesarArchivoUsuarios(input, collection, tipo, pageId){
   const file = input.files[0]; if(!file) return;
+
+  // 1. Validar que el archivo sea estrictamente CSV
+  if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) {
+      alert("⚠️ Estás subiendo un archivo Excel (.xlsx). Por favor, abre tu Excel, ve a 'Guardar como' y elige el formato 'CSV (delimitado por comas)'. Luego intenta subir ese nuevo archivo.");
+      input.value = '';
+      return;
+  }
+
   const reader = new FileReader();
   reader.onload = function(e){
     const text = e.target.result;
     const lines = text.split('\n').filter(l=>l.trim());
     if(lines.length < 2){ notify('danger','⚠️','Error','El archivo está vacío o sin datos'); return; }
 
-    // 🌟 DETECTA AUTOMÁTICAMENTE EL SEPARADOR (Coma o Punto y Coma)
+    // Detectar si tu Excel usa comas o punto y coma
     const separador = lines[0].includes(';') ? ';' : ',';
     
-    let importados = 0, duplicados = 0;
+    let importados = 0;
     if(!state[collection]) state[collection]=[];
-    const existentes = new Set((Array.isArray(state[collection]) ? state[collection] : []).map(u=>u.cedula).filter(Boolean));
     
     for(let i=1; i<lines.length; i++){
-      // 🌟 USA EL SEPARADOR DETECTADO
       const cols = lines[i].split(separador).map(c=>c.trim().replace(/^"|"$/g,''));
-      if(!cols[2]) continue; // Si no hay nombre, salta la fila
       
-      const cedula = cols[1]||'';
+      let nombre = cols[2] || '';
+      let cedula = cols[1] || '';
+      let celular = cols[3] || '';
       
-      // 🌟 SOLO MARCA DUPLICADO SI HAY CÉDULA Y ESTA YA EXISTE
-      if(cedula && cedula !== "0" && cedula !== "NA" && existentes.has(cedula)){ 
-          duplicados++; 
-          continue; 
-      }
+      // Si la fila está totalmente vacía en las columnas clave, la saltamos.
+      if(!nombre && !cedula && !celular) continue; 
       
+      // Si el cliente no tiene nombre pero sí celular/cédula, lo forzamos a entrar
+      if(!nombre) nombre = "Cliente Importado " + i;
+
+      // 🌟 CREAMOS EL CLIENTE SIN IMPORTAR SI LA CÉDULA SE REPITE
       const u = {
-        id: uid(), tipo,
-        tipoId:       cols[0]||'CC',
-        cedula,
-        nombre:       cols[2]||'',
-        celular:      cols[3]||'',
-        whatsapp:     cols[4]||'',
-        email:        cols[5]||'',
-        ciudad:       cols[6]||'',
-        departamento: cols[7]||'',
-        direccion:    cols[8]||'',
-        tipoPersona:  cols[9]||'Natural',
-        fechaNac:     cols[10]||'',
-        observacion:  cols[11]||'',
+        id: uid(), 
+        tipo: tipo,
+        tipoId:       cols[0] || 'CC',
+        cedula:       cedula,
+        nombre:       nombre,
+        celular:      celular,
+        whatsapp:     cols[4] || celular,
+        email:        cols[5] || '',
+        ciudad:       cols[6] || '',
+        departamento: cols[7] || '',
+        direccion:    cols[8] || '',
+        tipoPersona:  cols[9] || 'Natural',
+        fechaNac:     cols[10] || '',
+        observacion:  cols[11] || 'Importado de CSV',
         fechaCreacion: today()
       };
       
-      if(!Array.isArray(state[collection])) state[collection]=[];
       state[collection].push(u);
       saveRecord(collection, u.id, u);
-      
-      if(cedula) existentes.add(cedula);
       importados++;
     }
+    
     input.value='';
     renderPage(pageId);
-    notify('success','📥','Importación completa',`${importados} importados, ${duplicados} duplicados omitidos`,{duration:4000});
-  };
-  reader.readAsText(file, 'UTF-8');
-}
-    input.value='';
-    renderPage(pageId);
-    notify('success','📥','Importación completa',`${importados} importados, ${duplicados} duplicados omitidos`,{duration:4000});
+    
+    // Notificación de éxito
+    notify('success','📥','¡Importación Forzada Exitosa!',`Se importaron ${importados} clientes correctamente a tu base de datos.`,{duration:8000});
   };
   reader.readAsText(file, 'UTF-8');
 }
@@ -3381,6 +3384,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
