@@ -2115,8 +2115,9 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId){
       showLoadingOverlay('connecting');
       const text = e.target.result;
       
-      // Filtramos solo para evitar líneas de enter "fantasmas" al final del archivo
-      const lines = text.split('\n').filter(l=>l.trim());
+      // 🌟 SOLUCIÓN DEFINITIVA: Leer cualquier salto de línea (Mac, Windows, Linux)
+      const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim());
+      
       if(lines.length < 2) throw new Error("El archivo está vacío o no tiene datos válidos.");
 
       const separador = lines[0].includes(';') ? ';' : ',';
@@ -2124,11 +2125,10 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId){
       
       if(!state[collection] || !Array.isArray(state[collection])) { state[collection] = []; }
       
-      // Recorremos TODAS las filas desde la 1 (saltando los títulos en la 0)
       for(let i=1; i<lines.length; i++){
-        const cols = lines[i].split(separador).map(c=>c.trim().replace(/^"|"$/g,''));
+        // Usar el separador detectado automáticamente
+        const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
         
-        // 🌟 CERO CONDICIONES: Si viene vacío, se le pone un texto genérico, pero NUNCA se omite la fila.
         let cedula = cols[1] || `SIN-CEDULA-${i}`; 
         let nombre = cols[2] || `Cliente Desconocido ${i}`; 
         let celular = cols[4] || '';
@@ -2163,15 +2163,13 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId){
         importados++;
       }
       
-      // Subimos todos de golpe a Firebase
       await firebase.database().ref('ventacontrol_state_v3').child(collection).set(state[collection]);
       
-      input.value='';
+      input.value = '';
       showLoadingOverlay('hide');
       renderPage(pageId);
       
-      // Notificación mostrando exactamente cuántas filas se procesaron
-      notify('success','🚀','¡Importación Absoluta!',`Se importaron ${importados} filas. No se omitió NADA.`,{duration:8000});
+      notify('success', '🚀', '¡Importación Absoluta!', `Se encontraron y guardaron ${importados} filas exactas del archivo.`, {duration: 8000});
       
     } catch (err) {
       showLoadingOverlay('hide');
@@ -3395,6 +3393,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
