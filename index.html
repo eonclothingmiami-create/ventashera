@@ -2112,8 +2112,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId){
     const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
     let importados = 0, duplicados = 0;
     if(!state[collection]) state[collection]=[];
-    const existentes = new Set((state[collection]).map(u=>u.cedula).filter(Boolean));
-
+    const existentes = new Set((Array.isArray(state[collection]) ? state[collection] : []).map(u=>u.cedula).filter(Boolean));
     for(let i=1; i<lines.length; i++){
       const cols = lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
       if(!cols[2]) continue; // sin nombre
@@ -3361,6 +3360,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
