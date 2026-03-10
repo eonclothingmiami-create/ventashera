@@ -420,7 +420,7 @@ let state = {
 
 let posFormState = { 
   canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', 
-  cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true 
+  cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0 
 };
 const CUENTAS_BANCARIAS = ['Bancolombia Principal', 'Bancolombia 2', 'Nequi', 'Daviplata'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
@@ -708,6 +708,8 @@ function syncPOSFormState() {
   const m = document.getElementById('pos-metodo-pago'); if(m) posFormState.metodo = m.value;
   const cta = document.getElementById('pos-cuenta'); if(cta) posFormState.cuenta = cta.value;
   const iva = document.getElementById('pos-apply-iva'); if(iva) posFormState.applyIva = iva.checked;
+  const fleteChk = document.getElementById('pos-apply-flete'); if(fleteChk) posFormState.applyFlete = fleteChk.checked;
+const fleteVal = document.getElementById('pos-flete-valor'); if(fleteVal) posFormState.flete = parseFloat(fleteVal.value)||0;
 }
 
 function renderPOS(){
@@ -721,7 +723,8 @@ function renderPOS(){
   const subtotal = cart.reduce((a, item) => a + (item.precio * item.qty), 0);
   // El IVA es opcional: solo se calcula si applyIva es true
   const iva = posFormState.applyIva ? subtotal * 0.19 : 0;
-  const total = subtotal + iva;
+const flete = (posFormState.applyFlete && (posFormState.canal==='local'||posFormState.canal==='inter')) ? (posFormState.flete||0) : 0;
+const total = subtotal + iva + flete;
 
   document.getElementById('pos-content').innerHTML = `
     <div class="pos-layout">
@@ -787,6 +790,16 @@ function renderPOS(){
             <input type="checkbox" id="pos-apply-iva" ${posFormState.applyIva ? 'checked' : ''} onchange="toggleIVA()"> 
             Aplicar IVA (19%) e Impuestos
           </label>
+          ${(posFormState.canal==='local'||posFormState.canal==='inter') ? `
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text2); margin-bottom:6px; cursor:pointer;">
+            <input type="checkbox" id="pos-apply-flete" ${posFormState.applyFlete ? 'checked' : ''} onchange="toggleFlete()">
+            Aplicar Flete
+          </label>
+          ${posFormState.applyFlete ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:12px;color:var(--text2);white-space:nowrap">$ Flete</span>
+            <input type="number" id="pos-flete-valor" class="form-control" style="padding:6px;width:120px" value="${posFormState.flete||0}" min="0" oninput="toggleFlete()">
+          </div>` : ''}` : ''}
 
           <div style="display:flex;justify-content:space-between;margin-bottom:6px">
             <span style="color:var(--text2);font-size:12px">Subtotal</span>
@@ -797,6 +810,12 @@ function renderPOS(){
             <div style="display:flex;justify-content:space-between;margin-bottom:6px">
               <span style="color:var(--text2);font-size:12px">IVA (19%)</span>
               <span style="font-size:12px">${fmt(iva)}</span>
+            </div>` : ''}
+
+            ${posFormState.applyFlete && posFormState.flete > 0 ? `
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span style="color:var(--text2);font-size:12px">Flete</span>
+              <span style="font-size:12px">${fmt(posFormState.flete)}</span>
             </div>` : ''}
           
           <div style="display:flex;justify-content:space-between;margin-bottom:12px;padding-top:8px;border-top:1px solid var(--border)">
@@ -880,6 +899,13 @@ function toggleIVA() {
         posFormState.applyIva = checkbox.checked;
         renderPOS();
     }
+}
+  function toggleFlete() {
+  const checkbox = document.getElementById('pos-apply-flete');
+  if(checkbox) posFormState.applyFlete = checkbox.checked;
+  const val = document.getElementById('pos-flete-valor');
+  if(val) posFormState.flete = parseFloat(val.value)||0;
+  renderPOS();
 }
 
 function handlePOSShippingUI() {
@@ -1003,8 +1029,9 @@ function procesarVentaPOS(){
   const cuentaStr = metodo === 'transferencia' ? posFormState.cuenta : metodo;
 
   const subtotal=cart.reduce((a,item)=>a+(item.precio*item.qty),0);
-  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
-  const total=subtotal+iva;
+ const iva = posFormState.applyIva ? subtotal*0.19 : 0;
+const flete = (posFormState.applyFlete && (canal==='local'||canal==='inter')) ? (posFormState.flete||0) : 0;
+const total=subtotal+iva+flete;
   const numFactura='POS-'+getNextConsec('factura');
   const fechaActual = today();
 
@@ -3240,6 +3267,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
