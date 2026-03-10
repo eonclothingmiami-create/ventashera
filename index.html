@@ -2134,6 +2134,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId){
         observacion:  cols[11]||'',
         fechaCreacion: today()
       };
+     if(!Array.isArray(state[collection])) state[collection]=[];
       state[collection].push(u);
       saveRecord(collection, u.id, u);
       if(cedula) existentes.add(cedula);
@@ -3360,6 +3361,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
