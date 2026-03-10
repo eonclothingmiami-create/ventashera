@@ -1054,6 +1054,28 @@ function procesarVentaPOS(){
   awardXP(xpGained); checkBadges();
 
   state.pos_cart=[];
+  // Auto-registrar cliente en base de datos
+if(posFormState.cliente){
+  if(!state.usu_clientes) state.usu_clientes=[];
+  const yaExiste = state.usu_clientes.some(u=>
+    (u.cedula && u.cedula===posFormState.cedula) ||
+    (u.nombre && u.nombre.toLowerCase()===posFormState.cliente.toLowerCase())
+  );
+  if(!yaExiste){
+    const nuevoCliente = {
+      id: uid(), tipo:'cliente',
+      tipoId:  'CC',
+      cedula:  posFormState.cedula||'',
+      nombre:  posFormState.cliente,
+      celular: posFormState.telefono||'',
+      whatsapp:posFormState.telefono||'',
+      ciudad:  posFormState.ciudad||'',
+      fechaCreacion: today()
+    };
+    state.usu_clientes.push(nuevoCliente);
+    saveRecord('usu_clientes', nuevoCliente.id, nuevoCliente);
+  }
+}
   posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true };
   saveState();
 
@@ -3218,6 +3240,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
