@@ -2101,71 +2101,82 @@ function importarUsuariosCSV(collection, tipo, pageId){
   const input = document.getElementById(pageId+'-file-input');
   if(input) input.click();
 }
-
 function procesarArchivoUsuarios(input, collection, tipo, pageId){
   const file = input.files[0]; if(!file) return;
 
-  // 1. Validar que el archivo sea estrictamente CSV
   if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) {
-      alert("⚠️ Estás subiendo un archivo Excel (.xlsx). Por favor, abre tu Excel, ve a 'Guardar como' y elige el formato 'CSV (delimitado por comas)'. Luego intenta subir ese nuevo archivo.");
-      input.value = '';
-      return;
+      alert("⚠️ Estás subiendo un Excel (.xlsx). Abre tu Excel, ve a 'Guardar como' y elige 'CSV UTF-8 (delimitado por comas)'. Sube ese nuevo archivo.");
+      input.value = ''; return;
   }
 
   const reader = new FileReader();
-  reader.onload = function(e){
-    const text = e.target.result;
-    const lines = text.split('\n').filter(l=>l.trim());
-    if(lines.length < 2){ notify('danger','⚠️','Error','El archivo está vacío o sin datos'); return; }
+  reader.onload = async function(e){
+    try {
+      showLoadingOverlay('connecting');
+      const text = e.target.result;
+      
+      // Filtramos solo para evitar líneas de enter "fantasmas" al final del archivo
+      const lines = text.split('\n').filter(l=>l.trim());
+      if(lines.length < 2) throw new Error("El archivo está vacío o no tiene datos válidos.");
 
-    // Detectar si tu Excel usa comas o punto y coma
-    const separador = lines[0].includes(';') ? ';' : ',';
-    
-    let importados = 0;
-    if(!state[collection]) state[collection]=[];
-    
-    for(let i=1; i<lines.length; i++){
-      const cols = lines[i].split(separador).map(c=>c.trim().replace(/^"|"$/g,''));
+      const separador = lines[0].includes(';') ? ';' : ',';
+      let importados = 0;
       
-      let nombre = cols[2] || '';
-      let cedula = cols[1] || '';
-      let celular = cols[3] || '';
+      if(!state[collection] || !Array.isArray(state[collection])) { state[collection] = []; }
       
-      // Si la fila está totalmente vacía en las columnas clave, la saltamos.
-      if(!nombre && !cedula && !celular) continue; 
+      // Recorremos TODAS las filas desde la 1 (saltando los títulos en la 0)
+      for(let i=1; i<lines.length; i++){
+        const cols = lines[i].split(separador).map(c=>c.trim().replace(/^"|"$/g,''));
+        
+        // 🌟 CERO CONDICIONES: Si viene vacío, se le pone un texto genérico, pero NUNCA se omite la fila.
+        let cedula = cols[1] || `SIN-CEDULA-${i}`; 
+        let nombre = cols[2] || `Cliente Desconocido ${i}`; 
+        let celular = cols[4] || '';
+        
+        const u = {
+          id: uid() + i, 
+          tipo: tipo,
+          tipoId:       cols[0] || 'CC',
+          cedula:       cedula,
+          nombre:       nombre,
+          telefono:     cols[3] || '',
+          celular:      celular,
+          whatsapp:     cols[5] || celular,
+          email:        cols[6] || '',
+          direccion:    cols[7] || '',
+          ciudad:       cols[8] || '',
+          departamento: cols[9] || '',
+          pais:         cols[10] || 'Colombia',
+          fechaNac:     cols[11] || '',
+          genero:       cols[12] || '',
+          tipoPersona:  cols[13] || 'Natural',
+          regimen:      cols[14] || '',
+          formaPago:    cols[15] || 'Efectivo',
+          descuento:    parseFloat(cols[16]) || 0,
+          cupoCredito:  parseFloat(cols[17]) || 0,
+          vendedor:     cols[18] || '',
+          observacion:  cols[19] || 'Importación Masiva',
+          fechaCreacion: today()
+        };
+        
+        state[collection].push(u);
+        importados++;
+      }
       
-      // Si el cliente no tiene nombre pero sí celular/cédula, lo forzamos a entrar
-      if(!nombre) nombre = "Cliente Importado " + i;
-
-      // 🌟 CREAMOS EL CLIENTE SIN IMPORTAR SI LA CÉDULA SE REPITE
-      const u = {
-        id: uid(), 
-        tipo: tipo,
-        tipoId:       cols[0] || 'CC',
-        cedula:       cedula,
-        nombre:       nombre,
-        celular:      celular,
-        whatsapp:     cols[4] || celular,
-        email:        cols[5] || '',
-        ciudad:       cols[6] || '',
-        departamento: cols[7] || '',
-        direccion:    cols[8] || '',
-        tipoPersona:  cols[9] || 'Natural',
-        fechaNac:     cols[10] || '',
-        observacion:  cols[11] || 'Importado de CSV',
-        fechaCreacion: today()
-      };
+      // Subimos todos de golpe a Firebase
+      await firebase.database().ref('ventacontrol_state_v3').child(collection).set(state[collection]);
       
-      state[collection].push(u);
-      saveRecord(collection, u.id, u);
-      importados++;
+      input.value='';
+      showLoadingOverlay('hide');
+      renderPage(pageId);
+      
+      // Notificación mostrando exactamente cuántas filas se procesaron
+      notify('success','🚀','¡Importación Absoluta!',`Se importaron ${importados} filas. No se omitió NADA.`,{duration:8000});
+      
+    } catch (err) {
+      showLoadingOverlay('hide');
+      alert("Error al importar: " + err.message);
     }
-    
-    input.value='';
-    renderPage(pageId);
-    
-    // Notificación de éxito
-    notify('success','📥','¡Importación Forzada Exitosa!',`Se importaron ${importados} clientes correctamente a tu base de datos.`,{duration:8000});
   };
   reader.readAsText(file, 'UTF-8');
 }
@@ -3384,6 +3395,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
