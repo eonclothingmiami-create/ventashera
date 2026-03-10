@@ -222,6 +222,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     
     <div class="nav-section">VENTAS</div>
     <div class="nav-item" onclick="showPage('pos')"><span class="nav-icon">🖥</span>Venta POS</div>
+    <div class="nav-item" onclick="showPage('separados')"><span class="nav-icon">🛍️</span>Ver Separados</div>
     <div class="nav-item" onclick="showPage('cotizaciones')"><span class="nav-icon">📋</span>Cotizaciones</div>
     <div class="nav-item" onclick="showPage('ordenes')"><span class="nav-icon">📄</span>Órdenes de Venta</div>
     <div class="nav-item" onclick="showPage('facturas')"><span class="nav-icon">🧾</span>Facturas</div>
@@ -272,8 +273,6 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('recompensas')"><span class="nav-icon">🏆</span>Recompensas</div>
     <div class="nav-item" onclick="showPage('alertas')"><span class="nav-icon">🔔</span>Alertas<span class="nav-badge" id="badge-alertas" style="display:none">0</span></div>
 
-<div class="nav-item" onclick="renderSeparados()"><span class="nav-icon">🛍️</span>Ver Separados</div>
-    
     <div class="nav-section">SISTEMA</div>
     <div class="nav-item" onclick="showPage('historial')"><span class="nav-icon">📊</span>Historial</div>
     <div class="nav-item" onclick="showPage('config')"><span class="nav-icon">⚙</span>Configuración</div>
@@ -284,6 +283,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <main class="main" id="main">
   <div class="page active" id="page-dashboard"><div class="page-title">Dashboard</div><div id="dashboard-content"></div></div>
   <div class="page" id="page-pos"><div class="page-title">Venta POS</div><div id="pos-content"></div></div>
+  <div class="page" id="page-separados"><div class="page-title">Separados</div><div id="separados-content"></div></div>
   <div class="page" id="page-cotizaciones"><div class="page-title">Cotizaciones</div><div id="cotizaciones-content"></div></div>
   <div class="page" id="page-ordenes"><div class="page-title">Órdenes de Venta</div><div id="ordenes-content"></div></div>
   <div class="page" id="page-facturas"><div class="page-title">Facturas de Venta</div><div id="facturas-content"></div></div>
@@ -3413,9 +3413,9 @@ function printQR(nombre) {
   }
 }
   function renderSeparados() {
-  const content = document.getElementById('pos-content'); // Usamos el contenedor de POS para no crear páginas nuevas
+  const content = document.getElementById('separados-content'); // <-- Aquí está el cambio
   const separados = (state.ventas || []).filter(v => v.esSeparado === true && v.estadoEntrega === 'Pendiente');
-
+    
   let html = `
     <div class="header-actions">
       <h2 class="page-title">⏳ Pedidos Separados (En Stand By)</h2>
@@ -3473,6 +3473,7 @@ function marcarSeparadoEntregado(ventaId) {
 </script>
 </body>
 </html>
+
 
 
 
