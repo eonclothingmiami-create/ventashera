@@ -231,6 +231,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('devoluciones')"><span class="nav-icon">🔄</span>Devoluciones</div>
     <div class="nav-item" onclick="showPage('anticipos_clientes')"><span class="nav-icon">💵</span>Anticipos Clientes</div>
     <div class="nav-item" onclick="showPage('pendientes')"><span class="nav-icon">⏳</span>Cobros<span class="nav-badge" id="badge-pendientes" style="display:none">0</span></div>
+
+<div class="nav-section">LOGÍSTICA</div>
+<div class="nav-item" onclick="showPage('logistica')"><span class="nav-icon">🚚</span>Guías Generadas</div>
     
     <div class="nav-section">INVENTARIO</div>
     <div class="nav-item" onclick="showPage('articulos')"><span class="nav-icon">👙</span>Artículos</div>
@@ -282,6 +285,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="page" id="page-remisiones"><div class="page-title">Remisiones de Venta</div><div id="remisiones-content"></div></div>
   <div class="page" id="page-devoluciones"><div class="page-title">Devoluciones de Venta</div><div id="devoluciones-content"></div></div>
   <div class="page" id="page-anticipos_clientes"><div class="page-title">Anticipos de Clientes</div><div id="anticipos_clientes-content"></div></div>
+  <div class="page" id="page-logistica"><div class="page-title">Logística</div><div id="logistica-content"></div></div>
   <div class="page" id="page-pendientes"><div class="page-title">Cobros Pendientes</div><div id="pendientes-content"></div></div>
   <div class="page" id="page-articulos"><div class="page-title">Artículos / Inventario</div><div id="articulos-content"></div></div>
   <div class="page" id="page-inv_trazabilidad"><div class="page-title">Trazabilidad de Inventario</div><div id="inv_trazabilidad-content"></div></div>
@@ -538,7 +542,7 @@ function renderPage(id){
     dashboard:renderDashboard, pos:renderPOS, cotizaciones:renderCotizaciones,
     ordenes:renderOrdenes, facturas:renderFacturas, notas_credito:renderNotasCredito,
     notas_debito:renderNotasDebito, remisiones:renderRemisiones, devoluciones:renderDevoluciones,
-    anticipos_clientes:renderAnticiposClientes, pendientes:renderPendientes,
+    anticipos_clientes:renderAnticiposClientes, pendientes:renderPendientes, logistica:renderLogistica,
     articulos:renderArticulos, inv_trazabilidad:renderInvTrazabilidad,
     inv_ajustes:renderInvAjustes, inv_traslados:renderInvTraslados,
     nom_ausencias:renderNomAusencias, nom_anticipos:renderNomAnticipos,
@@ -1773,6 +1777,87 @@ function renderNotasDebito(){_docItems=[];renderDocumentList('notas_debito','Not
 function renderRemisiones(){_docItems=[];renderDocumentList('remisiones','Remisión','remisiones','remision')}
 function renderDevoluciones(){_docItems=[];renderDocumentList('devoluciones','Devolución','devoluciones','devolucion')}
 function renderAnticiposClientes(){_docItems=[];renderDocumentList('anticipos_clientes','Anticipo Cliente','anticipos_clientes','anticipo_cliente')}
+  function renderLogistica(){
+  const el = document.getElementById('logistica-content'); if(!el) return;
+
+  const q = (document.getElementById('log-search')?.value||'').toLowerCase();
+  const desde = document.getElementById('log-desde')?.value||'';
+  const hasta = document.getElementById('log-hasta')?.value||'';
+  const canal = document.getElementById('log-canal')?.value||'';
+  const trans = document.getElementById('log-trans')?.value||'';
+
+  let guias = [...(state.ventas||[])]
+    .filter(v => v.canal === 'local' || v.canal === 'inter')
+    .reverse();
+
+  if(canal) guias = guias.filter(v => v.canal === canal);
+  if(trans) guias = guias.filter(v => (v.transportadora||'').toLowerCase().includes(trans.toLowerCase()));
+  if(desde) guias = guias.filter(v => v.fecha >= desde);
+  if(hasta) guias = guias.filter(v => v.fecha <= hasta);
+  if(q) guias = guias.filter(v =>
+    (v.cliente||'').toLowerCase().includes(q) ||
+    (v.guia||'').toLowerCase().includes(q) ||
+    (v.telefono||'').toLowerCase().includes(q) ||
+    (v.ciudad||'').toLowerCase().includes(q)
+  );
+
+  const total = (state.ventas||[]).filter(v => v.canal==='local'||v.canal==='inter').length;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="log-search" placeholder="Cliente, guía, teléfono..." value="${q}" oninput="renderLogistica()">
+      </div>
+      <select class="form-control" id="log-canal" style="width:130px" onchange="renderLogistica()">
+        <option value="">Todos los canales</option>
+        <option value="local" ${canal==='local'?'selected':''}>🛵 Local</option>
+        <option value="inter" ${canal==='inter'?'selected':''}>📦 Intermunicipal</option>
+      </select>
+      <input type="text" class="form-control" id="log-trans" placeholder="Transportadora..." style="width:160px" value="${trans}" oninput="renderLogistica()">
+      <input type="date" class="form-control" id="log-desde" style="width:140px" value="${desde}" onchange="renderLogistica()">
+      <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
+      <input type="date" class="form-control" id="log-hasta" style="width:140px" value="${hasta}" onchange="renderLogistica()">
+      ${(q||canal||trans||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="['log-search','log-trans'].forEach(id=>{document.getElementById(id).value=''});['log-canal','log-desde','log-hasta'].forEach(id=>{document.getElementById(id).value=''});renderLogistica()">✕ Limpiar</button>`:''}
+    </div>
+
+    <div class="card">
+      <div class="card-title">🚚 GUÍAS GENERADAS — ${guias.length} de ${total}</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Canal</th>
+              <th>Cliente</th>
+              <th>Teléfono</th>
+              <th>Ciudad</th>
+              <th>Transportadora</th>
+              <th>N° Guía</th>
+              <th>Empresa</th>
+              <th>Total</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${guias.map(v=>`
+              <tr>
+                <td>${formatDate(v.fecha)}</td>
+                <td><span class="badge ${v.canal==='local'?'badge-warn':'badge-inter'}">${v.canal==='local'?'🛵 Local':'📦 Inter'}</span></td>
+                <td style="font-weight:700">${v.cliente||'—'}</td>
+                <td>${v.telefono||'—'}</td>
+                <td>${v.ciudad||'—'}</td>
+                <td>${v.transportadora||'—'}</td>
+                <td style="color:var(--accent);font-weight:700">${v.guia||'—'}</td>
+                <td>${v.empresa||'—'}</td>
+                <td style="font-weight:700">${fmt(v.valor)}</td>
+                <td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'✓ Liq':'⏳ Pend'}</span></td>
+              </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:24px">Sin guías registradas</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
 
 // ===================================================================
 // ===== COBROS / PENDIENTES =====
@@ -2907,6 +2992,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
