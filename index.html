@@ -283,7 +283,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <main class="main" id="main">
   <div class="page active" id="page-dashboard"><div class="page-title">Dashboard</div><div id="dashboard-content"></div></div>
   <div class="page" id="page-pos"><div class="page-title">Venta POS</div><div id="pos-content"></div></div>
-  <div class="page" id="page-separados"><div class="page-title">Separados</div><div id="separados-content"></div></div>
+ <div class="page" id="page-separados">
+    <div class="page-title">🛍️ Prendas en Separado (Showroom)</div>
+    <div id="separados-content"></div>
+</div>
   <div class="page" id="page-cotizaciones"><div class="page-title">Cotizaciones</div><div id="cotizaciones-content"></div></div>
   <div class="page" id="page-ordenes"><div class="page-title">Órdenes de Venta</div><div id="ordenes-content"></div></div>
   <div class="page" id="page-facturas"><div class="page-title">Facturas de Venta</div><div id="facturas-content"></div></div>
@@ -3412,67 +3415,64 @@ function printQR(nombre) {
     notify('❌ Error', 'No se pudo conectar con el catálogo web: ' + err.message, 'danger');
   }
 }
-  function renderSeparados() {
-  const content = document.getElementById('separados-content'); // <-- Aquí está el cambio
-  const separados = (state.ventas || []).filter(v => v.esSeparado === true && v.estadoEntrega === 'Pendiente');
-    
-  let html = `
-    <div class="header-actions">
-      <h2 class="page-title">⏳ Pedidos Separados (En Stand By)</h2>
-    </div>
-    <div class="card">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Cliente</th>
-            <th>Teléfono</th>
-            <th>Total</th>
-            <th style="text-align: center;">Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
+function renderSeparados() {
+    const content = document.getElementById('separados-content');
+    if (!content) return;
 
-  if(separados.length === 0) {
-    html += `<tr><td colspan="5" style="text-align:center; padding: 20px;">No hay pedidos en stand by esperando en el local.</td></tr>`;
-  } else {
-    separados.forEach(v => {
-      const nombreCli = v.cliente || 'Cliente Mostrador';
-      const telCli = v.telefono || 'Sin teléfono';
-      
-      html += `
-        <tr>
-          <td>${formatDate(v.fecha)}</td>
-          <td style="font-weight: bold;">${nombreCli}</td>
-          <td>${telCli}</td>
-          <td style="color:var(--accent); font-weight:bold;">${fmt(v.valor)}</td>
-          <td style="text-align: center;">
-            <button class="btn btn-primary btn-sm" onclick="marcarSeparadoEntregado('${v.id}')" title="Marcar que el cliente ya recogió su pedido">
-              ✅ Entregar Pedido
-            </button>
-          </td>
-        </tr>
-      `;
-    });
-  }
-  html += `</tbody></table></div>`;
-  content.innerHTML = html;
+    // Filtramos las ventas que tienen la propiedad esSeparado y están pendientes
+    const separados = (state.ventas || []).filter(v => v.esSeparado === true && v.estadoEntrega === 'Pendiente');
+
+    content.innerHTML = `
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <div class="card-title" style="margin:0">Artículos en Stand-By</div>
+                <button class="btn btn-primary btn-sm" onclick="showPage('pos')">+ Nuevo Separado</button>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Cliente</th>
+                            <th>Productos</th>
+                            <th>Total</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${separados.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding:24px;">No hay prendas separadas hoy.</td></tr>' : ''}
+                        ${separados.map(v => `
+                            <tr>
+                                <td>${formatDate(v.fecha)}</td>
+                                <td style="font-weight:700">${v.cliente || 'Consumidor Final'}</td>
+                                <td>${v.items ? v.items.map(i => i.nombre).join(', ') : 'Ver factura'}</td>
+                                <td style="color:var(--accent); font-weight:700">${fmt(v.total || v.valor)}</td>
+                                <td>
+                                    <button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">✅ Entregar</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
 }
 
-function marcarSeparadoEntregado(ventaId) {
-  if(!confirm('¿Confirmar que el cliente ya pasó al local a recoger este pedido?')) return;
-  const venta = state.ventas.find(v => v.id === ventaId);
-  if(venta) {
-    venta.estadoEntrega = 'Entregado';
-    saveRecord('ventas', ventaId, venta);
-    notify('success', '📦', 'Pedido Entregado', 'El pedido desapareció de la lista de separados.');
-    renderSeparados();
-  }
+// Función para procesar la entrega del separado
+function entregarSeparado(id) {
+    const v = state.ventas.find(x => x.id === id);
+    if (v) {
+        v.estadoEntrega = 'Entregado';
+        saveState();
+        renderSeparados();
+        notify('success', '🛍️', 'Entregado', 'La prenda ha salido de separados.');
+    }
 }
 </script>
 </body>
 </html>
+
 
 
 
