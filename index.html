@@ -272,6 +272,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="showPage('recompensas')"><span class="nav-icon">🏆</span>Recompensas</div>
     <div class="nav-item" onclick="showPage('alertas')"><span class="nav-icon">🔔</span>Alertas<span class="nav-badge" id="badge-alertas" style="display:none">0</span></div>
 
+<div class="nav-item" onclick="renderSeparados()"><span class="nav-icon">🛍️</span>Ver Separados</div>
+    
     <div class="nav-section">SISTEMA</div>
     <div class="nav-item" onclick="showPage('historial')"><span class="nav-icon">📊</span>Historial</div>
     <div class="nav-item" onclick="showPage('config')"><span class="nav-icon">⚙</span>Configuración</div>
@@ -958,6 +960,13 @@ const total = subtotal + iva + flete;
             <input type="tel" class="form-control" id="pos-telefono" placeholder="Teléfono (opcional)" style="padding:8px 12px" value="${posFormState.telefono}">
           </div>
 
+<div class="form-group" style="margin-top: 15px; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px dashed var(--accent);">
+  <label style="cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: bold; color: var(--accent);">
+    <input type="checkbox" id="pos-es-separado" style="width: 20px; height: 20px;">
+    🛍️ ES UN SEPARADO (Stand By en el local)
+  </label>
+</div>
+
           <button class="btn btn-primary" style="width:100%" onclick="procesarVentaPOS()" ${cart.length === 0 ? 'disabled' : ''}>💰 Cobrar ${fmt(total)}</button>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="previewReceipt()">🧾 Vista Previa</button>
@@ -1146,6 +1155,20 @@ const total=subtotal+iva+flete;
   state.facturas.push(factura);
   saveRecord('facturas', factura.id, factura);
 
+  // --- AQUÍ ESTÁ EL CÓDIGO RESTAURADO Y EL PASO 2 INCLUIDO ---
+  const esSeparado = document.getElementById('pos-es-separado') ? document.getElementById('pos-es-separado').checked : false;
+
+  const venta={
+    id:uid(), canal, valor:total, fecha:fechaActual, fechaLiquidacion,
+    guia: posFormState.guia, empresa: posFormState.empresa, transportadora: posFormState.transportadora,
+    categoria:catGlobal, desc:numFactura, cliente: posFormState.cliente,
+    telefono: posFormState.telefono, ciudad: posFormState.ciudad, liquidado, archived:false,
+    metodoPago: cuentaStr,
+    esSeparado: esSeparado,
+    estadoEntrega: esSeparado ? 'Pendiente' : 'Entregado'
+  };
+  // -----------------------------------------------------------
+
   state.ventas.push(venta);
   saveRecord('ventas', venta.id, venta);
 
@@ -1175,27 +1198,27 @@ const total=subtotal+iva+flete;
 
   state.pos_cart=[];
   // Auto-registrar cliente en base de datos
-if(posFormState.cliente){
-  if(!state.usu_clientes) state.usu_clientes=[];
-  const yaExiste = state.usu_clientes.some(u=>
-    (u.cedula && u.cedula===posFormState.cedula) ||
-    (u.nombre && u.nombre.toLowerCase()===posFormState.cliente.toLowerCase())
-  );
-  if(!yaExiste){
-    const nuevoCliente = {
-      id: uid(), tipo:'cliente',
-      tipoId:  'CC',
-      cedula:  posFormState.cedula||'',
-      nombre:  posFormState.cliente,
-      celular: posFormState.telefono||'',
-      whatsapp:posFormState.telefono||'',
-      ciudad:  posFormState.ciudad||'',
-      fechaCreacion: today()
-    };
-    state.usu_clientes.push(nuevoCliente);
-    saveRecord('usu_clientes', nuevoCliente.id, nuevoCliente);
+  if(posFormState.cliente){
+    if(!state.usu_clientes) state.usu_clientes=[];
+    const yaExiste = state.usu_clientes.some(u=>
+      (u.cedula && posFormState.cedula && u.cedula===posFormState.cedula) ||
+      (u.nombre && u.nombre.toLowerCase()===posFormState.cliente.toLowerCase())
+    );
+    if(!yaExiste){
+      const nuevoCliente = {
+        id: uid(), tipo:'cliente',
+        tipoId:  'CC',
+        cedula:  posFormState.cedula||'',
+        nombre:  posFormState.cliente,
+        celular: posFormState.telefono||'',
+        whatsapp:posFormState.telefono||'',
+        ciudad:  posFormState.ciudad||'',
+        fechaCreacion: today()
+      };
+      state.usu_clientes.push(nuevoCliente);
+      saveRecord('usu_clientes', nuevoCliente.id, nuevoCliente);
+    }
   }
-}
   posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true };
   saveState();
 
@@ -1208,7 +1231,6 @@ if(posFormState.cliente){
   renderPOS();
   updateNavBadges();
 }
-
 // ===== SCANNER =====
 function openScannerOverlay(){
   document.getElementById('scanner-overlay').classList.add('active');
@@ -3390,9 +3412,68 @@ function printQR(nombre) {
     notify('❌ Error', 'No se pudo conectar con el catálogo web: ' + err.message, 'danger');
   }
 }
+  function renderSeparados() {
+  const content = document.getElementById('pos-content'); // Usamos el contenedor de POS para no crear páginas nuevas
+  const separados = (state.ventas || []).filter(v => v.esSeparado === true && v.estadoEntrega === 'Pendiente');
+
+  let html = `
+    <div class="header-actions">
+      <h2 class="page-title">⏳ Pedidos Separados (En Stand By)</h2>
+    </div>
+    <div class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Teléfono</th>
+            <th>Total</th>
+            <th style="text-align: center;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  if(separados.length === 0) {
+    html += `<tr><td colspan="5" style="text-align:center; padding: 20px;">No hay pedidos en stand by esperando en el local.</td></tr>`;
+  } else {
+    separados.forEach(v => {
+      const nombreCli = v.cliente || 'Cliente Mostrador';
+      const telCli = v.telefono || 'Sin teléfono';
+      
+      html += `
+        <tr>
+          <td>${formatDate(v.fecha)}</td>
+          <td style="font-weight: bold;">${nombreCli}</td>
+          <td>${telCli}</td>
+          <td style="color:var(--accent); font-weight:bold;">${fmt(v.valor)}</td>
+          <td style="text-align: center;">
+            <button class="btn btn-primary btn-sm" onclick="marcarSeparadoEntregado('${v.id}')" title="Marcar que el cliente ya recogió su pedido">
+              ✅ Entregar Pedido
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+  html += `</tbody></table></div>`;
+  content.innerHTML = html;
+}
+
+function marcarSeparadoEntregado(ventaId) {
+  if(!confirm('¿Confirmar que el cliente ya pasó al local a recoger este pedido?')) return;
+  const venta = state.ventas.find(v => v.id === ventaId);
+  if(venta) {
+    venta.estadoEntrega = 'Entregado';
+    saveRecord('ventas', ventaId, venta);
+    notify('success', '📦', 'Pedido Entregado', 'El pedido desapareció de la lista de separados.');
+    renderSeparados();
+  }
+}
 </script>
 </body>
 </html>
+
 
 
 
