@@ -562,7 +562,7 @@ function renderPage(id){
     tes_comp_retencion:renderTesCompRetencion, tes_comp_ingreso:renderTesCompIngreso,
     tes_comp_egreso:renderTesCompEgreso, tes_transferencias:renderTesTransferencias,
     juego:renderGamePage, recompensas:renderRewards,
-    alertas:renderAlertas, historial:renderHistorial, config:renderConfig
+    alertas:renderAlertas, historial:renderHistorial, config:renderConfig, separados:renderSeparados
   };
   if(renderers[id])renderers[id]();
 }
@@ -3473,6 +3473,7 @@ function marcarSeparadoEntregado(ventaId) {
 </script>
 </body>
 </html>
+
 
 
 
