@@ -1938,7 +1938,8 @@ function renderUsuarios(pageId, titulo, collection, tipo){
   const desde = document.getElementById(pageId+'-desde')?.value||'';
   const hasta = document.getElementById(pageId+'-hasta')?.value||'';
 
-  let items = [...(state[collection]||[])].reverse();
+ if(!state[collection]) state[collection]=[];
+let items = [...state[collection]].reverse();
   if(q) items = items.filter(u =>
     (u.nombre||'').toLowerCase().includes(q) ||
     (u.cedula||'').toLowerCase().includes(q) ||
@@ -3360,6 +3361,7 @@ function printQR(nombre) {
 </script>
 </body>
 </html>
+
 
 
 
