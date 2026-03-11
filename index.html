@@ -2532,9 +2532,35 @@ function saveNomina(){
   });
   devengado+=salario;
   const neto=devengado-deducciones;
-  state.nom_nominas.push({id:uid(),numero:'NOM-'+String(state.nom_nominas.length+1).padStart(4,'0'),empleado:emp,periodo,salario,devengado,deducciones,neto,detalles,pagada:false,fecha:today()});
-  saveState();closeModal();renderNomNominas();
+  
+  const nomina = {id:uid(),numero:'NOM-'+String((state.nom_nominas||[]).length+1).padStart(4,'0'),empleado:emp,periodo,salario,devengado,deducciones,neto,detalles,pagada:false,fecha:today()};
+  state.nom_nominas.push(nomina);
+  
+  // --- GUARDADO ATÓMICO ---
+  saveRecord('nom_nominas', nomina.id, nomina);
+  
+  closeModal();renderNomNominas();
   notify('success','✅','Nómina generada',emp+' · Neto: '+fmt(neto),{duration:3000});
+}
+
+function pagarNomina(id){
+  const n=(state.nom_nominas||[]).find(x=>x.id===id);if(!n)return;
+  n.pagada=true;
+  
+  // --- GUARDADO ATÓMICO NÓMINA ---
+  saveRecord('nom_nominas', n.id, n);
+  
+  const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
+  if(cajaAbierta){
+    cajaAbierta.saldo-=n.neto;
+    const mov = {id:uid(),cajaId:cajaAbierta.id,tipo:'egreso',valor:n.neto,concepto:'Nómina '+n.numero+' '+n.empleado,fecha:today(),metodo:'transferencia'};
+    state.tes_movimientos.push(mov);
+    
+    // --- GUARDADOS ATÓMICOS CAJA Y MOVIMIENTO ---
+    saveRecord('cajas', cajaAbierta.id, cajaAbierta);
+    saveRecord('tes_movimientos', mov.id, mov);
+  }
+  renderNomNominas();notify('success','💰','Nómina pagada',n.empleado+' · '+fmt(n.neto),{duration:3000});
 }
 
 function pagarNomina(id){
@@ -2579,20 +2605,26 @@ function openCajaModal(){
 }
 function saveCaja(){
   const nombre=document.getElementById('m-caja-nombre').value.trim();if(!nombre)return;
-  state.cajas.push({id:uid(),nombre,saldo:parseFloat(document.getElementById('m-caja-saldo').value)||0,estado:'abierta',apertura:today()});
-  saveState();closeModal();renderTesCajas();
+  const caja = {id:uid(),nombre,saldo:parseFloat(document.getElementById('m-caja-saldo').value)||0,estado:'abierta',apertura:today()};
+  state.cajas.push(caja);
+  saveRecord('cajas', caja.id, caja); // Atómico
+  closeModal();renderTesCajas();
 }
-function cerrarCaja(id){const c=(state.cajas||[]).find(x=>x.id===id);if(c){c.estado='cerrada';saveState();renderTesCajas();notify('success','🔒','Caja cerrada',c.nombre+' · Saldo: '+fmt(c.saldo),{duration:3000})}}
-function abrirCaja(id){const c=(state.cajas||[]).find(x=>x.id===id);if(c){c.estado='abierta';c.apertura=today();saveState();renderTesCajas()}}
-
-function movCaja(cajaId,tipo){
-  openModal(`
-    <div class="modal-title">${tipo==='ingreso'?'📥 Ingreso':'📤 Egreso'} a Caja<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">VALOR</label><input type="number" class="form-control" id="m-mov-valor" min="0"></div>
-    <div class="form-group"><label class="form-label">CONCEPTO</label><input class="form-control" id="m-mov-concepto" placeholder="Describe el movimiento"></div>
-    <div class="form-group"><label class="form-label">MÉTODO</label><select class="form-control" id="m-mov-metodo"><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="transferencia">Transferencia</option></select></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveMovCaja('${cajaId}','${tipo}')">Registrar</button>
-  `);
+function cerrarCaja(id){
+  const c=(state.cajas||[]).find(x=>x.id===id);
+  if(c){
+    c.estado='cerrada'; 
+    saveRecord('cajas', c.id, c); // Atómico
+    renderTesCajas();notify('success','🔒','Caja cerrada',c.nombre+' · Saldo: '+fmt(c.saldo),{duration:3000});
+  }
+}
+function abrirCaja(id){
+  const c=(state.cajas||[]).find(x=>x.id===id);
+  if(c){
+    c.estado='abierta'; c.apertura=today(); 
+    saveRecord('cajas', c.id, c); // Atómico
+    renderTesCajas();
+  }
 }
 
 function saveMovCaja(cajaId, tipo) {
@@ -2714,12 +2746,26 @@ function saveTransferencia(){
   const valor=parseFloat(document.getElementById('m-tf-valor').value)||0;if(valor<=0||origId===destId)return;
   const orig=(state.cajas||[]).find(c=>c.id===origId);const dest=(state.cajas||[]).find(c=>c.id===destId);
   if(!orig||!dest)return;if(orig.saldo<valor){notify('warning','⚠️','Saldo insuficiente','',{duration:3000});return}
+  
   orig.saldo-=valor;dest.saldo+=valor;
   const concepto=document.getElementById('m-tf-concepto').value.trim();
-  state.tes_transferencias.push({id:uid(),origenId:origId,destinoId:destId,valor,concepto,fecha:today()});
-  state.tes_movimientos.push({id:uid(),cajaId:origId,tipo:'egreso',valor,concepto:'Transferencia → '+dest.nombre+': '+concepto,fecha:today(),metodo:'transferencia'});
-  state.tes_movimientos.push({id:uid(),cajaId:destId,tipo:'ingreso',valor,concepto:'Transferencia ← '+orig.nombre+': '+concepto,fecha:today(),metodo:'transferencia'});
-  saveState();closeModal();renderTesTransferencias();
+  
+  const trans = {id:uid(),origenId:origId,destinoId:destId,valor,concepto,fecha:today()};
+  const movE = {id:uid(),cajaId:origId,tipo:'egreso',valor,concepto:'Transferencia → '+dest.nombre+': '+concepto,fecha:today(),metodo:'transferencia'};
+  const movI = {id:uid(),cajaId:destId,tipo:'ingreso',valor,concepto:'Transferencia ← '+orig.nombre+': '+concepto,fecha:today(),metodo:'transferencia'};
+  
+  state.tes_transferencias.push(trans);
+  state.tes_movimientos.push(movE);
+  state.tes_movimientos.push(movI);
+  
+  // --- GUARDADOS ATÓMICOS MÚLTIPLES ---
+  saveRecord('cajas', orig.id, orig);
+  saveRecord('cajas', dest.id, dest);
+  saveRecord('tes_transferencias', trans.id, trans);
+  saveRecord('tes_movimientos', movE.id, movE);
+  saveRecord('tes_movimientos', movI.id, movI);
+  
+  closeModal();renderTesTransferencias();
   notify('success','✅','Transferencia realizada',fmt(valor)+' de '+orig.nombre+' a '+dest.nombre,{duration:3000});
 }
 
@@ -2987,11 +3033,13 @@ function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.c
     </div>`;
 }
 
-function guardarConfig(){
+function guardarConfig() {
+  // 1. Actualizar estado local
   state.meta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
   state.diasLocal = parseInt(document.getElementById('cfg-dias-local').value) || 1;
   state.diasInter = parseInt(document.getElementById('cfg-dias-inter').value) || 5;
 
+  // 2. Mantener toda tu estructura robusta intacta
   state.empresa = {
     nombre:           document.getElementById('cfg-emp-nombre').value.trim(),
     nombreComercial:  document.getElementById('cfg-emp-nombre2').value.trim(),
@@ -3013,51 +3061,15 @@ function guardarConfig(){
     logoBase64:       _tempLogoBase64 || state.empresa.logoBase64 || ''
   };
 
-  saveState();
-  notify('success','✅','Guardado','Configuración actualizada.',{duration:3000});
-  renderDashboard();
-}
-  function processLogoUpload(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const img = new Image();
-    img.onload = function() {
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH = 280; // Ancho máximo seguro para papel de 80mm
-      const scale = MAX_WIDTH / img.width;
-      canvas.width = MAX_WIDTH;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      _tempLogoBase64 = canvas.toDataURL('image/png');
-      document.getElementById('cfg-logo-preview').style.background = `url('${_tempLogoBase64}') center/contain no-repeat`;
-      document.getElementById('cfg-logo-preview').style.backgroundColor = 'white';
-      notify('success', '🎨', 'Logo procesado', 'Tamaño ajustado para el ticket.');
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-}
-function guardarConfig(){
-  state.meta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
-  state.diasLocal = parseInt(document.getElementById('cfg-dias-local').value) || 1;
-  state.diasInter = parseInt(document.getElementById('cfg-dias-inter').value) || 5;
-  
-  state.empresa = {
-    nombre: document.getElementById('cfg-emp-nombre').value.trim(),
-    nit: document.getElementById('cfg-emp-nit').value.trim(),
-    direccion: document.getElementById('cfg-emp-dir').value.trim(),
-    telefono: document.getElementById('cfg-emp-tel').value.trim(),
-    ciudad: document.getElementById('cfg-emp-ciudad').value.trim(),
-    social: document.getElementById('cfg-emp-social').value.trim(),
-    mensajePie: document.getElementById('cfg-emp-footer').value.trim(),
-    logoBase64: _tempLogoBase64 || state.empresa.logoBase64 || '' // Mantiene el logo si no se sube uno nuevo
-  };
-  
-  saveState();
-  notify('success','✅','Guardado','Configuración total actualizada.',{duration:3000});
+  // 3. --- GUARDADO ATÓMICO (MULTI-USUARIO) ---
+  // Guardamos solo estas ramas en Firebase sin pisar ventas ni inventario
+  database.ref('ventacontrol_state_v3/meta').set(state.meta);
+  database.ref('ventacontrol_state_v3/diasLocal').set(state.diasLocal);
+  database.ref('ventacontrol_state_v3/diasInter').set(state.diasInter);
+  database.ref('ventacontrol_state_v3/empresa').set(state.empresa);
+
+  // 4. Feedback a la usuaria
+  notify('success', '✅', 'Guardado', 'Configuración total actualizada.', { duration: 3000 });
   renderDashboard();
 }
 
@@ -3610,6 +3622,7 @@ function entregarSeparado(id) {
 </script>
 </body>
 </html>
+
 
 
 
