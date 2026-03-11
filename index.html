@@ -840,8 +840,8 @@ function renderPOS(){
   const subtotal = cart.reduce((a, item) => a + (item.precio * item.qty), 0);
   // El IVA es opcional: solo se calcula si applyIva es true
   const iva = posFormState.applyIva ? subtotal * 0.19 : 0;
-const flete = (posFormState.applyFlete && (posFormState.canal==='local'||posFormState.canal==='inter')) ? (posFormState.flete||0) : 0;
-const total = subtotal + iva + flete;
+  const flete = (posFormState.applyFlete && (posFormState.canal==='local'||posFormState.canal==='inter')) ? (posFormState.flete||0) : 0;
+  const total = subtotal + iva + flete;
 
   document.getElementById('pos-content').innerHTML = `
     <div class="pos-layout">
@@ -995,10 +995,13 @@ ${posFormState.metodo === 'efectivo' ? (() => {
             </select>
             ${posFormState.metodo === 'transferencia' ? `
             <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
-              ${CUENTAS_BANCARIAS.map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
+              ${(window.CUENTAS_BANCARIAS||[]).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>` : ''}
           </div>
 
+          <div class="form-row" style="gap:8px; margin-bottom:8px">
+            <input type="text" class="form-control" id="pos-cedula" placeholder="🔍 Cédula o Celular (Buscar)" style="padding:8px 12px; font-weight:bold; color:var(--accent)" onblur="autocompletarCliente(this)">
+          </div>
           <div class="form-row" style="gap:8px; margin-bottom:10px">
             <input type="text" class="form-control" id="pos-cliente" placeholder="Cliente (opcional)" style="padding:8px 12px" value="${posFormState.cliente}">
             <input type="tel" class="form-control" id="pos-telefono" placeholder="Teléfono (opcional)" style="padding:8px 12px" value="${posFormState.telefono}">
@@ -3619,9 +3622,45 @@ function entregarSeparado(id) {
         notify('success', '🛍️', 'Entregado', 'La prenda ha salido de separados.');
     }
 }
+function autocompletarCliente(inputElement) {
+    const valor = inputElement.value.trim();
+    if (valor.length < 5) return; 
+
+    // Buscar el cliente en la memoria
+    const cliente = (state.usu_clientes || []).find(c => 
+        c.cedula === valor || 
+        c.celular === valor || 
+        c.telefono === valor
+    );
+
+    if (cliente) {
+        // IDs reales de tu sistema ERP actual
+        const inputNombre = document.getElementById('pos-cliente');
+        const inputTel = document.getElementById('pos-telefono');
+        const inputCiudad = document.getElementById('pos-ciudad'); // Campo de ciudad en envíos
+
+        // Rellenar las casillas
+        if(inputNombre) inputNombre.value = cliente.nombre;
+        if(inputTel) inputTel.value = cliente.celular || cliente.telefono || cliente.whatsapp;
+        
+        // Si el envío está activo, poner ciudad + dirección
+        if(inputCiudad) inputCiudad.value = (cliente.ciudad ? cliente.ciudad + ' - ' : '') + (cliente.direccion || '');
+
+        // Guardar silenciosamente en el estado del cajero
+        if (typeof posFormState !== 'undefined') {
+            posFormState.cliente = cliente.nombre;
+            posFormState.cedula = cliente.cedula; 
+            posFormState.telefono = cliente.celular || cliente.telefono;
+            if(inputCiudad) posFormState.ciudad = inputCiudad.value;
+        }
+
+        notify('success', '👤', 'Cliente Encontrado', `Datos de ${cliente.nombre} cargados.`, {duration: 2500});
+    }
+}
 </script>
 </body>
 </html>
+
 
 
 
