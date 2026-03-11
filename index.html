@@ -2079,6 +2079,9 @@ let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() 
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
       <button class="btn btn-primary" onclick="openUsuarioModal('${collection}','${tipo}')">+ Nuevo ${titulo}</button>
       <button class="btn btn-secondary" onclick="importarUsuariosCSV('${collection}','${tipo}','${pageId}')" title="Importar CSV/Excel">📥 Importar</button>
+      <button class="btn btn-danger" onclick="eliminarImportacionMasiva()" style="margin-left: 8px;">
+    🗑️ Limpiar Importación
+</button>
       <button class="btn btn-secondary" onclick="descargarPlantilla('${tipo}')" title="Descargar plantilla de importación">⬇ Plantilla</button>
       <div class="search-bar" style="flex:1;min-width:180px;max-width:300px;margin:0">
         <span class="search-icon">🔍</span>
@@ -3657,41 +3660,42 @@ function autocompletarCliente(inputElement) {
         notify('success', '👤', 'Cliente Encontrado', `Datos de ${cliente.nombre} cargados.`, {duration: 2500});
     }
 }
-  function eliminarImportacionMasiva() {
-    const clientesMalos = (state.usu_clientes || []).filter(c => c.observacion === 'Importación masiva');
-    
-    if (clientesMalos.length === 0) {
-        return notify('info', 'ℹ️', 'Sin datos', 'No hay clientes marcados como importación masiva.');
-    }
-
-    if (!confirm(`¿Deseas eliminar definitivamente los ${clientesMalos.length} clientes mal cargados?`)) return;
-
-    showLoadingOverlay('connecting');
-    
-    let batch = {};
-    clientesMalos.forEach(c => {
-        batch[c.id] = null;
+function eliminarImportacionMasiva() {
+    // 🛡️ Filtro ampliado: busca la etiqueta O registros donde el nombre sea un número (error de tu excel)
+    const clientesMalos = (state.usu_clientes || []).filter(c => {
+        const esMasiva = c.observacion === 'Importación masiva';
+        const esErrorColumnas = /^\d+$/.test(c.nombre); // Si el nombre es solo números, es un error
+        return esMasiva || esErrorColumnas;
     });
 
-    // Actualización atómica en Firebase
+    if (clientesMalos.length === 0) {
+        return notify('info', 'ℹ️', 'Sin datos', 'No se detectaron registros de la importación para borrar.');
+    }
+
+    if (!confirm(`⚠️ ¡ATENCIÓN! Se eliminarán ${clientesMalos.length} registros erróneos. ¿Deseas continuar?`)) return;
+
+    showLoadingOverlay('connecting');
+    let batch = {};
+    clientesMalos.forEach(c => { batch[c.id] = null; });
+
     firebase.database().ref('ventacontrol_state_v3/usu_clientes').update(batch)
         .then(() => {
             showLoadingOverlay('hide');
-            notify('success', '🧹', 'Base limpia', 'Los registros se han eliminado correctamente.');
+            notify('success', '🧹', 'Base limpia', 'Se eliminaron ' + clientesMalos.length + ' registros.');
             
-            // Actualizar el estado local para que desaparezcan de la pantalla sin recargar
-            state.usu_clientes = state.usu_clientes.filter(c => c.observacion !== 'Importación masiva');
+            // Limpieza local
+            state.usu_clientes = state.usu_clientes.filter(c => !clientesMalos.find(m => m.id === c.id));
             renderPage('usuarios'); 
         })
         .catch(err => {
             showLoadingOverlay('hide');
-            console.error(err);
             alert("Error al eliminar: " + err.message);
         });
 }
 </script>
 </body>
 </html>
+
 
 
 
