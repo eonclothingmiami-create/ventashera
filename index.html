@@ -807,9 +807,28 @@ function syncPOSFormState() {
   const cta = document.getElementById('pos-cuenta'); if(cta) posFormState.cuenta = cta.value;
   const iva = document.getElementById('pos-apply-iva'); if(iva) posFormState.applyIva = iva.checked;
   const fleteChk = document.getElementById('pos-apply-flete'); if(fleteChk) posFormState.applyFlete = fleteChk.checked;
-const fleteVal = document.getElementById('pos-flete-valor'); if(fleteVal) posFormState.flete = parseFloat(fleteVal.value)||0;
+  const fleteVal = document.getElementById('pos-flete-valor'); if(fleteVal) posFormState.flete = parseFloat(fleteVal.value)||0;
+  
+  // NUEVO: Capturar efectivo recibido
+  const montoRec = document.getElementById('pos-monto-recibido'); if(montoRec) posFormState.montoRecibido = parseFloat(montoRec.value) || '';
 }
 
+  function calcularVuelto(total) {
+  const recibido = parseFloat(document.getElementById('pos-monto-recibido').value) || 0;
+  const display = document.getElementById('pos-vuelto-display');
+  
+  if (recibido === 0) {
+    display.textContent = '$0';
+    display.style.color = 'var(--text2)';
+  } else if (recibido >= total) {
+    display.textContent = fmt(recibido - total);
+    display.style.color = 'var(--green)'; // Verde: Todo OK
+  } else {
+    display.textContent = 'Faltan ' + fmt(total - recibido);
+    display.style.color = 'var(--red)'; // Rojo: Falta dinero
+  }
+}
+  
 function renderPOS(){
   const cart = state.pos_cart || [];
   const articulos = state.articulos || [];
@@ -943,7 +962,29 @@ const total = subtotal + iva + flete;
              <input type="text" class="form-control" id="pos-ciudad" placeholder="Ciudad / Dirección" value="${posFormState.ciudad}">
              <div id="pos-liq-info" style="font-size:10px; color:var(--accent); margin-top:4px"></div>
           </div>
-
+${posFormState.metodo === 'efectivo' ? (() => {
+              let displayStr = '$0'; let colorStr = 'var(--text2)';
+              if (posFormState.montoRecibido) {
+                  if (posFormState.montoRecibido >= total) { 
+                      displayStr = fmt(posFormState.montoRecibido - total); 
+                      colorStr = 'var(--green)'; 
+                  } else { 
+                      displayStr = 'Faltan ' + fmt(total - posFormState.montoRecibido); 
+                      colorStr = 'var(--red)'; 
+                  }
+              }
+              return `
+              <div style="background:var(--bg3); padding:12px; border-radius:10px; border:1px dashed var(--border); margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <label class="form-label" style="margin:0; font-size:11px;">💵 EFECTIVO RECIBIDO</label>
+                  <input type="number" class="form-control" id="pos-monto-recibido" style="width:140px; padding:6px; font-size:14px; font-weight:700; color:var(--green); text-align:right;" placeholder="0" oninput="calcularVuelto(${total})" value="${posFormState.montoRecibido || ''}">
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-size:12px; color:var(--text2); font-weight:700;">CAMBIO / VUELTO</span>
+                  <span id="pos-vuelto-display" style="font-family:Syne; font-size:18px; font-weight:800; color:${colorStr};">${displayStr}</span>
+                </div>
+              </div>`;
+          })() : ''}
           <div class="form-group" style="margin-bottom:10px; display:flex; gap:8px;">
             <select class="form-control" id="pos-metodo-pago" style="padding:8px 12px" onchange="renderPOS()">
               <option value="efectivo" ${posFormState.metodo === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>
@@ -1222,7 +1263,7 @@ const total=subtotal+iva+flete;
       saveRecord('usu_clientes', nuevoCliente.id, nuevoCliente);
     }
   }
-  posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true };
+  posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0, montoRecibido: '' };
   saveState();
 
   openCashDrawer(); 
@@ -3514,6 +3555,7 @@ function entregarSeparado(id) {
 </script>
 </body>
 </html>
+
 
 
 
