@@ -2394,17 +2394,30 @@ function renderPendientes(){
     html+=`<div class="urgency-item ${urgClass}"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span class="badge badge-${v.canal}">${v.canal==='local'?'🛵 Local':'📦 Inter'}</span> <span style="font-family:Syne;font-weight:700;color:var(--accent)">${fmt(v.valor)}</span></div><span style="font-size:11px;font-weight:700;color:${urgClass==='urgent'?'var(--red)':urgClass==='warning'?'var(--yellow)':'var(--green)'}">${urgLabel}</span></div>${v.guia?'<div style="font-size:12px;color:var(--text2);margin-bottom:4px">Guía: '+v.guia+' · '+empresaString+'</div>':''}<div style="font-size:12px;color:var(--text2);margin-bottom:10px">${formatDate(v.fecha)} → Liq: ${formatDate(v.fechaLiquidacion)}</div><div class="btn-group"><button class="btn btn-primary btn-sm" onclick="marcarLiquidado('${v.id}')">✓ Liquidar (+20XP)</button></div></div>`});
   document.getElementById('pendientes-content').innerHTML=html;
 }
-function marcarLiquidado(id){
-  const v=state.ventas.find(v=>v.id===id);if(!v)return;
-  v.liquidado=true;awardXP(20);saveState();renderPendientes();updateNavBadges();
-  notify('success','💵','¡Liquidado!',fmt(v.valor)+' · +20XP',{duration:3000});screenFlash('green');
+function marcarLiquidado(id) {
+  const v = state.ventas.find(v => v.id === id); 
+  if (!v) return;
   
-  const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
-  if(cajaAbierta){
-    cajaAbierta.saldo+=v.valor;
-    state.tes_movimientos.push({id:uid(),cajaId:cajaAbierta.id,tipo:'ingreso',valor:v.valor,concepto:'Liquidación '+(v.guia||'Venta'),fecha:today(),metodo:'transferencia'});
-    saveState();
+  v.liquidado = true; 
+  awardXP(20); 
+  
+  // --- GUARDADOS ATÓMICOS ---
+  saveRecord('ventas', v.id, v);
+  database.ref('ventacontrol_state_v3/game').set(state.game); 
+
+  const cajaAbierta = (state.cajas || []).find(c => c.estado === 'abierta');
+  if (cajaAbierta) {
+    cajaAbierta.saldo += v.valor;
+    const mov = { id: uid(), cajaId: cajaAbierta.id, tipo: 'ingreso', valor: v.valor, concepto: 'Liquidación ' + (v.guia || 'Venta'), fecha: today(), metodo: 'transferencia' };
+    state.tes_movimientos.push(mov);
+    saveRecord('tes_movimientos', mov.id, mov);
+    saveRecord('cajas', cajaAbierta.id, cajaAbierta);
   }
+  
+  renderPendientes();
+  updateNavBadges();
+  notify('success', '💵', '¡Liquidado!', fmt(v.valor) + ' · +20XP', { duration: 3000 });
+  screenFlash('green');
 }
 
 // ===================================================================
@@ -2582,15 +2595,25 @@ function movCaja(cajaId,tipo){
   `);
 }
 
-function saveMovCaja(cajaId,tipo){
-  const valor=parseFloat(document.getElementById('m-mov-valor').value)||0;if(valor<=0)return;
-  const concepto=document.getElementById('m-mov-concepto').value.trim();
-  const metodo=document.getElementById('m-mov-metodo').value;
-  const caja=(state.cajas||[]).find(c=>c.id===cajaId);if(!caja)return;
-  if(tipo==='ingreso')caja.saldo+=valor;else caja.saldo-=valor;
-  state.tes_movimientos.push({id:uid(),cajaId,tipo,valor,concepto,fecha:today(),metodo});
-  saveState();closeModal();renderTesCajas();
-  notify('success','✅',tipo==='ingreso'?'Ingreso':'Egreso',fmt(valor)+' · '+concepto,{duration:3000});
+function saveMovCaja(cajaId, tipo) {
+  const valor = parseFloat(document.getElementById('m-mov-valor').value) || 0; 
+  if (valor <= 0) return;
+  const concepto = document.getElementById('m-mov-concepto').value.trim();
+  const metodo = document.getElementById('m-mov-metodo').value;
+  const caja = (state.cajas || []).find(c => c.id === cajaId); 
+  if (!caja) return;
+  
+  if (tipo === 'ingreso') caja.saldo += valor; else caja.saldo -= valor;
+  const mov = { id: uid(), cajaId, tipo, valor, concepto, fecha: today(), metodo };
+  state.tes_movimientos.push(mov);
+  
+  // --- GUARDADO ATÓMICO DOBLE ---
+  saveRecord('cajas', caja.id, caja);
+  saveRecord('tes_movimientos', mov.id, mov);
+  
+  closeModal();
+  renderTesCajas();
+  notify('success', '✅', tipo === 'ingreso' ? 'Ingreso' : 'Egreso', fmt(valor) + ' · ' + concepto, { duration: 3000 });
 }
 
 function renderTesDinero(){
@@ -2623,20 +2646,38 @@ function openSimpleFormModal(collection,title,columns){
   `);
 }
 
-function saveSimpleForm(collection,columns){
-  if(typeof columns==='string')columns=JSON.parse(columns.replace(/'/g,'"'));
-  const item={id:uid(),fecha:today()};
-  columns.forEach(c=>{const[key,type]=c.split(':');const el=document.getElementById('m-sf-'+key);if(el)item[key]=type==='number'?parseFloat(el.value)||0:el.value.trim()});
-  if(!state[collection])state[collection]=[];
-  state[collection].push(item);saveState();closeModal();
-  renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
-  notify('success','✅','Registro guardado','',{duration:2000});
+function saveSimpleForm(collection, columns) {
+  if (typeof columns === 'string') columns = JSON.parse(columns.replace(/'/g, '"'));
+  const item = { id: uid(), fecha: today() };
+  
+  columns.forEach(c => {
+    const [key, type] = c.split(':');
+    const el = document.getElementById('m-sf-' + key);
+    if (el) item[key] = type === 'number' ? parseFloat(el.value) || 0 : el.value.trim();
+  });
+  
+  if (!state[collection]) state[collection] = [];
+  state.collection.push(item);
+  
+  // --- GUARDADO ATÓMICO ---
+  saveRecord(collection, item.id, item);
+  
+  closeModal();
+  renderPage(document.querySelector('.page.active')?.id.replace('page-', ''));
+  notify('success', '✅', 'Registro guardado', '', { duration: 2000 });
 }
 
-function deleteFromCollection(collection,id,pageId){
-  if(!confirm('¿Eliminar?'))return;
-  state[collection]=(state[collection]||[]).filter(x=>x.id!==id);saveState();
+function deleteFromCollection(collection, id, pageId) {
+  if (!confirm('¿Eliminar este registro?')) return;
+  
+  // 1. Borrar de la memoria local
+  state[collection] = (state[collection] || []).filter(x => x.id !== id);
+  
+  // 2. GUARDADO ATÓMICO: Borrar solo ese registro exacto en Firebase
+  deleteRecord(collection, id);
+  
   renderPage(pageId);
+  notify('success', '🗑️', 'Eliminado', 'Registro borrado correctamente.');
 }
 
 function renderTesImpuestos(){renderSimpleCollection('tes_impuestos','Impuestos','tes_impuestos',['fecha:date:FECHA','tipo:text:TIPO IMPUESTO','base:number:BASE','tarifa:text:TARIFA %','valor:number:VALOR','referencia:text:REFERENCIA'])}
@@ -3569,6 +3610,7 @@ function entregarSeparado(id) {
 </script>
 </body>
 </html>
+
 
 
 
