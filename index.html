@@ -2227,79 +2227,72 @@ function importarUsuariosCSV(collection, tipo, pageId){
   const input = document.getElementById(pageId+'-file-input');
   if(input) input.click();
 }
-function procesarArchivoUsuarios(input, collection, tipo, pageId){
+function procesarArchivoUsuarios(input, collection, tipo, pageId) {
   const file = input.files[0]; if(!file) return;
 
-  if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) {
-      alert("⚠️ Estás subiendo un Excel (.xlsx). Abre tu Excel, ve a 'Guardar como' y elige 'CSV UTF-8 (delimitado por comas)'. Sube ese nuevo archivo.");
-      input.value = ''; return;
-  }
-
   const reader = new FileReader();
-  reader.onload = async function(e){
+  reader.onload = async function(e) {
     try {
       showLoadingOverlay('connecting');
       const text = e.target.result;
       
-      // 🌟 SOLUCIÓN DEFINITIVA: Leer cualquier salto de línea (Mac, Windows, Linux)
-      const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim());
-      
-      if(lines.length < 2) throw new Error("El archivo está vacío o no tiene datos válidos.");
+      const lines = text.split(/\r?\n/);
+      if (lines.length < 2) throw new Error("Archivo vacío.");
 
-      const separador = lines[0].includes(';') ? ';' : ',';
       let importados = 0;
-      
-      if(!state[collection] || !Array.isArray(state[collection])) { state[collection] = []; }
-      
-      for(let i=1; i<lines.length; i++){
-        // Usar el separador detectado automáticamente
-        const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
+      let batch = {};
+      let batchCount = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        // Regex para separar por comas respetando textos entre comillas (importante para direcciones)
+        const cols = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
         
-        let cedula = cols[1] || `SIN-CEDULA-${i}`; 
-        let nombre = cols[2] || `Cliente Desconocido ${i}`; 
-        let celular = cols[4] || '';
-        
+        // Validamos que tenga al menos identificación y nombre (Cols C y D)
+        if (cols.length < 4 || !cols[2]) continue; 
+
+        const userId = "CLI_" + uid() + i;
         const u = {
-          id: uid() + i, 
+          id: userId,
           tipo: tipo,
-          tipoId:       cols[0] || 'CC',
-          cedula:       cedula,
-          nombre:       nombre,
-          telefono:     cols[3] || '',
-          celular:      celular,
-          whatsapp:     cols[5] || celular,
-          email:        cols[6] || '',
-          direccion:    cols[7] || '',
-          ciudad:       cols[8] || '',
-          departamento: cols[9] || '',
-          pais:         cols[10] || 'Colombia',
-          fechaNac:     cols[11] || '',
-          genero:       cols[12] || '',
-          tipoPersona:  cols[13] || 'Natural',
-          regimen:      cols[14] || '',
-          formaPago:    cols[15] || 'Efectivo',
-          descuento:    parseFloat(cols[16]) || 0,
-          cupoCredito:  parseFloat(cols[17]) || 0,
-          vendedor:     cols[18] || '',
-          observacion:  cols[19] || 'Importación Masiva',
+          tipoId: (cols[1] || 'CC').replace(/"/g, '').trim(), // Col B
+          cedula: (cols[2] || '').replace(/"/g, '').trim(), // Col C
+          nombre: (cols[3] || '').replace(/"/g, '').trim().toUpperCase(), // Col D
+          celular: (cols[6] || '').replace(/"/g, '').trim(), // Col G
+          whatsapp: (cols[7] || '').replace(/"/g, '').trim(), // Col H
+          email: (cols[10] || '').replace(/"/g, '').trim(), // Col K
+          ciudad: (cols[15] || '').replace(/"/g, '').trim(), // Col P
+          direccion: (cols[17] || '').replace(/"/g, '').trim(), // Col R
+          observacion: 'Importación masiva',
           fechaCreacion: today()
         };
         
-        state[collection].push(u);
-        importados++;
+        // Evitar duplicar la misma cédula en la misma carga
+        if (!state[collection].some(exist => exist.cedula === u.cedula)) {
+          state[collection].push(u);
+          batch[`${collection}/${userId}`] = u;
+          importados++;
+          batchCount++;
+        }
+
+        // Enviar a Firebase en bloques de 500
+        if (batchCount >= 500) {
+          await firebase.database().ref('ventacontrol_state_v3').update(batch);
+          batch = {}; batchCount = 0;
+        }
       }
-      
-      await firebase.database().ref('ventacontrol_state_v3').child(collection).set(state[collection]);
+
+      if (batchCount > 0) {
+        await firebase.database().ref('ventacontrol_state_v3').update(batch);
+      }
       
       input.value = '';
       showLoadingOverlay('hide');
       renderPage(pageId);
-      
-      notify('success', '🚀', '¡Importación Absoluta!', `Se encontraron y guardaron ${importados} filas exactas del archivo.`, {duration: 8000});
+      notify('success', '🚀', '¡Importación Exitosa!', `Se cargaron ${importados} clientes correctamente.`);
       
     } catch (err) {
       showLoadingOverlay('hide');
-      alert("Error al importar: " + err.message);
+      alert("Error en la calibración: " + err.message);
     }
   };
   reader.readAsText(file, 'UTF-8');
@@ -3695,6 +3688,7 @@ function eliminarImportacionMasiva() {
 </script>
 </body>
 </html>
+
 
 
 
