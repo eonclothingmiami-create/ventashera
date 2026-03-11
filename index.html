@@ -3657,9 +3657,42 @@ function autocompletarCliente(inputElement) {
         notify('success', '👤', 'Cliente Encontrado', `Datos de ${cliente.nombre} cargados.`, {duration: 2500});
     }
 }
+  function eliminarImportacionMasiva() {
+    const clientesMalos = (state.usu_clientes || []).filter(c => c.observacion === 'Importación masiva');
+    
+    if (clientesMalos.length === 0) {
+        return notify('info', 'ℹ️', 'Sin datos', 'No hay clientes marcados como importación masiva.');
+    }
+
+    if (!confirm(`¿Deseas eliminar definitivamente los ${clientesMalos.length} clientes mal cargados?`)) return;
+
+    showLoadingOverlay('connecting');
+    
+    let batch = {};
+    clientesMalos.forEach(c => {
+        batch[c.id] = null;
+    });
+
+    // Actualización atómica en Firebase
+    firebase.database().ref('ventacontrol_state_v3/usu_clientes').update(batch)
+        .then(() => {
+            showLoadingOverlay('hide');
+            notify('success', '🧹', 'Base limpia', 'Los registros se han eliminado correctamente.');
+            
+            // Actualizar el estado local para que desaparezcan de la pantalla sin recargar
+            state.usu_clientes = state.usu_clientes.filter(c => c.observacion !== 'Importación masiva');
+            renderPage('usuarios'); 
+        })
+        .catch(err => {
+            showLoadingOverlay('hide');
+            console.error(err);
+            alert("Error al eliminar: " + err.message);
+        });
+}
 </script>
 </body>
 </html>
+
 
 
 
