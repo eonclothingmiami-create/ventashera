@@ -1635,10 +1635,22 @@ async function saveArticulo(existingId){
                 fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
             });
         }
-        saveState();
-  updateCatalogVisibility(existingId || data.id);
-  closeModal();
-  renderArticulos();
+    if(qty !== 0){
+            const mov = {
+                id: uid(), articuloId: data.id, bodegaId: document.getElementById('m-art-bodega').value,
+                cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
+                fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
+            };
+            state.inv_movimientos.push(mov);
+            saveRecord('inv_movimientos', mov.id, mov); // Guardado atómico del stock
+        }
+        
+        // Guardado atómico de la prenda y evitamos el saveState() destructivo
+        saveRecord('articulos', data.id, data);
+        
+        updateCatalogVisibility(existingId || data.id);
+        closeModal();
+        renderArticulos();
         showLoadingOverlay('hide');
         notify('success','🌐','Sincronizado', `${refID} actualizado en Web y ERP.`);
     } catch(e) {
@@ -1702,14 +1714,28 @@ function openAjusteModal(){
 }
 
 function saveAjusteInv(){
-  const artId=document.getElementById('m-aj-art').value;const tipo=document.getElementById('m-aj-tipo').value;
-  const cant=parseInt(document.getElementById('m-aj-cant').value)||0;if(cant<=0)return;
-  const bodId=document.getElementById('m-aj-bod').value;const motivo=document.getElementById('m-aj-motivo').value.trim();
-  const ajuste={id:uid(),articuloId:artId,tipo,cantidad:cant,bodegaId:bodId,motivo,fecha:today()};
+  const artId = document.getElementById('m-aj-art').value;
+  const tipo = document.getElementById('m-aj-tipo').value;
+  const cant = parseInt(document.getElementById('m-aj-cant').value) || 0; 
+  if(cant <= 0) return;
+  const bodId = document.getElementById('m-aj-bod').value;
+  const motivo = document.getElementById('m-aj-motivo').value.trim();
+  
+  const ajusteId = uid();
+  const movId = uid();
+  
+  const ajuste = {id: ajusteId, articuloId: artId, tipo, cantidad: cant, bodegaId: bodId, motivo, fecha: today()};
+  const mov = {id: movId, articuloId: artId, bodegaId: bodId, cantidad: tipo === 'entrada' ? cant : -cant, tipo: 'ajuste_' + tipo, fecha: today(), referencia: 'Ajuste', nota: motivo};
+  
+  // Guardado Atómico: Solo enviamos estos dos registros específicos
   state.inv_ajustes.push(ajuste);
-  state.inv_movimientos.push({id:uid(),articuloId:artId,bodegaId:bodId,cantidad:tipo==='entrada'?cant:-cant,tipo:'ajuste_'+tipo,fecha:today(),referencia:'Ajuste',nota:motivo});
-  saveState();closeModal();renderInvAjustes();
-  notify('success','✅','Ajuste registrado',`${tipo==='entrada'?'+':'−'}${cant} unidades`,{duration:3000});
+  state.inv_movimientos.push(mov);
+  saveRecord('inv_ajustes', ajusteId, ajuste);
+  saveRecord('inv_movimientos', movId, mov);
+  
+  closeModal();
+  renderInvAjustes();
+  notify('success','✅','Ajuste registrado',`${tipo === 'entrada' ? '+' : '−'}${cant} unidades`,{duration:3000});
 }
 
 // ===================================================================
@@ -1758,19 +1784,35 @@ function openTrasladoModal(){
 }
 
 function saveTraslado(){
-  const artId=document.getElementById('m-tr-art').value;const origId=document.getElementById('m-tr-orig').value;
-  const destId=document.getElementById('m-tr-dest').value;const cant=parseInt(document.getElementById('m-tr-cant').value)||0;
-  if(cant<=0||origId===destId){notify('warning','⚠️','Error','Verifica los datos.',{duration:3000});return}
-  const stockOrig=getArticuloStock(artId,origId);
-  if(stockOrig<cant){notify('warning','⚠️','Sin stock','No hay suficiente stock en la bodega origen.',{duration:3000});return}
-  const nota=document.getElementById('m-tr-nota').value.trim();
-  state.inv_traslados.push({id:uid(),articuloId:artId,origenId:origId,destinoId:destId,cantidad:cant,nota,fecha:today()});
-  state.inv_movimientos.push({id:uid(),articuloId:artId,bodegaId:origId,cantidad:-cant,tipo:'traslado_salida',fecha:today(),referencia:'Traslado',nota});
-  state.inv_movimientos.push({id:uid(),articuloId:artId,bodegaId:destId,cantidad:cant,tipo:'traslado_entrada',fecha:today(),referencia:'Traslado',nota});
-  saveState();closeModal();renderInvTraslados();
+  const artId = document.getElementById('m-tr-art').value;
+  const origId = document.getElementById('m-tr-orig').value;
+  const destId = document.getElementById('m-tr-dest').value;
+  const cant = parseInt(document.getElementById('m-tr-cant').value) || 0;
+  
+  if(cant <= 0 || origId === destId) { notify('warning','⚠️','Error','Verifica los datos.',{duration:3000}); return; }
+  
+  const stockOrig = getArticuloStock(artId, origId);
+  if(stockOrig < cant) { notify('warning','⚠️','Sin stock','No hay suficiente stock en la bodega origen.',{duration:3000}); return; }
+  
+  const nota = document.getElementById('m-tr-nota').value.trim();
+  
+  const traslado = {id: uid(), articuloId: artId, origenId: origId, destinoId: destId, cantidad: cant, nota, fecha: today()};
+  const movSalida = {id: uid(), articuloId: artId, bodegaId: origId, cantidad: -cant, tipo: 'traslado_salida', fecha: today(), referencia: 'Traslado', nota};
+  const movEntrada = {id: uid(), articuloId: artId, bodegaId: destId, cantidad: cant, tipo: 'traslado_entrada', fecha: today(), referencia: 'Traslado', nota};
+  
+  // Guardado Atómico
+  state.inv_traslados.push(traslado);
+  state.inv_movimientos.push(movSalida);
+  state.inv_movimientos.push(movEntrada);
+  
+  saveRecord('inv_traslados', traslado.id, traslado);
+  saveRecord('inv_movimientos', movSalida.id, movSalida);
+  saveRecord('inv_movimientos', movEntrada.id, movEntrada);
+  
+  closeModal();
+  renderInvTraslados();
   notify('success','✅','Traslado realizado',`${cant} unidades movidas`,{duration:3000});
 }
-
 // ===================================================================
 // ===== GENERIC DOCUMENT RENDERER (Cotizaciones, Órdenes, etc) =====
 // ===================================================================
@@ -3472,6 +3514,7 @@ function entregarSeparado(id) {
 </script>
 </body>
 </html>
+
 
 
 
