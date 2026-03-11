@@ -1264,7 +1264,8 @@ const total=subtotal+iva+flete;
     }
   }
   posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0, montoRecibido: '' };
-  saveState();
+ database.ref('ventacontrol_state_v3/game').set(state.game);
+  database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos);
 
   openCashDrawer(); 
   printReceipt(factura); 
@@ -1971,10 +1972,16 @@ function saveDoc(collection,tipo){
   const prefixes={cotizaciones:'COT',ordenes_venta:'OV',facturas:'FAC',notas_credito:'NC',notas_debito:'ND',remisiones:'REM',devoluciones:'DEV',anticipos_clientes:'ANT'};
   const prefix=prefixes[collection]||'DOC';const consKey=consKeys[collection]||'factura';
   const numero=prefix+'-'+getNextConsec(consKey);
+  
   const doc={id:uid(),numero,fecha,cliente,items:items.map(i=>({...i})),subtotal,iva,total,estado:'borrador',observaciones:obs,facturaRef:refId,tipo};
   state[collection].push(doc);
   _docItems=[];
-  saveState();closeModal();renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
+  
+  // --- GUARDADO ATÓMICO ---
+  saveRecord(collection, doc.id, doc);
+  database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos); // Solo actualiza el numerador
+  
+  closeModal();renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Documento creado',`${numero} · ${fmt(total)}`,{duration:3000});
 }
 
@@ -2003,7 +2010,12 @@ function viewDoc(collection,id){
 
 function changeDocStatus(collection,id,newStatus){
   const doc=(state[collection]||[]).find(d=>d.id===id);if(!doc)return;
-  doc.estado=newStatus;saveState();closeModal();
+  doc.estado=newStatus;
+  
+  // --- GUARDADO ATÓMICO ---
+  saveRecord(collection, doc.id, doc);
+  
+  closeModal();
   renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Estado actualizado',doc.numero+' → '+newStatus,{duration:3000});
 }
@@ -3542,12 +3554,14 @@ function renderSeparados() {
     `;
 }
 
-// Función para procesar la entrega del separado
 function entregarSeparado(id) {
     const v = state.ventas.find(x => x.id === id);
     if (v) {
         v.estadoEntrega = 'Entregado';
-        saveState();
+        
+        // --- GUARDADO ATÓMICO ---
+        saveRecord('ventas', v.id, v);
+        
         renderSeparados();
         notify('success', '🛍️', 'Entregado', 'La prenda ha salido de separados.');
     }
@@ -3555,6 +3569,7 @@ function entregarSeparado(id) {
 </script>
 </body>
 </html>
+
 
 
 
