@@ -8,9 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-  <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-storage-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
 
 <style>
@@ -646,42 +644,79 @@ function getArticuloStock(artId,bodegaId){return(state.inv_movimientos||[]).filt
 // ===== CONEXIÓN ERP FIREBASE =====
 let isFirstLoad=true;let _fbConnected=false;let _fbTimeoutId=null;
 
-function loadState(){
+// ===================================================================
+// ===== CREDENCIALES & CONEXIÓN SUPABASE =====
+// ===================================================================
+
+const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let isFirstLoad = true;
+let _sbConnected = false;
+
+async function loadState() {
   showLoadingOverlay('connecting');
-  _fbTimeoutId=setTimeout(()=>{if(!_fbConnected)showLoadingOverlay('error')},10000);
-  firebase.database().ref('.info/connected').on('value',snap=>{
-    _fbConnected=!!snap.val();
-    ['fb-status-dot','fb-status-dot-mobile'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.background=_fbConnected?'#22c55e':'#f59e0b';el.title=_fbConnected?'Conectado':'Sin conexión'}});
-  });
-  stateRef.on('value',snapshot=>{
-    if(_fbTimeoutId){clearTimeout(_fbTimeoutId);_fbTimeoutId=null}
-    _fbConnected=true;
-    const data=snapshot.val();
-    if(data){
-      const defaults={...state};
-      state={...defaults,...data};
-      const arrFields=['ventas','articulos','bodegas','inv_movimientos','inv_ajustes','inv_traslados','cotizaciones','ordenes_venta','facturas','notas_credito','notas_debito','remisiones','devoluciones','anticipos_clientes','empleados','nom_ausencias','nom_anticipos','nom_conceptos','nom_nominas','cajas','tes_movimientos','tes_impuestos','tes_retenciones','tes_comp_retencion','tes_comp_ingreso','tes_comp_egreso','tes_transferencias','pos_cart'];
-      arrFields.forEach(f=>{if(!Array.isArray(state[f]))state[f]=defaults[f]||[]});
-      if(!state.game)state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};
-      if(!state.game.earnedBadges)state.game.earnedBadges=[];
-      if(!state.game.claimedSnacks)state.game.claimedSnacks={};
-      if(!state.rewards)state.rewards={};
-      if(!state.consecutivos)state.consecutivos={factura:1,cotizacion:1,orden:1,nc:1,nd:1,remision:1,devolucion:1,ingreso:1,egreso:1,retencion:1};
-      if(!state.empresa)state.empresa={nombre:'Hera Swimwear',nit:'',direccion:'',telefono:'',ciudad:''};
-    }
+  
+  try {
+    // Descargamos todas las tablas principales en paralelo para mayor velocidad
+    const [
+      { data: products },
+      { data: customers },
+      { data: employees },
+      { data: invoices },
+      { data: guias }
+    ] = await Promise.all([
+      supabase.from('products').select('*'),
+      supabase.from('customers').select('*'),
+      supabase.from('employees').select('*'),
+      supabase.from('invoices').select('*'),
+      supabase.from('guias').select('*')
+    ]);
+
+    _sbConnected = true;
+    
+    // Mapeamos los datos de Supabase a tu variable 'state' local
+    // Hacemos un mapeo para que los campos coincidan con lo que espera tu frontend
+    state.articulos = (products || []).map(p => ({
+      id: p.id,
+      codigo: p.ref,
+      nombre: p.name,
+      categoria: p.categoria,
+      seccion: p.seccion,
+      descripcion: p.description,
+      precioVenta: p.price,
+      precioCompra: p.cost,
+      stock: p.stock,
+      activo: p.active,
+      mostrarEnWeb: p.visible
+    }));
+
+    state.usu_clientes = customers || [];
+    state.empleados = employees || [];
+    state.facturas = invoices || [];
+    state.ventas = guias || []; 
+
+    ['fb-status-dot','fb-status-dot-mobile'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el){ el.style.background = '#22c55e'; el.title = 'Conectado a Supabase'; }
+    });
+
     checkMonthReset();
     showLoadingOverlay('hide');
     renderAll();
-    if(isFirstLoad){
-      isFirstLoad=false;
-      setTimeout(()=>notify('success','☁️','¡Conectado!','Datos sincronizados en tiempo real.',{duration:3000}),800);
-    }
-  },error=>{
-    if(_fbTimeoutId){clearTimeout(_fbTimeoutId);_fbTimeoutId=null}
-    showLoadingOverlay('error');
-  });
-}
 
+    if(isFirstLoad){
+      isFirstLoad = false;
+      notify('success','☁️','¡Conectado!','Datos sincronizados desde Supabase.',{duration:3000});
+    }
+
+  } catch (error) {
+    console.error("Error cargando base de datos:", error);
+    showLoadingOverlay('error');
+  }
+}
 function saveState(){stateRef.set(state).catch(err=>{notify('danger','⚠️','Error','No se pudo guardar.',{duration:5000})})}
 
 // Guarda un registro individual sin sobreescribir todo el estado (Seguridad Multi-Usuario)
@@ -1346,115 +1381,119 @@ function posCartQty(idx,delta){
 function posCartRemove(idx){syncPOSFormState();(state.pos_cart||[]).splice(idx,1);renderPOS()}
 function clearPOSCart(){syncPOSFormState();state.pos_cart=[];renderPOS()}
 
-function procesarVentaPOS(){
+async function procesarVentaPOS() {
   syncPOSFormState();
-  const cart=state.pos_cart||[];if(cart.length===0)return;
+  const cart = state.pos_cart || [];
+  if (cart.length === 0) return;
 
   const canal = posFormState.canal;
-  const metodo = posFormState.metodo;
-  const cuentaStr = metodo === 'transferencia' ? posFormState.cuenta : metodo;
+  const subtotal = cart.reduce((a, item) => a + (item.precio * item.qty), 0);
+  const iva = posFormState.applyIva ? subtotal * 0.19 : 0;
+  const flete = (posFormState.applyFlete && (canal === 'local' || canal === 'inter')) ? (posFormState.flete || 0) : 0;
+  const total = subtotal + iva + flete;
 
-  const subtotal=cart.reduce((a,item)=>a+(item.precio*item.qty),0);
- const iva = posFormState.applyIva ? subtotal*0.19 : 0;
-const flete = (posFormState.applyFlete && (canal==='local'||canal==='inter')) ? (posFormState.flete||0) : 0;
-const total=subtotal+iva+flete;
-  const numFactura='POS-'+getNextConsec('factura');
-  const fechaActual = today();
-
-  let catGlobal = 'Varias';
-  const catsInCart = [...new Set(cart.map(c => c.categoria).filter(Boolean))];
-  if(catsInCart.length === 1) catGlobal = catsInCart[0]; 
-
-  let fechaLiquidacion = null;
-  let liquidado = true;
-  if (canal === 'local') { fechaLiquidacion = addBusinessDays(fechaActual, state.diasLocal); liquidado = false; }
-  if (canal === 'inter') { fechaLiquidacion = addBusinessDays(fechaActual, state.diasInter); liquidado = false; }
-
-  const factura={
-    id:uid(), numero:numFactura, fecha:fechaActual, cliente: posFormState.cliente, 
-    telefono: posFormState.telefono, items:cart.map(c=>({...c})), 
-    subtotal, iva, total, metodo: cuentaStr, estado:liquidado?'pagada':'pendiente', tipo:'pos'
-  };
-  // Guardar individualmente — seguro para múltiples vendedoras simultáneas
-  state.facturas.push(factura);
-  saveRecord('facturas', factura.id, factura);
-
-  // --- AQUÍ ESTÁ EL CÓDIGO RESTAURADO Y EL PASO 2 INCLUIDO ---
+  // Generamos el consecutivo localmente por ahora
+  const numFactura = 'POS-' + getNextConsec('factura'); 
   const esSeparado = document.getElementById('pos-es-separado') ? document.getElementById('pos-es-separado').checked : false;
 
-  const venta={
-    id:uid(), canal, valor:total, fecha:fechaActual, fechaLiquidacion,
-    guia: posFormState.guia, empresa: posFormState.empresa, transportadora: posFormState.transportadora,
-    categoria:catGlobal, desc:numFactura, cliente: posFormState.cliente,
-    telefono: posFormState.telefono, ciudad: posFormState.ciudad, liquidado, archived:false,
-    metodoPago: cuentaStr,
-    esSeparado: esSeparado,
-    estadoEntrega: esSeparado ? 'Pendiente' : 'Entregado'
-  };
-  // -----------------------------------------------------------
+  try {
+    showLoadingOverlay('connecting');
 
-  state.ventas.push(venta);
-  saveRecord('ventas', venta.id, venta);
+    // 1. CREAR LA FACTURA (Tabla 'invoices')
+    const { data: invoiceData, error: invError } = await supabase
+      .from('invoices')
+      .insert({
+        number: numFactura,
+        customer_name: posFormState.cliente || 'CLIENTE MOSTRADOR',
+        customer_phone: posFormState.telefono || '',
+        total: total
+      })
+      .select()
+      .single();
 
-  cart.forEach(item => {
-    const mov = {id:uid(), articuloId:item.articuloId, bodegaId:'bodega_main',
-      cantidad:-item.qty, tipo:'venta', fecha:fechaActual,
-      referencia:numFactura, nota:`Talla: ${item.talla}`};
-    state.inv_movimientos.push(mov);
-    saveRecord('inv_movimientos', mov.id, mov);
-    updateCatalogVisibility(item.articuloId, true);
-  });
+    if (invError) throw invError;
 
-  if(liquidado) {
-    const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
-    if(cajaAbierta){
-      cajaAbierta.saldo+=total;
-      const tesMov = {id:uid(), cajaId:cajaAbierta.id, tipo:'ingreso', valor:total,
-        concepto:'Venta POS '+numFactura, fecha:fechaActual, metodo:cuentaStr};
-      state.tes_movimientos.push(tesMov);
-      saveRecord('tes_movimientos', tesMov.id, tesMov);
-      saveRecord('cajas', cajaAbierta.id, cajaAbierta);
+    // 2. CREAR LOS ÍTEMS VENDIDOS (Tabla 'invoice_items')
+    // Mapeamos el carrito para que coincida con las columnas de tu base de datos
+    const itemsToInsert = cart.map(item => ({
+      invoice_id: invoiceData.id,
+      product_id: item.articuloId,
+      ref: item.codigo || item.ref || '',
+      name: item.nombre,
+      qty: item.qty,
+      price: item.precio
+    }));
+
+    const { error: itemsError } = await supabase
+      .from('invoice_items')
+      .insert(itemsToInsert);
+
+    if (itemsError) throw itemsError;
+
+    // 3. CREAR LA GUÍA SI ES ENVÍO (Tabla 'guias')
+    let guiaData = null;
+    if (canal === 'local' || canal === 'inter') {
+      const { data: gData, error: guiaError } = await supabase
+        .from('guias')
+        .insert({
+          numero: posFormState.guia || ('G-' + numFactura),
+          destinatario: posFormState.cliente,
+          telefono: posFormState.telefono,
+          destino: posFormState.ciudad,
+          transportadora: posFormState.transportadora || posFormState.empresa,
+          estado: esSeparado ? 'Separado' : 'Pendiente'
+        })
+        .select()
+        .single();
+        
+      if (guiaError) throw guiaError;
+      guiaData = gData;
     }
-  }
-  
-  const xpGained=calcXP(canal,total);
-  awardXP(xpGained); checkBadges();
 
-  state.pos_cart=[];
-  // Auto-registrar cliente en base de datos
-  if(posFormState.cliente){
-    if(!state.usu_clientes) state.usu_clientes=[];
-    const yaExiste = state.usu_clientes.some(u=>
-      (u.cedula && posFormState.cedula && u.cedula===posFormState.cedula) ||
-      (u.nombre && u.nombre.toLowerCase()===posFormState.cliente.toLowerCase())
-    );
-    if(!yaExiste){
-      const nuevoCliente = {
-        id: uid(), tipo:'cliente',
-        tipoId:  'CC',
-        cedula:  posFormState.cedula||'',
-        nombre:  posFormState.cliente,
-        celular: posFormState.telefono||'',
-        whatsapp:posFormState.telefono||'',
-        ciudad:  posFormState.ciudad||'',
-        fechaCreacion: today()
-      };
-      state.usu_clientes.push(nuevoCliente);
-      saveRecord('usu_clientes', nuevoCliente.id, nuevoCliente);
+    // 4. DESCONTAR EL STOCK (Tabla 'products')
+    for (const item of cart) {
+      const product = state.articulos.find(a => a.id === item.articuloId);
+      if (product) {
+        const newStock = product.stock - item.qty;
+        // Actualizamos en BD
+        await supabase.from('products').update({ stock: newStock }).eq('id', item.articuloId);
+        // Actualizamos en la vista local
+        product.stock = newStock; 
+      }
     }
+
+    // 5. ACTUALIZAR INTERFAZ Y ESTADO LOCAL
+    state.facturas.push(invoiceData);
+    if (guiaData) state.ventas.push(guiaData); // Mantenemos tu array 'ventas' retrocompatible
+    
+    // Premiar con XP (Gamificación)
+    const xpGained = calcXP(canal, total);
+    awardXP(xpGained); 
+    checkBadges();
+
+    // Limpiar el carrito y formulario
+    state.pos_cart = [];
+    posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0, montoRecibido: '' };
+
+    // Efectos visuales y de hardware
+    openCashDrawer(); 
+    // Pasamos los items mapeados para que la tirilla se imprima correctamente
+    printReceipt({...invoiceData, items: cart}); 
+    if (typeof playCashSound === "function") playCashSound();
+
+    notify('sale', '✅', '¡Venta registrada!', `${numFactura} · ${fmt(total)} · +${xpGained}XP`, {duration: 4000});
+    spawnConfetti(); 
+    screenFlash('green');
+    
+    renderPOS();
+    updateNavBadges();
+    showLoadingOverlay('hide');
+
+  } catch (err) {
+    showLoadingOverlay('hide');
+    console.error("Error procesando venta POS:", err);
+    notify('danger', '⚠️', 'Error en la venta', err.message, {duration: 6000});
   }
-  posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0, montoRecibido: '' };
- database.ref('ventacontrol_state_v3/game').set(state.game);
-  database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos);
-
-  openCashDrawer(); 
-  printReceipt(factura); 
-  playCashSound();
-
-  notify('sale','✅','¡Venta registrada!',`${numFactura} · ${fmt(total)} · +${xpGained}XP`,{duration:4000});
-  spawnConfetti();screenFlash('green');
-  renderPOS();
-  updateNavBadges();
 }
 // ===== SCANNER =====
 function openScannerOverlay(){
@@ -1483,120 +1522,33 @@ function handlePOSScan(e){
 }
 
 // ===== RECEIPT PRINTING =====
-function printReceipt(factura){
+function printReceipt(factura) {
   const emp = state.empresa || {};
   const logoHtml = emp.logoBase64
     ? `<img src="${emp.logoBase64}" style="width:200px; display:block; margin:0 auto 10px; filter:grayscale(1);">`
     : '';
 
   const vendedora = emp.vendedora || '';
-  const bodega = (state.bodegas||[]).find(b => b.id === (factura.bodegaId || ''));
-
-  const itemsHTML = (factura.items || []).map(i => `
+  
+  // Mapeamos los items asegurándonos de que lea el formato del carrito o de Supabase
+  const itemsList = factura.items || [];
+  const itemsHTML = itemsList.map(i => `
     <tr>
       <td style="padding:4px 0; vertical-align:top; line-height:1.4;">
-        <b>${i.nombre || ''}</b>${i.ref ? ` | Ref. ${i.ref}` : ''}<br>
+        <b>${i.name || i.nombre || ''}</b>${i.ref || i.codigo ? ` | Ref. ${i.ref || i.codigo}` : ''}<br>
         ${i.talla ? '<span>Talla: '+i.talla+'</span>' : ''}
       </td>
-      <td style="text-align:center; vertical-align:top; padding:4px 2px; white-space:nowrap;">x${i.qty}</td>
-      <td style="text-align:right; vertical-align:top; padding:4px 0; white-space:nowrap;"><b>${fmtN(i.precio * i.qty)}</b></td>
+      <td style="text-align:center; vertical-align:top; padding:4px 2px; white-space:nowrap;">x${i.qty || i.cantidad}</td>
+      <td style="text-align:right; vertical-align:top; padding:4px 0; white-space:nowrap;"><b>${fmtN((i.price || i.precio) * (i.qty || i.cantidad))}</b></td>
     </tr>`).join('');
 
   const subtotal = factura.subtotal || factura.total || 0;
   const iva = factura.iva || 0;
-
-  const receiptHTML = `
-  <div style="width:76mm; font-family:'Courier New', monospace; font-size:12px; padding:8px 6px; color:#000; background:#fff; line-height:1.5;">
-
-    <div style="text-align:center;">
-      ${logoHtml}
-      <div style="font-size:18px; font-weight:900; letter-spacing:1px;">${emp.nombre || 'HERA'}</div>
-      <div style="font-size:13px; font-weight:600;">${emp.nombreComercial || ''}</div>
-      <div style="margin-top:6px; font-size:11px; line-height:1.8;">
-        NIT: ${emp.nit || ''}<br>
-        ${emp.regimenFiscal || 'Régimen ordinario No responsable de IVA'}<br>
-        ${emp.departamento || ''} / ${emp.ciudad || ''}<br>
-        ${emp.direccion || ''}<br>
-        Tel: ${emp.telefono || ''}${emp.telefono2 ? ' | Local '+emp.telefono2 : ''}<br>
-        ${emp.email ? 'Email: '+emp.email+'<br>' : ''}
-        ${emp.web ? emp.web : ''}
-      </div>
-    </div>
-
-    <div style="border-top:2px dashed #000; margin:10px 0;"></div>
-
-    <div style="text-align:center;">
-      <div style="font-weight:900; font-size:14px;">FACTURA DE VENTA</div>
-      <div style="font-size:13px;">No. ${factura.numero}</div>
-      <div style="font-size:12px;">${formatDate(factura.fecha)} ${new Date().toLocaleTimeString()}</div>
-    </div>
-
-    <div style="border-top:1px dashed #000; margin:10px 0;"></div>
-
-    ${emp.mensajeHeader ? `<div style="font-size:11px; text-align:center; margin-bottom:8px;">${emp.mensajeHeader}</div><div style="border-top:1px dashed #000; margin:10px 0;"></div>` : ''}
-
-    <div style="font-size:11px; line-height:1.9;">
-      <b>Cliente:</b> ${factura.cliente || 'CLIENTE MOSTRADOR'}<br>
-      ${factura.telefono ? '<b>Tel:</b> '+factura.telefono+'<br>' : ''}
-      ${factura.ciudad ? '<b>Ciudad:</b> '+factura.ciudad+'<br>' : ''}
-      ${vendedora ? '<b>Elaborado:</b> '+vendedora+'<br>' : ''}
-      ${bodega ? '<b>Bodega:</b> '+bodega.name+'<br>' : ''}
-    </div>
-
-    <div style="border-top:1px dashed #000; margin:10px 0;"></div>
-
-    <table style="width:100%; font-size:12px; border-collapse:collapse;">
-      <thead>
-        <tr style="border-bottom:1px solid #000;">
-          <th style="text-align:left; padding:4px 0;">DESCRIPCIÓN</th>
-          <th style="text-align:center; padding:4px 2px;">CANT</th>
-          <th style="text-align:right; padding:4px 0;">TOTAL</th>
-        </tr>
-      </thead>
-      <tbody>${itemsHTML}</tbody>
-    </table>
-
-    <div style="border-top:1px dashed #000; margin:10px 0;"></div>
-
-    <div style="font-size:12px; line-height:2;">
-      <div style="display:flex; justify-content:space-between;">
-        <span>SUBTOTAL:</span><span>${fmtN(subtotal)}</span>
-      </div>
-      ${iva > 0 ? `<div style="display:flex; justify-content:space-between;"><span>IVA (19%):</span><span>${fmtN(iva)}</span></div>` : ''}
-      <div style="display:flex; justify-content:space-between; font-weight:900; font-size:15px; border-top:1px solid #000; padding-top:4px; margin-top:4px;">
-        <span>TOTAL NETO:</span><span>${fmt(factura.total)}</span>
-      </div>
-    </div>
-
-    <div style="border-top:1px dashed #000; margin:10px 0;"></div>
-
-    <div style="font-size:11px; line-height:1.8;">
-      <b>MEDIO DE PAGO:</b><br>
-      ${factura.metodo || ''}
-    </div>
-
-    <div style="border-top:1px dashed #000; margin:10px 0;"></div>
-
-    <div style="text-align:center; font-size:11px; line-height:1.8;">
-      <b>${emp.mensajePie || '¡GRACIAS POR SU COMPRA!'}</b><br>
-      ${emp.politicaDatos ? '<br>'+emp.politicaDatos+'<br>' : ''}
-      ${emp.web ? '<br>'+emp.web : ''}
-      ${emp.mensajeGarantias ? '<br><br>'+emp.mensajeGarantias : ''}
-      ${emp.politicaCambios ? '<br><br>'+emp.politicaCambios : ''}
-    </div>
-
-    <div style="border-top:1px dashed #000; margin:10px 0;"></div>
-    <div style="text-align:center; font-size:10px; color:#555;">
-      Factura generada por VentasHera ERP
-    </div>
-
-  </div>`;
-
-  const pWin = window.open('', '', 'width=360,height=750');
-  pWin.document.write('<html><body style="margin:0;">' + receiptHTML + '</body></html>');
-  pWin.document.close();
-  setTimeout(() => { pWin.print(); pWin.close(); }, 500);
-}
+  
+  // Nombre del cliente adaptado a la nueva columna 'customer_name'
+  const nombreCliente = factura.customer_name || factura.cliente || 'CLIENTE MOSTRADOR';
+  const telefonoCliente = factura.customer_phone || factura.telefono || '';
+  const numeroFactura = factura.number || factura.numero || 'PREVIEW';
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
   const subtotal=cart.reduce((a,i)=>a+(i.precio*i.qty),0);
@@ -1789,87 +1741,50 @@ async function uploadGalleryImages(input) {
     }
 }
 
-async function saveArticulo(existingId){
+async function saveArticulo(existingId) {
     const nombre = document.getElementById('m-art-nombre').value.trim();
     const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
-    if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
     
-    let galeriaFinal = [..._tempGaleria];
-    if(galeriaFinal.length > 0 && _portadaIndex < galeriaFinal.length){
-        const portada = galeriaFinal.splice(_portadaIndex, 1)[0];
-        galeriaFinal.unshift(portada);
-    }
+    if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
 
-    const data = {
-        codigo: refID,
+    // Preparamos el objeto EXACTO para la tabla 'products' de Supabase
+    const productData = {
+        id: existingId || crypto.randomUUID(), // Genera un UUID válido para Postgres
         ref: refID,
-        nombre: nombre,
         name: nombre,
-        coleccion: document.getElementById('m-art-coleccion').value.trim(),
         seccion: document.getElementById('m-art-seccion').value,
-        cat: document.getElementById('m-art-cat').value,
-        descripcion: document.getElementById('m-art-desc').value.trim(),
-        video: document.getElementById('m-art-video').value.trim(),
-        tallas: document.getElementById('m-art-tallas').value.trim(),
-        sizes: document.getElementById('m-art-tallas').value.trim(),
-        colors: document.getElementById('m-art-colores').value.split(',').map(c=>c.trim()).filter(Boolean),
-        imagen: galeriaFinal[0] || '',
-        images: galeriaFinal,
-        precioCompra: parseFloat(document.getElementById('m-art-pc').value)||0,
-        precioVenta: parseFloat(document.getElementById('m-art-pv').value)||0,
-        price: parseFloat(document.getElementById('m-art-pv').value)||0,
-        iva: parseFloat(document.getElementById('m-art-iva').value)||19,
-        stockMinimo: 5, 
-        activo: true,
-        mostrarEnWeb: document.getElementById('art-mostrar-web').checked,
-        lastUpdate: new Date().toISOString()
+        categoria: document.getElementById('m-art-cat').value,
+        description: document.getElementById('m-art-desc').value.trim(),
+        price: parseFloat(document.getElementById('m-art-pv').value) || 0,
+        cost: parseFloat(document.getElementById('m-art-pc').value) || 0,
+        stock: parseInt(document.getElementById('m-art-stock0').value) || 0, // Stock inicial
+        active: true,
+        visible: document.getElementById('art-mostrar-web').checked,
+        updated_at: new Date().toISOString()
     };
 
     try {
         showLoadingOverlay('connecting');
         
-        // Asignar ID o Actualizar Array Local
-        if(existingId){
-            data.id = existingId;
-            const idx = state.articulos.findIndex(a => a.id === existingId);
-            state.articulos[idx] = { ...state.articulos[idx], ...data };
-        } else {
-            data.id = uid();
-            state.articulos.push(data);
-        }
+        // Ejecutamos el UPSERT en la tabla products de Supabase
+        const { error } = await supabase
+            .from('products')
+            .upsert(productData, { onConflict: 'id' });
 
-        // Movimientos de Stock Local
-        const qty = parseInt(document.getElementById('m-art-stock0').value)||0;
-        if(qty !== 0){
-            const mov = {
-                id: uid(), articuloId: data.id, bodegaId: document.getElementById('m-art-bodega').value,
-                cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
-                fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
-            };
-            state.inv_movimientos.push(mov);
-            saveRecord('inv_movimientos', mov.id, mov); // Guardado atómico del stock
-        }
-        
-        // 1. GUARDADO ATÓMICO EN ERP (FIREBASE)
-        saveRecord('articulos', data.id, data);
-        
-        // 2. SINCRONIZAR CON CATÁLOGO WEB (SUPABASE)
-        const syncResult = await syncProductToSupabase(data);
-        if (!syncResult.success) {
-            notify('warning', '⚠️', 'Sync incompleto', 'ERP OK pero web puede tardar: ' + syncResult.error);
-        } else {
-            notify('success', '✅', 'Sincronizado', `${refID} actualizado en Web y ERP.`);
-        }
-        
+        if (error) throw error;
+
+        // Si guardó en DB, actualizamos la vista local
         closeModal();
-        renderArticulos();
+        await loadState(); // Recargamos para traer los datos frescos
         showLoadingOverlay('hide');
+        notify('success', '✅', 'Sincronizado', `${refID} guardado en Supabase.`);
+
     } catch(e) {
         showLoadingOverlay('hide');
-        alert("Error: " + e.message);
+        alert("Error al guardar en BD: " + e.message);
     }
 }
-
+  
 // ===================================================================
 // ===== INVENTORY TRAZABILIDAD =====
 // ===================================================================
@@ -1924,31 +1839,60 @@ function openAjusteModal(){
   `);
 }
 
-function saveAjusteInv(){
+async function saveAjusteInv() {
   const artId = document.getElementById('m-aj-art').value;
-  const tipo = document.getElementById('m-aj-tipo').value;
-  const cant = parseInt(document.getElementById('m-aj-cant').value) || 0; 
-  if(cant <= 0) return;
-  const bodId = document.getElementById('m-aj-bod').value;
-  const motivo = document.getElementById('m-aj-motivo').value.trim();
+  const tipo = document.getElementById('m-aj-tipo').value; // 'entrada' o 'salida'
+  const cant = parseInt(document.getElementById('m-aj-cant').value) || 0;
   
-  const ajusteId = uid();
-  const movId = uid();
+  if (cant <= 0) return;
   
-  const ajuste = {id: ajusteId, articuloId: artId, tipo, cantidad: cant, bodegaId: bodId, motivo, fecha: today()};
-  const mov = {id: movId, articuloId: artId, bodegaId: bodId, cantidad: tipo === 'entrada' ? cant : -cant, tipo: 'ajuste_' + tipo, fecha: today(), referencia: 'Ajuste', nota: motivo};
+  const motivo = document.getElementById('m-aj-motivo').value.trim() || 'Ajuste manual';
   
-  // Guardado Atómico: Solo enviamos estos dos registros específicos
-  state.inv_ajustes.push(ajuste);
-  state.inv_movimientos.push(mov);
-  saveRecord('inv_ajustes', ajusteId, ajuste);
-  saveRecord('inv_movimientos', movId, mov);
-  
-  closeModal();
-  renderInvAjustes();
-  notify('success','✅','Ajuste registrado',`${tipo === 'entrada' ? '+' : '−'}${cant} unidades`,{duration:3000});
-}
+  // Si es salida, la cantidad debe ser negativa para la base de datos
+  const qtyFinal = tipo === 'entrada' ? cant : -cant;
+  const reasonFull = `Ajuste (${tipo.toUpperCase()}) - ${motivo}`;
 
+  try {
+    showLoadingOverlay('connecting');
+
+    // 1. Registrar el movimiento en stock_moves
+    const { error: moveError } = await supabase
+      .from('stock_moves')
+      .insert({
+        product_id: artId,
+        qty: qtyFinal,
+        reason: reasonFull
+      });
+
+    if (moveError) throw moveError;
+
+    // 2. Actualizar el stock total en la tabla products
+    const product = state.articulos.find(a => a.id === artId);
+    if (product) {
+      const newStock = product.stock + qtyFinal;
+      
+      const { error: prodError } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', artId);
+        
+      if (prodError) throw prodError;
+      
+      // Actualizamos la vista local
+      product.stock = newStock; 
+    }
+
+    closeModal();
+    renderInvAjustes();
+    showLoadingOverlay('hide');
+    notify('success', '✅', 'Inventario actualizado', `${qtyFinal > 0 ? '+' : ''}${qtyFinal} unidades registradas.`, {duration: 3000});
+
+  } catch (err) {
+    showLoadingOverlay('hide');
+    console.error("Error guardando ajuste:", err);
+    notify('danger', '⚠️', 'Error de inventario', err.message, {duration: 5000});
+  }
+}
 // ===================================================================
 // ===== INVENTORY TRASLADOS =====
 // ===================================================================
@@ -2336,59 +2280,92 @@ function openUsuarioModal(collection, tipo, pageId, idx, editar){
   `);
 }
 
-function guardarUsuario(collection, tipo, pageId, existingId){
+async function guardarUsuario(collection, tipo, pageId, existingId) {
   const nombre = document.getElementById('usu-nombre').value.trim();
   if(!nombre){ notify('danger','⚠️','Error','El nombre es obligatorio'); return; }
-  if(!state[collection]) state[collection]=[];
-  const u = {
-    id: existingId || uid(),
-    tipo,
-    tipoId:       document.getElementById('usu-tipoid').value,
-    cedula:       document.getElementById('usu-cedula').value.trim(),
-    nombre,
-    celular:      document.getElementById('usu-celular').value.trim(),
-    whatsapp:     document.getElementById('usu-whatsapp').value.trim(),
-    email:        document.getElementById('usu-email').value.trim(),
-    ciudad:       document.getElementById('usu-ciudad').value.trim(),
-    departamento: document.getElementById('usu-dpto').value.trim(),
-    direccion:    document.getElementById('usu-dir').value.trim(),
-    tipoPersona:  document.getElementById('usu-tipopersona').value,
-    fechaNac:     document.getElementById('usu-fnac').value,
-    observacion:  document.getElementById('usu-obs').value.trim(),
-    fechaCreacion: existingId ? (state[collection].find(x=>x.id===existingId)?.fechaCreacion||today()) : today()
-  };
-  if(existingId){
-    const i = state[collection].findIndex(x=>x.id===existingId);
-    if(i>=0) state[collection][i]=u;
+
+  // Determinar la tabla y preparar los datos según el tipo
+  let table = '';
+  let data = {};
+  const recordId = existingId || crypto.randomUUID();
+
+  if (tipo === 'cliente') {
+    table = 'customers';
+    data = {
+      id: recordId,
+      nombre: nombre,
+      cedula: document.getElementById('usu-cedula').value.trim(),
+      celular: document.getElementById('usu-celular').value.trim(),
+      telefono: document.getElementById('usu-celular').value.trim(), // Usamos el mismo si no hay otro input
+      whatsapp: document.getElementById('usu-whatsapp').value.trim(),
+      ciudad: document.getElementById('usu-ciudad').value.trim(),
+      direccion: document.getElementById('usu-dir').value.trim()
+    };
+  } else if (tipo === 'empleado') {
+    table = 'employees';
+    data = {
+      id: recordId,
+      nombre: nombre,
+      tipo_contrato: 'indefinido', // Valor por defecto
+      salario_base: 0 
+    };
   } else {
-    state[collection].push(u);
+    // Para proveedores, como no hay tabla aún, los guardaremos en memoria temporalmente
+    notify('warning', '⚠️', 'Aviso', 'La tabla de proveedores se creará en el futuro.');
+    return;
   }
-  saveRecord(collection, u.id, u);
-  closeModal();
-  renderPage(pageId);
-  notify('success','✅','Guardado',`${nombre} guardado correctamente`,{duration:2000});
+
+  try {
+    showLoadingOverlay('connecting');
+    
+    // UPSERT: Inserta si es nuevo, actualiza si ya existe
+    const { error } = await supabase.from(table).upsert(data, { onConflict: 'id' });
+    if (error) throw error;
+
+    // Actualizar la vista local para que la interfaz responda al instante
+    if (!state[collection]) state[collection] = [];
+    if (existingId) {
+      const i = state[collection].findIndex(x => x.id === existingId);
+      if (i >= 0) state[collection][i] = { ...state[collection][i], ...data };
+    } else {
+      state[collection].push(data);
+    }
+
+    closeModal();
+    renderPage(pageId);
+    showLoadingOverlay('hide');
+    notify('success','✅','Guardado',`${nombre} guardado correctamente en BD`,{duration:3000});
+
+  } catch (err) {
+    showLoadingOverlay('hide');
+    console.error("Error guardando usuario:", err);
+    notify('danger','⚠️','Error', err.message, {duration: 5000});
+  }
 }
 
-function eliminarUsuario(collection, id, pageId, titulo, tipo){
-  if(!confirm(`¿Eliminar este ${titulo}?`)) return;
-  state[collection] = (state[collection]||[]).filter(x=>x.id!==id);
-  deleteRecord(collection, id);
-  renderPage(pageId);
-}
+async function eliminarUsuario(collection, id, pageId, titulo, tipo) {
+  if(!confirm(`¿Eliminar este ${titulo}? Esta acción no se puede deshacer.`)) return;
 
-function descargarPlantilla(tipo){
-  const titulos = {cliente:'Clientes', empleado:'Empleados', proveedor:'Proveedores'};
-  const csv = `Tipo ID,Número Identificación,Nombre Completo,Celular,WhatsApp,Email,Ciudad,Departamento,Dirección,Tipo Persona,Fecha Nacimiento,Observaciones
-CC,12345678,María García,3001234567,3001234567,maria@email.com,Medellín,Antioquia,Calle 10 # 5-20,Natural,1990-05-15,Cliente frecuente
-NIT,900123456,Empresa XYZ,6041234567,,contacto@empresa.com,Bogotá,Cundinamarca,Carrera 7 # 32-10,Jurídica,,`;
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `plantilla_importacion_${titulos[tipo]||tipo}.csv`;
-  a.click();
-  notify('success','⬇','Plantilla descargada','Completa los datos y luego importa el archivo.',{duration:3000});
-}
+  const table = tipo === 'cliente' ? 'customers' : (tipo === 'empleado' ? 'employees' : null);
+  if (!table) return;
 
+  try {
+    showLoadingOverlay('connecting');
+    
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) throw error;
+
+    // Remover de la vista local
+    state[collection] = (state[collection] || []).filter(x => x.id !== id);
+    renderPage(pageId);
+    
+    showLoadingOverlay('hide');
+    notify('success', '🗑️', 'Eliminado', `${titulo} borrado del sistema.`);
+  } catch (err) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error al eliminar', err.message, {duration: 5000});
+  }
+}
 function importarUsuariosCSV(collection, tipo, pageId){
   const input = document.getElementById(pageId+'-file-input');
   if(input) input.click();
@@ -2401,148 +2378,115 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
     try {
       showLoadingOverlay('connecting');
       const text = e.target.result;
-      
       const lines = text.split(/\r?\n/);
-      if (lines.length < 2) throw new Error("Archivo vacío.");
+      if (lines.length < 2) throw new Error("Archivo vacío o sin datos.");
 
       let importados = 0;
-      let batch = {};
-      let batchCount = 0;
+      let batch = [];
 
       for (let i = 1; i < lines.length; i++) {
-        // Regex para separar por comas respetando textos entre comillas (importante para direcciones)
         const cols = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        
-        // Validamos que tenga al menos identificación y nombre (Cols C y D)
-        if (cols.length < 4 || !cols[2]) continue; 
+        if (cols.length < 4 || !cols[2]) continue; // Validar que haya cédula
 
-        const userId = "CLI_" + uid() + i;
+        // Mapeamos al esquema de tu tabla 'customers'
         const u = {
-          id: userId,
-          tipo: tipo,
-          tipoId: (cols[1] || 'CC').replace(/"/g, '').trim(), // Col B
-          cedula: (cols[2] || '').replace(/"/g, '').trim(), // Col C
-          nombre: (cols[3] || '').replace(/"/g, '').trim().toUpperCase(), // Col D
-          celular: (cols[6] || '').replace(/"/g, '').trim(), // Col G
-          whatsapp: (cols[7] || '').replace(/"/g, '').trim(), // Col H
-          email: (cols[10] || '').replace(/"/g, '').trim(), // Col K
-          ciudad: (cols[15] || '').replace(/"/g, '').trim(), // Col P
-          direccion: (cols[17] || '').replace(/"/g, '').trim(), // Col R
-          observacion: 'Importación masiva',
-          fechaCreacion: today()
+          id: crypto.randomUUID(),
+          cedula: (cols[2] || '').replace(/"/g, '').trim(),
+          nombre: (cols[3] || '').replace(/"/g, '').trim().toUpperCase(),
+          celular: (cols[6] || '').replace(/"/g, '').trim(),
+          whatsapp: (cols[7] || '').replace(/"/g, '').trim(),
+          ciudad: (cols[15] || '').replace(/"/g, '').trim(),
+          direccion: (cols[17] || '').replace(/"/g, '').trim()
         };
         
-        // Evitar duplicar la misma cédula en la misma carga
+        // Evitar duplicados locales en la misma carga
         if (!state[collection].some(exist => exist.cedula === u.cedula)) {
           state[collection].push(u);
-          batch[`${collection}/${userId}`] = u;
+          batch.push(u);
           importados++;
-          batchCount++;
         }
 
-        // Enviar a Firebase en bloques de 500
-        if (batchCount >= 500) {
-          await firebase.database().ref('ventacontrol_state_v3').update(batch);
-          batch = {}; batchCount = 0;
+        // Insertar en Supabase en bloques de 500 para no saturar la red
+        if (batch.length >= 500) {
+          const { error } = await supabase.from('customers').insert(batch);
+          if(error) throw error;
+          batch = []; 
         }
       }
 
-      if (batchCount > 0) {
-        await firebase.database().ref('ventacontrol_state_v3').update(batch);
+      // Insertar el resto
+      if (batch.length > 0) {
+        const { error } = await supabase.from('customers').insert(batch);
+        if(error) throw error;
       }
       
       input.value = '';
       showLoadingOverlay('hide');
       renderPage(pageId);
-      notify('success', '🚀', '¡Importación Exitosa!', `Se cargaron ${importados} clientes correctamente.`);
+      notify('success', '🚀', '¡Importación SQL Exitosa!', `Se cargaron ${importados} clientes correctamente.`);
       
     } catch (err) {
       showLoadingOverlay('hide');
-      alert("Error en la calibración: " + err.message);
+      alert("Error en la importación: " + err.message);
     }
   };
   reader.readAsText(file, 'UTF-8');
 }
-  function renderLogistica(){
-  const el = document.getElementById('logistica-content'); if(!el) return;
+  async function saveDoc(collection, tipo) {
+  const fecha = document.getElementById('m-doc-fecha').value || today();
+  const cliente = document.getElementById('m-doc-cliente').value.trim();
+  const obs = document.getElementById('m-doc-obs').value.trim();
+  const refId = document.getElementById('m-doc-ref')?.value || '';
+  const items = _docItems.filter(i => i.precio > 0);
+  
+  if (items.length === 0) { notify('warning','⚠️','Sin ítems','Agrega al menos un ítem.',{duration:3000}); return; }
+  
+  const subtotal = items.reduce((a,i) => a + (i.cantidad * i.precio), 0);
+  const iva = subtotal * 0.19; 
+  const total = subtotal + iva;
+  
+  const consKeys = {cotizaciones:'cotizacion', ordenes_venta:'orden', notas_credito:'nc', notas_debito:'nd', remisiones:'remision', devoluciones:'devolucion', anticipos_clientes:'anticipo'};
+  const prefixes = {cotizaciones:'COT', ordenes_venta:'OV', notas_credito:'NC', notas_debito:'ND', remisiones:'REM', devoluciones:'DEV', anticipos_clientes:'ANT'};
+  
+  const prefix = prefixes[collection] || 'DOC';
+  const consKey = consKeys[collection] || 'factura';
+  const numero = prefix + '-' + getNextConsec(consKey);
+  
+  // Objeto JSON completo con la data del documento
+  const docData = { id: crypto.randomUUID(), numero, fecha, cliente, items: items.map(i => ({...i})), subtotal, iva, total, estado: 'borrador', observaciones: obs, facturaRef: refId, tipo };
 
-  const q = (document.getElementById('log-search')?.value||'').toLowerCase();
-  const desde = document.getElementById('log-desde')?.value||'';
-  const hasta = document.getElementById('log-hasta')?.value||'';
-  const canal = document.getElementById('log-canal')?.value||'';
-  const trans = document.getElementById('log-trans')?.value||'';
+  try {
+    showLoadingOverlay('connecting');
 
-  let guias = [...(state.ventas||[])]
-    .filter(v => v.canal === 'local' || v.canal === 'inter')
-    .reverse();
+    // Insertar en tu tabla maestra JSONB de Supabase
+    const { error } = await supabase
+      .from('legacy_docs')
+      .insert({
+        id: docData.id,
+        tipo: tipo,
+        numero: docData.numero,
+        data: docData // Aquí Supabase guarda todo el JSON maravillosamente
+      });
 
-  if(canal) guias = guias.filter(v => v.canal === canal);
-  if(trans) guias = guias.filter(v => (v.transportadora||'').toLowerCase().includes(trans.toLowerCase()));
-  if(desde) guias = guias.filter(v => v.fecha >= desde);
-  if(hasta) guias = guias.filter(v => v.fecha <= hasta);
-  if(q) guias = guias.filter(v =>
-    (v.cliente||'').toLowerCase().includes(q) ||
-    (v.guia||'').toLowerCase().includes(q) ||
-    (v.telefono||'').toLowerCase().includes(q) ||
-    (v.ciudad||'').toLowerCase().includes(q)
-  );
+    if (error) throw error;
 
-  const total = (state.ventas||[]).filter(v => v.canal==='local'||v.canal==='inter').length;
+    // Actualizar el estado local
+    if (!state[collection]) state[collection] = [];
+    state[collection].push(docData);
+    _docItems = [];
+    
+    // Guardar los consecutivos (esto lo puedes dejar en Firebase temporalmente o pasarlo a otra tabla de config)
+    database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos); 
+    
+    closeModal();
+    renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
+    showLoadingOverlay('hide');
+    notify('success','✅','Documento creado',`${numero} guardado en BD.`,{duration:3000});
 
-  el.innerHTML = `
-    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
-      <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="log-search" placeholder="Cliente, guía, teléfono..." value="${q}" oninput="renderLogistica()">
-      </div>
-      <select class="form-control" id="log-canal" style="width:130px" onchange="renderLogistica()">
-        <option value="">Todos los canales</option>
-        <option value="local" ${canal==='local'?'selected':''}>🛵 Local</option>
-        <option value="inter" ${canal==='inter'?'selected':''}>📦 Intermunicipal</option>
-      </select>
-      <input type="text" class="form-control" id="log-trans" placeholder="Transportadora..." style="width:160px" value="${trans}" oninput="renderLogistica()">
-      <input type="date" class="form-control" id="log-desde" style="width:140px" value="${desde}" onchange="renderLogistica()">
-      <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
-      <input type="date" class="form-control" id="log-hasta" style="width:140px" value="${hasta}" onchange="renderLogistica()">
-      ${(q||canal||trans||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="['log-search','log-trans'].forEach(id=>{document.getElementById(id).value=''});['log-canal','log-desde','log-hasta'].forEach(id=>{document.getElementById(id).value=''});renderLogistica()">✕ Limpiar</button>`:''}
-    </div>
-
-    <div class="card">
-      <div class="card-title">🚚 GUÍAS GENERADAS — ${guias.length} de ${total}</div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Canal</th>
-              <th>Cliente</th>
-              <th>Teléfono</th>
-              <th>Ciudad</th>
-              <th>Transportadora</th>
-              <th>N° Guía</th>
-              <th>Empresa</th>
-              <th>Total</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${guias.map(v=>`
-              <tr>
-                <td>${formatDate(v.fecha)}</td>
-                <td><span class="badge ${v.canal==='local'?'badge-warn':'badge-inter'}">${v.canal==='local'?'🛵 Local':'📦 Inter'}</span></td>
-                <td style="font-weight:700">${v.cliente||'—'}</td>
-                <td>${v.telefono||'—'}</td>
-                <td>${v.ciudad||'—'}</td>
-                <td>${v.transportadora||'—'}</td>
-                <td style="color:var(--accent);font-weight:700">${v.guia||'—'}</td>
-                <td>${v.empresa||'—'}</td>
-                <td style="font-weight:700">${fmt(v.valor)}</td>
-                <td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'✓ Liq':'⏳ Pend'}</span></td>
-              </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:24px">Sin guías registradas</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+  } catch (err) {
+    showLoadingOverlay('hide');
+    notify('danger','⚠️','Error al crear documento', err.message);
+  }
 }
 
 // ===================================================================
