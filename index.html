@@ -2,18 +2,16 @@
 <html lang="es">
 <head>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VentasHera — ERP Moda & Catálogo Sync</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VentasHera — ERP Moda & Catálogo Sync (Supabase)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-storage-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-firestore-compat.js"></script>
-
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-app-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/firebase@10.8.1/firebase-storage-compat.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%2300e5b4'/><stop offset='100%25' stop-color='%2300c4ff'/></linearGradient></defs><rect width='100' height='100' rx='20' fill='url(%23g)'/><text y='.9em' font-size='75' x='10'>💰</text></svg>">
 
 <style>
 :root {--bg:#0a0f1e;--bg2:#111827;--bg3:#1a2235;--card:rgba(255,255,255,0.04);--card2:rgba(255,255,255,0.07);--border:rgba(255,255,255,0.08);--accent:#00e5b4;--accent2:#00c4ff;--accent3:#7c3aed;--text:#e8f0fe;--text2:#8899aa;--red:#f87171;--yellow:#fbbf24;--green:#4ade80;--orange:#fb923c;--meta:#4b5563;}
@@ -351,7 +349,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="print-area" style="display:none"></div>
 
 <script>
-// ===== FIREBASE CONFIG =====
+// ===================================================================
+// ===== CREDENCIALES & CONEXIÓN =====
+// ===================================================================
+
+const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
+
 const firebaseConfig = {
   apiKey: "AIzaSyAzWG2WmSldVRw4JtjfHv-e3CLbjwnvbNk",
   authDomain: "ventacontrol-hera.firebaseapp.com",
@@ -362,26 +366,199 @@ const firebaseConfig = {
   appId: "1:1950402952:web:f343b2b0cc56b7cdd0523d"
 };
 
-// Conexión con Catálogo Web
-const catalogApp = firebase.initializeApp({
-    apiKey: "AIzaSyBtynjEseNqWrY13LMFn2MI7ddbNMP58TI",
-    authDomain: "hera-swimwear-catalogo.firebaseapp.com",
-    projectId: "hera-swimwear-catalogo",
-}, "CatalogApp");
-const dbWeb = catalogApp.firestore();
+// Validar Inicialización de Firebase
+if(typeof firebase==='undefined'){
+    document.body.innerHTML='<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0f1e;font-family:Syne,sans-serif;text-align:center;padding:32px"><div style="font-size:52px">📡</div><div style="font-size:22px;font-weight:800;color:#f87171;margin-top:16px">Error Firebase</div><button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne;font-size:15px;font-weight:800;cursor:pointer">🔄 Reintentar</button></div>';
+} else {
+    firebase.initializeApp(firebaseConfig);
+}
+const database = firebase.database();
+const stateRef = database.ref('ventacontrol_state_v3');
 
-if(typeof firebase==='undefined'){document.body.innerHTML='<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0f1e;font-family:Syne,sans-serif;text-align:center;padding:32px"><div style="font-size:52px">📡</div><div style="font-size:22px;font-weight:800;color:#f87171;margin-top:16px">Error Firebase</div><button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne;font-size:15px;font-weight:800;cursor:pointer">🔄 Reintentar</button></div>';}
-else{firebase.initializeApp(firebaseConfig);}
-const database=firebase.database();
-const stateRef=database.ref('ventacontrol_state_v3');
+// ===================================================================
+// ===== SUPABASE REST API (FUNCIONES BASE) =====
+// ===================================================================
 
-// ===== STATE =====
+async function supabaseCall(method, table, data = null, id = null, filters = null) {
+  try {
+    let url = `${SUPABASE_URL}/rest/v1/${table}`;
+    const headers = {
+      'apikey': SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
+
+    if (method === 'GET') {
+      if (id) url += `?id=eq.${id}`;
+      else if (filters) {
+        const filterStr = Object.entries(filters).map(([k, v]) => `${k}=eq.${v}`).join('&');
+        url += `?${filterStr}`;
+      }
+      const resp = await fetch(url, { method: 'GET', headers });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    }
+
+    if (method === 'POST') {
+      const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(data) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    }
+
+    if (method === 'PATCH') {
+      if (!id) throw new Error('ID required for PATCH');
+      url += `?id=eq.${id}`;
+      const resp = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(data) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json();
+    }
+
+    if (method === 'DELETE') {
+      if (!id) throw new Error('ID required for DELETE');
+      url += `?id=eq.${id}`;
+      const resp = await fetch(url, { method: 'DELETE', headers });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return { success: true };
+    }
+
+    throw new Error(`Método ${method} no soportado`);
+  } catch (err) {
+    console.error(`Supabase error [${method} ${table}]:`, err);
+    throw err;
+  }
+}
+
+// ===================================================================
+// ===== SINCRONIZADORES CATÁLOGO WEB (SUPABASE) =====
+// ===================================================================
+
+async function syncProductToSupabase(articulo) {
+  try {
+    // 1. Mapear la data de ERP a lo que necesita el Catálogo Supabase
+    const productData = {
+      ref: articulo.codigo || articulo.ref || '',
+      name: articulo.nombre || articulo.name || '',
+      price: parseFloat(articulo.precioVenta || articulo.price || 0),
+      description: articulo.descripcion || '',
+      sizes: articulo.tallas || articulo.sizes || '',
+      colors: JSON.stringify(Array.isArray(articulo.colors) ? articulo.colors : (articulo.colores ? articulo.colores.split(',') : [])),
+      images: JSON.stringify(Array.isArray(articulo.images) ? articulo.images : (articulo.imagen ? [articulo.imagen] : [])),
+      seccion: articulo.seccion || '',
+      cat: articulo.cat || articulo.categoria || '',
+      visible: articulo.mostrarEnWeb !== false ? true : false,
+      stock: Math.max(0, getArticuloStock(articulo.id) || 0),
+      sku: articulo.codigo || '',
+      createdAt: new Date().toISOString(),
+      lastUpdate: new Date().toISOString()
+    };
+
+    // 2. Revisar duplicidad por referencia
+    const existing = await supabaseCall('GET', 'products', null, null, { ref: articulo.codigo });
+
+    if (existing && existing.length > 0) {
+      // PATCH (No sobrescribe todo)
+      await supabaseCall('PATCH', 'products', productData, existing[0].id);
+      return { success: true, action: 'update', id: existing[0].id };
+    } else {
+      // POST (Creación Nueva)
+      const result = await supabaseCall('POST', 'products', productData);
+      return { success: true, action: 'create', id: result[0]?.id };
+    }
+  } catch (err) {
+    console.error('❌ Error sincronizando a Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function deleteProductFromSupabase(codigo) {
+  try {
+    if (!codigo) return;
+    const existing = await supabaseCall('GET', 'products', null, null, { ref: codigo });
+    if (existing && existing.length > 0) {
+      await supabaseCall('DELETE', 'products', null, existing[0].id);
+      return { success: true };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('❌ Error eliminando de Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function importProductsFromSupabase() {
+  try {
+    const products = await supabaseCall('GET', 'products');
+    if (!Array.isArray(products)) return [];
+    
+    const refsExistentes = new Set((state.articulos || []).map(a => (a.ref || '').toUpperCase()));
+    const imported = [];
+
+    const SECCION_MAP = {
+      'Trajes de Baño': 'Trajes de baño',
+      'Resort & Pijamas': 'Pijamas',
+      'Pijamas': 'Pijamas',
+      'Ropa Deportiva': 'Deportiva',
+      'Activewear': 'Deportiva',
+      'Casual': 'Varias'
+    };
+
+    for (const p of products) {
+      const refKey = (p.ref || '').toUpperCase();
+      if (refKey && refsExistentes.has(refKey)) continue;
+
+      const articulo = {
+        id: 'IMP_' + uid(),
+        codigo: p.ref || p.sku || '',
+        ref: p.ref || p.sku || '',
+        nombre: p.name || '',
+        name: p.name || '',
+        categoria: SECCION_MAP[p.seccion] || 'Varias',
+        subcategoria: p.cat || '',
+        seccion: p.seccion || '',
+        cat: p.cat || '',
+        precioVenta: parseFloat(p.price) || 0,
+        price: parseFloat(p.price) || 0,
+        precioCompra: 0,
+        descripcion: p.description || '',
+        tallas: p.sizes || '',
+        sizes: p.sizes || '',
+        colores: typeof p.colors === 'string' ? JSON.parse(p.colors || '[]').join(', ') : '',
+        colors: typeof p.colors === 'string' ? JSON.parse(p.colors || '[]') : (p.colors || []),
+        images: typeof p.images === 'string' ? JSON.parse(p.images || '[]') : (p.images || []),
+        imagen: typeof p.images === 'string' ? (JSON.parse(p.images || '[]')[0] || '') : (p.images?.[0] || ''),
+        stock: 0,
+        stockMinimo: 0,
+        activo: true,
+        mostrarEnWeb: p.visible !== false,
+        importadoDeCatalogo: true,
+        supabaseId: p.id,
+        createdAt: today()
+      };
+
+      state.articulos = state.articulos || [];
+      state.articulos.push(articulo);
+      imported.push(articulo);
+      
+      if (refKey) refsExistentes.add(refKey);
+    }
+
+    return imported;
+  } catch (err) {
+    console.error('❌ Error importando de Supabase:', err);
+    return [];
+  }
+}
+
+// ===================================================================
+// ===== STATE GENERAL (ERP) =====
+// ===================================================================
+
 let state = {
   meta: 34000000, 
   diasLocal: 1, 
   diasInter: 5,
   empleados: [],      
-  nomina_pagos: [],   // Coma corregida aquí
+  nomina_pagos: [],   
   ventas: [], 
   currentMonth: null,
   game: { xp:0, streakMax:0, earnedBadges:[], claimedSnacks:{} },
@@ -466,7 +643,7 @@ function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday
 function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
 function getArticuloStock(artId,bodegaId){return(state.inv_movimientos||[]).filter(m=>m.articuloId===artId&&(!bodegaId||m.bodegaId===bodegaId)).reduce((a,m)=>a+m.cantidad,0)}
 
-// ===== FIREBASE =====
+// ===== CONEXIÓN ERP FIREBASE =====
 let isFirstLoad=true;let _fbConnected=false;let _fbTimeoutId=null;
 
 function loadState(){
@@ -490,7 +667,7 @@ function loadState(){
       if(!state.game.claimedSnacks)state.game.claimedSnacks={};
       if(!state.rewards)state.rewards={};
       if(!state.consecutivos)state.consecutivos={factura:1,cotizacion:1,orden:1,nc:1,nd:1,remision:1,devolucion:1,ingreso:1,egreso:1,retencion:1};
-      if(!state.empresa)state.empresa={nombre:'Hera',nit:'',direccion:'',telefono:'',ciudad:''};
+      if(!state.empresa)state.empresa={nombre:'Hera Swimwear',nit:'',direccion:'',telefono:'',ciudad:''};
     }
     checkMonthReset();
     showLoadingOverlay('hide');
@@ -507,7 +684,7 @@ function loadState(){
 
 function saveState(){stateRef.set(state).catch(err=>{notify('danger','⚠️','Error','No se pudo guardar.',{duration:5000})})}
 
-// Guarda un registro individual sin sobreescribir todo el estado
+// Guarda un registro individual sin sobreescribir todo el estado (Seguridad Multi-Usuario)
 function saveRecord(collection, id, data) {
   return stateRef.child(collection).child(id).set(data)
     .catch(err => notify('danger','⚠️','Error',`No se pudo guardar ${collection}: ${err.message}`,{duration:5000}));
@@ -1331,7 +1508,6 @@ function printReceipt(factura){
   const receiptHTML = `
   <div style="width:76mm; font-family:'Courier New', monospace; font-size:12px; padding:8px 6px; color:#000; background:#fff; line-height:1.5;">
 
-    <!-- ENCABEZADO -->
     <div style="text-align:center;">
       ${logoHtml}
       <div style="font-size:18px; font-weight:900; letter-spacing:1px;">${emp.nombre || 'HERA'}</div>
@@ -1349,7 +1525,6 @@ function printReceipt(factura){
 
     <div style="border-top:2px dashed #000; margin:10px 0;"></div>
 
-    <!-- TIPO DOCUMENTO -->
     <div style="text-align:center;">
       <div style="font-weight:900; font-size:14px;">FACTURA DE VENTA</div>
       <div style="font-size:13px;">No. ${factura.numero}</div>
@@ -1360,7 +1535,6 @@ function printReceipt(factura){
 
     ${emp.mensajeHeader ? `<div style="font-size:11px; text-align:center; margin-bottom:8px;">${emp.mensajeHeader}</div><div style="border-top:1px dashed #000; margin:10px 0;"></div>` : ''}
 
-    <!-- CLIENTE -->
     <div style="font-size:11px; line-height:1.9;">
       <b>Cliente:</b> ${factura.cliente || 'CLIENTE MOSTRADOR'}<br>
       ${factura.telefono ? '<b>Tel:</b> '+factura.telefono+'<br>' : ''}
@@ -1371,7 +1545,6 @@ function printReceipt(factura){
 
     <div style="border-top:1px dashed #000; margin:10px 0;"></div>
 
-    <!-- ITEMS -->
     <table style="width:100%; font-size:12px; border-collapse:collapse;">
       <thead>
         <tr style="border-bottom:1px solid #000;">
@@ -1385,7 +1558,6 @@ function printReceipt(factura){
 
     <div style="border-top:1px dashed #000; margin:10px 0;"></div>
 
-    <!-- TOTALES -->
     <div style="font-size:12px; line-height:2;">
       <div style="display:flex; justify-content:space-between;">
         <span>SUBTOTAL:</span><span>${fmtN(subtotal)}</span>
@@ -1398,7 +1570,6 @@ function printReceipt(factura){
 
     <div style="border-top:1px dashed #000; margin:10px 0;"></div>
 
-    <!-- MEDIO DE PAGO -->
     <div style="font-size:11px; line-height:1.8;">
       <b>MEDIO DE PAGO:</b><br>
       ${factura.metodo || ''}
@@ -1406,7 +1577,6 @@ function printReceipt(factura){
 
     <div style="border-top:1px dashed #000; margin:10px 0;"></div>
 
-    <!-- PIE -->
     <div style="text-align:center; font-size:11px; line-height:1.8;">
       <b>${emp.mensajePie || '¡GRACIAS POR SU COMPRA!'}</b><br>
       ${emp.politicaDatos ? '<br>'+emp.politicaDatos+'<br>' : ''}
@@ -1546,7 +1716,7 @@ function openArticuloModal(id){
             <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-mostrar-web" style="width: 18px; height: 18px;"> 
-    🌐 Mostrar esta prenda en el Catálogo Web
+    🌐 Mostrar esta prenda en el Catálogo Web (Supabase)
   </label>
 </div>
 
@@ -1649,38 +1819,28 @@ async function saveArticulo(existingId){
         precioVenta: parseFloat(document.getElementById('m-art-pv').value)||0,
         price: parseFloat(document.getElementById('m-art-pv').value)||0,
         iva: parseFloat(document.getElementById('m-art-iva').value)||19,
-        stockMinimo: 5, activo: true,
-      mostrarEnWeb: document.getElementById('art-mostrar-web').checked,
-        lastUpdate: firebase.firestore.Timestamp.now()
+        stockMinimo: 5, 
+        activo: true,
+        mostrarEnWeb: document.getElementById('art-mostrar-web').checked,
+        lastUpdate: new Date().toISOString()
     };
 
     try {
         showLoadingOverlay('connecting');
-        const queryWeb = await dbWeb.collection('products').where('ref', '==', refID).get();
-        if (!queryWeb.empty) {
-            await dbWeb.collection('products').doc(queryWeb.docs[0].id).update(data);
-        } else {
-            await dbWeb.collection('products').add({ ...data, createdAt: firebase.firestore.Timestamp.now() });
-        }
-
-       if(existingId){
-    data.id = existingId;
-    const idx = state.articulos.findIndex(a => a.id === existingId);
-    state.articulos[idx] = { ...state.articulos[idx], ...data };
+        
+        // Asignar ID o Actualizar Array Local
+        if(existingId){
+            data.id = existingId;
+            const idx = state.articulos.findIndex(a => a.id === existingId);
+            state.articulos[idx] = { ...state.articulos[idx], ...data };
         } else {
             data.id = uid();
             state.articulos.push(data);
         }
 
+        // Movimientos de Stock Local
         const qty = parseInt(document.getElementById('m-art-stock0').value)||0;
         if(qty !== 0){
-            state.inv_movimientos.push({
-                id: uid(), articuloId: data.id, bodegaId: document.getElementById('m-art-bodega').value,
-                cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
-                fecha: today(), referencia: 'Sync Maestro', nota: 'Sincronizado'
-            });
-        }
-    if(qty !== 0){
             const mov = {
                 id: uid(), articuloId: data.id, bodegaId: document.getElementById('m-art-bodega').value,
                 cantidad: qty, tipo: existingId ? 'ajuste' : 'entrada_inicial',
@@ -1690,14 +1850,20 @@ async function saveArticulo(existingId){
             saveRecord('inv_movimientos', mov.id, mov); // Guardado atómico del stock
         }
         
-        // Guardado atómico de la prenda y evitamos el saveState() destructivo
+        // 1. GUARDADO ATÓMICO EN ERP (FIREBASE)
         saveRecord('articulos', data.id, data);
         
-        updateCatalogVisibility(existingId || data.id);
+        // 2. SINCRONIZAR CON CATÁLOGO WEB (SUPABASE)
+        const syncResult = await syncProductToSupabase(data);
+        if (!syncResult.success) {
+            notify('warning', '⚠️', 'Sync incompleto', 'ERP OK pero web puede tardar: ' + syncResult.error);
+        } else {
+            notify('success', '✅', 'Sincronizado', `${refID} actualizado en Web y ERP.`);
+        }
+        
         closeModal();
         renderArticulos();
         showLoadingOverlay('hide');
-        notify('success','🌐','Sincronizado', `${refID} actualizado en Web y ERP.`);
     } catch(e) {
         showLoadingOverlay('hide');
         alert("Error: " + e.message);
@@ -2562,14 +2728,6 @@ function pagarNomina(id){
   renderNomNominas();notify('success','💰','Nómina pagada',n.empleado+' · '+fmt(n.neto),{duration:3000});
 }
 
-function pagarNomina(id){
-  const n=(state.nom_nominas||[]).find(x=>x.id===id);if(!n)return;
-  n.pagada=true;
-  const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
-  if(cajaAbierta){cajaAbierta.saldo-=n.neto;state.tes_movimientos.push({id:uid(),cajaId:cajaAbierta.id,tipo:'egreso',valor:n.neto,concepto:'Nómina '+n.numero+' '+n.empleado,fecha:today(),metodo:'transferencia'})}
-  saveState();renderNomNominas();notify('success','💰','Nómina pagada',n.empleado+' · '+fmt(n.neto),{duration:3000});
-}
-
 // ===================================================================
 // ===== TESORERÍA =====
 // ===================================================================
@@ -2714,1028 +2872,255 @@ function deleteFromCollection(collection, id, pageId) {
 function renderTesImpuestos(){renderSimpleCollection('tes_impuestos','Impuestos','tes_impuestos',['fecha:date:FECHA','tipo:text:TIPO IMPUESTO','base:number:BASE','tarifa:text:TARIFA %','valor:number:VALOR','referencia:text:REFERENCIA'])}
 function renderTesRetenciones(){renderSimpleCollection('tes_retenciones','Retenciones','tes_retenciones',['fecha:date:FECHA','tipo:text:TIPO','base:number:BASE','tarifa:text:TARIFA %','valor:number:VALOR','tercero:text:TERCERO'])}
 function renderTesCompRetencion(){renderSimpleCollection('tes_comp_retencion','Comprobantes Retención','tes_comp_retencion',['fecha:date:FECHA','numero:text:NÚMERO','tercero:text:TERCERO','concepto:text:CONCEPTO','base:number:BASE','valor:number:VALOR'])}
-function renderTesCompIngreso(){renderSimpleCollection('tes_comp_ingreso','Comprobantes Ingreso','tes_comp_ingreso',['fecha:date:FECHA','numero:text:NÚMERO','tercero:text:TERCERO','concepto:text:CONCEPTO','valor:number:VALOR','metodo:text:MÉTODO'])}
-function renderTesCompEgreso(){renderSimpleCollection('tes_comp_egreso','Comprobantes Egreso','tes_comp_egreso',['fecha:date:FECHA','numero:text:NÚMERO','tercero:text:TERCERO','concepto:text:CONCEPTO','valor:number:VALOR','metodo:text:MÉTODO'])}
+function renderTesCompIngreso(){renderSimpleCollection('tes_comp_ingreso','Comprobantes Ingreso','tes_comp_ingreso',['fecha:date:FECHA','numero:text:NÚMERO','tercero:text:TERCERO',text:CONCEPTO','valor:number:VALOR'])}
 
-function renderTesTransferencias(){
-  const items=[...(state.tes_transferencias||[])].reverse();
-  document.getElementById('tes_transferencias-content').innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openTransferenciaModal()">+ Nueva Transferencia</button>
-    <div class="card"><div class="card-title">TRANSFERENCIAS INTERNAS (${items.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Origen</th><th>Destino</th><th>Valor</th><th>Concepto</th><th></th></tr></thead><tbody>
-    ${items.map(t=>{const o=(state.cajas||[]).find(c=>c.id===t.origenId);const d=(state.cajas||[]).find(c=>c.id===t.destinoId);return`<tr><td>${formatDate(t.fecha)}</td><td>${o?.nombre||'—'}</td><td>${d?.nombre||'—'}</td><td style="color:var(--accent);font-weight:700">${fmt(t.valor)}</td><td>${t.concepto||'—'}</td><td><button class="btn btn-xs btn-danger" onclick="deleteFromCollection('tes_transferencias','${t.id}','tes_transferencias')">✕</button></td></tr>`}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin transferencias</td></tr>'}
-    </tbody></table></div></div>`;
-}
+function renderTesCompEgreso(){renderSimpleCollection('tes_comp_egreso','Comprobantes Egreso','tes_comp_egreso',['fecha:date:FECHA','numero:text:NÚMERO','tercero:text:TERCERO','concepto:text:CONCEPTO','valor:number:VALOR'])}
+function renderTesTransferencias(){renderSimpleCollection('tes_transferencias','Transferencias','tes_transferencias',['fecha:date:FECHA','origen:text:ORIGEN','destino:text:DESTINO','valor:number:VALOR','motivo:text:MOTIVO'])}
 
-function openTransferenciaModal(){
-  openModal(`
-    <div class="modal-title">Transferencia Interna<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">CAJA ORIGEN</label><select class="form-control" id="m-tf-orig">${(state.cajas||[]).map(c=>'<option value="'+c.id+'">'+c.nombre+' ('+fmt(c.saldo)+')</option>').join('')}</select></div>
-      <div class="form-group"><label class="form-label">CAJA DESTINO</label><select class="form-control" id="m-tf-dest">${(state.cajas||[]).map(c=>'<option value="'+c.id+'">'+c.nombre+'</option>').join('')}</select></div>
+// ===================================================================
+// ===== GAMIFICACIÓN & JUEGO =====
+// ===================================================================
+
+function renderGamePage(){
+  const g = state.game || { xp: 0 };
+  const lv = calcLevel(g.xp);
+  const {next, pct, xpToNext} = calcLevelProgress(g.xp);
+  
+  document.getElementById('juego-content').innerHTML = `
+    <div class="card" style="text-align:center; padding: 48px 20px;">
+      <div style="font-size: 80px; animation: bounce 2s infinite alternate;">${lv.avatar}</div>
+      <div style="font-family: Syne; font-size: 32px; font-weight: 800; color: var(--accent); margin-top: 16px;">${lv.name}</div>
+      <div style="color: var(--text2); margin-bottom: 24px;">Nivel ${lv.level} • ${g.xp} XP acumulados</div>
+      
+      ${next ? `
+        <div style="background: rgba(255,255,255,0.1); height: 14px; border-radius: 8px; overflow: hidden; max-width: 400px; margin: 0 auto; position: relative;">
+          <div style="background: linear-gradient(90deg, var(--accent), var(--accent2)); height: 100%; width: ${pct}%; transition: width 1s ease;"></div>
+        </div>
+        <div style="font-size: 13px; color: var(--text2); margin-top: 12px; font-weight: 600;">Faltan ${xpToNext} XP para alcanzar el nivel ${next.name}</div>
+      ` : '<div style="color: gold; font-weight: 800; font-size: 16px;">¡HAS ALCANZADO EL NIVEL MÁXIMO! 🏆</div>'}
     </div>
-    <div class="form-group"><label class="form-label">VALOR</label><input type="number" class="form-control" id="m-tf-valor" min="0"></div>
-    <div class="form-group"><label class="form-label">CONCEPTO</label><input class="form-control" id="m-tf-concepto" placeholder="Motivo"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveTransferencia()">Transferir</button>
-  `);
+  `;
 }
 
-function saveTransferencia(){
-  const origId=document.getElementById('m-tf-orig').value;const destId=document.getElementById('m-tf-dest').value;
-  const valor=parseFloat(document.getElementById('m-tf-valor').value)||0;if(valor<=0||origId===destId)return;
-  const orig=(state.cajas||[]).find(c=>c.id===origId);const dest=(state.cajas||[]).find(c=>c.id===destId);
-  if(!orig||!dest)return;if(orig.saldo<valor){notify('warning','⚠️','Saldo insuficiente','',{duration:3000});return}
-  
-  orig.saldo-=valor;dest.saldo+=valor;
-  const concepto=document.getElementById('m-tf-concepto').value.trim();
-  
-  const trans = {id:uid(),origenId:origId,destinoId:destId,valor,concepto,fecha:today()};
-  const movE = {id:uid(),cajaId:origId,tipo:'egreso',valor,concepto:'Transferencia → '+dest.nombre+': '+concepto,fecha:today(),metodo:'transferencia'};
-  const movI = {id:uid(),cajaId:destId,tipo:'ingreso',valor,concepto:'Transferencia ← '+orig.nombre+': '+concepto,fecha:today(),metodo:'transferencia'};
-  
-  state.tes_transferencias.push(trans);
-  state.tes_movimientos.push(movE);
-  state.tes_movimientos.push(movI);
-  
-  // --- GUARDADOS ATÓMICOS MÚLTIPLES ---
-  saveRecord('cajas', orig.id, orig);
-  saveRecord('cajas', dest.id, dest);
-  saveRecord('tes_transferencias', trans.id, trans);
-  saveRecord('tes_movimientos', movE.id, movE);
-  saveRecord('tes_movimientos', movI.id, movI);
-  
-  closeModal();renderTesTransferencias();
-  notify('success','✅','Transferencia realizada',fmt(valor)+' de '+orig.nombre+' a '+dest.nombre,{duration:3000});
+function renderRewards(){
+  document.getElementById('recompensas-content').innerHTML = `
+    <div class="card">
+      <div class="card-title">🏆 RECOMPENSAS Y METAS</div>
+      <div class="grid-3">
+        ${REWARDS.map(r => {
+          const isUnlocked = r.condition(state);
+          return `
+          <div class="card" style="margin:0; text-align:center; transition: all 0.3s; border-color: ${isUnlocked ? 'var(--green)' : 'var(--border)'}; background: ${isUnlocked ? 'rgba(74,222,128,0.05)' : 'var(--card)'}">
+            <div style="font-size: 40px; margin-bottom: 12px; filter: ${isUnlocked ? 'none' : 'grayscale(100%) opacity(0.5)'}">${r.icon}</div>
+            <div style="font-family: Syne; font-weight: 800; font-size: 14px; color: ${isUnlocked ? 'var(--green)' : 'var(--text)'};">${r.name}</div>
+            <div style="font-size: 11px; color: var(--text2); margin-top: 6px; line-height: 1.4;">${r.desc}</div>
+            <div style="margin-top: 14px;">
+              <span class="badge ${isUnlocked ? 'badge-ok' : 'badge-pend'}">${isUnlocked ? '¡DESBLOQUEADA!' : '🔒 En progreso'}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
 }
 
-// ===================================================================
-// ===== ALERTAS =====
-// ===================================================================
-function buildAlerts(){const alerts=[];const pend=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado);pend.forEach(v=>{const diff=daysDiff(v.fechaLiquidacion);if(diff<0)alerts.push({type:'urgent',title:'⚡ VENCIDA',body:v.canal+' · '+fmt(v.valor)+' · '+v.guia});else if(diff===0)alerts.push({type:'urgent',title:'⚠️ Vence HOY',body:v.canal+' · '+fmt(v.valor)});else if(diff<=2)alerts.push({type:'warning',title:'⏰ Vence en '+diff+'d',body:v.canal+' · '+fmt(v.valor)})});
-  (state.articulos||[]).forEach(a=>{const stock=getArticuloStock(a.id);if(stock<=0)alerts.push({type:'urgent',title:'❌ Sin stock',body:a.nombre});else if(stock<=a.stockMinimo)alerts.push({type:'warning',title:'⚠️ Stock bajo',body:a.nombre+' · '+stock+' unidades'})});
+function buildAlerts() {
+  const alerts = [];
+  const pend = (state.ventas||[]).filter(v => !v.archived && v.canal !== 'vitrina' && !v.liquidado);
+  if(pend.length > 0) alerts.push({ type: 'warning', title: `Tienes ${pend.length} cobros pendientes`, desc: 'Revisa la pestaña de cobros para liquidarlos y cuadrar caja.' });
+  
+  const lowStock = (state.articulos||[]).filter(a => getArticuloStock(a.id) <= a.stockMinimo);
+  if(lowStock.length > 0) alerts.push({ type: 'urgent', title: `Stock crítico en ${lowStock.length} artículos`, desc: 'Revisa el inventario, hay prendas por debajo del mínimo.' });
+
   return alerts;
 }
+
 function renderAlertas(){
-  const alerts=buildAlerts();
-  let html='';
-  if(alerts.length===0)html='<div class="empty-state"><div class="es-icon">✅</div><div class="es-title" style="color:var(--green)">Sin alertas</div><div class="es-text">Todo está en orden</div></div>';
-  else alerts.forEach(a=>{html+=`<div class="urgency-item ${a.type}"><div style="font-family:Syne;font-weight:700;color:${a.type==='urgent'?'var(--red)':'var(--yellow)'};margin-bottom:4px">${a.title}</div><div style="font-size:12px;color:var(--text2)">${a.body}</div></div>`});
-  document.getElementById('alertas-content').innerHTML=html;
+  const alertas = buildAlerts();
+  document.getElementById('alertas-content').innerHTML = `
+    <div class="card">
+      <div class="card-title">🔔 CENTRO DE ALERTAS</div>
+      ${alertas.length === 0 ? `
+        <div class="empty-state">
+          <div class="es-icon">✅</div>
+          <div class="es-title" style="color:var(--green)">Todo bajo control</div>
+          <div class="es-text">No hay alertas críticas en este momento.</div>
+        </div>
+      ` : alertas.map(a => `
+        <div class="urgency-item ${a.type}" style="padding: 16px;">
+          <div style="font-family: Syne; font-weight: 800; font-size: 14px;">${a.title}</div>
+          <div style="font-size: 12px; color: var(--text2); margin-top: 4px;">${a.desc}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 // ===================================================================
-// ===== HISTORIAL (CON FILTROS INTEGRADOS) =====
+// ===== SISTEMA & CONFIGURACIÓN =====
 // ===================================================================
-function updateHistFilters() {
-  histFilters.canal = document.getElementById('hist-canal').value;
-  histFilters.cat = document.getElementById('hist-cat').value;
-  histFilters.start = document.getElementById('hist-start').value;
-  histFilters.end = document.getElementById('hist-end').value;
-  renderHistorial();
-}
 
 function renderHistorial(){
-  let ventas=[...(state.ventas||[]).filter(v=>!v.archived)];
-  if(histFilters.canal) ventas = ventas.filter(v => v.canal === histFilters.canal);
-  if(histFilters.cat) ventas = ventas.filter(v => v.categoria === histFilters.cat);
-  if(histFilters.start) ventas = ventas.filter(v => v.fecha >= histFilters.start);
-  if(histFilters.end) ventas = ventas.filter(v => v.fecha <= histFilters.end);
-  ventas.reverse();
-
-  document.getElementById('historial-content').innerHTML=`
-    <div class="grid-2" style="margin-bottom:12px">
-      <div class="form-group" style="margin:0">
-        <label class="form-label">FILTRAR CANAL</label>
-        <select class="form-control" id="hist-canal" onchange="updateHistFilters()">
-          <option value="">Todos</option>
-          <option value="vitrina" ${histFilters.canal==='vitrina'?'selected':''}>Vitrina</option>
-          <option value="local" ${histFilters.canal==='local'?'selected':''}>Local</option>
-          <option value="inter" ${histFilters.canal==='inter'?'selected':''}>Intermunicipal</option>
-        </select>
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">FILTRAR CATEGORÍA</label>
-        <select class="form-control" id="hist-cat" onchange="updateHistFilters()">
-          <option value="">Todas</option>
-          <option value="Trajes de baño" ${histFilters.cat==='Trajes de baño'?'selected':''}>Trajes de baño</option>
-          <option value="Pijamas" ${histFilters.cat==='Pijamas'?'selected':''}>Pijamas</option>
-          <option value="Deportiva" ${histFilters.cat==='Deportiva'?'selected':''}>Deportiva</option>
-          <option value="Varias" ${histFilters.cat==='Varias'?'selected':''}>Varias</option>
-        </select>
-      </div>
-    </div>
-    <div class="grid-2" style="margin-bottom:16px">
-      <div class="form-group" style="margin:0">
-        <label class="form-label">FECHA DESDE</label>
-        <input type="date" class="form-control" id="hist-start" value="${histFilters.start}" onchange="updateHistFilters()">
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">FECHA HASTA</label>
-        <input type="date" class="form-control" id="hist-end" value="${histFilters.end}" onchange="updateHistFilters()">
-      </div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div class="card-title" style="margin:0">TODAS LAS VENTAS (${ventas.length})</div>
-        <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ CSV</button>
-      </div>
-      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Canal</th><th>Valor</th><th>Cliente</th><th>Guía / Transportadora</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${ventas.map(v=>`
-        <tr>
-          <td>${formatDate(v.fecha)}</td>
-          <td><span class="badge badge-${v.canal}">${v.canal}</span></td>
-          <td style="color:var(--accent);font-weight:600">${fmt(v.valor)}</td>
-          <td>${v.cliente||'—'}</td>
-          <td>
-            ${v.guia?`<div style="background:rgba(0,229,180,.1);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:11px;display:inline-block;margin-bottom:2px">${v.guia}</div>`:''}
-            ${v.empresa && v.canal!=='vitrina' ? `<div style="font-size:10px;color:var(--text2)">${v.empresa} ${v.transportadora?`(${v.transportadora})`:''}</div>` : ''}
-            ${!v.guia && v.canal==='vitrina' ? '—' : ''}
-          </td>
-          <td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'✓':'⏳'}</span></td>
-          <td><button class="btn btn-xs btn-danger" onclick="eliminarVenta('${v.id}')">✕</button></td>
-        </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Sin ventas</td></tr>'}
-      </tbody></table></div>
-    </div>`;
-}
-
-function eliminarVenta(id) {
-  // 1. Confirmación de seguridad
-  if (!confirm('¿Estás seguro de eliminar esta venta? Esto devolverá la prenda al inventario, restará el dinero de la caja y borrará la factura para mantener tu ERP cuadrado.')) return;
-
-  const venta = (state.ventas || []).find(v => v.id === id);
-  if (!venta) return;
-
-  // En tu sistema, la variable 'desc' guarda el número de factura (ej: POS-00001)
-  const numFactura = venta.desc; 
-
-  // 2. Revertir el inventario: Eliminar los movimientos de salida de esta factura
-  if (numFactura) {
-    state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.referencia !== numFactura);
-  }
-
-  // 3. Revertir la caja: Si la venta ya había entrado a caja, sacamos la plata
-  if (venta.liquidado && numFactura) {
-    const movTes = (state.tes_movimientos || []).find(m => m.concepto.includes(numFactura));
-    if (movTes) {
-      const caja = (state.cajas || []).find(c => c.id === movTes.cajaId);
-      if (caja) caja.saldo -= movTes.valor; // Restamos la plata
-      state.tes_movimientos = state.tes_movimientos.filter(m => m.id !== movTes.id); // Borramos el registro
-    }
-  }
-
-  // 4. Borrar el documento físico del módulo de Facturas
-  if (numFactura) {
-    state.facturas = (state.facturas || []).filter(f => f.numero !== numFactura);
-  }
-
-  // 5. Restar la XP ganada en el juego (para que sea justo)
-  const xpToDeduct = calcXP(venta.canal, venta.valor);
-  if (state.game && state.game.xp >= xpToDeduct) {
-     state.game.xp -= xpToDeduct;
-  }
-
-  // 6. Finalmente, borrar la venta del historial
-  state.ventas = state.ventas.filter(v => v.id !== id);
-
-  // Guardar y actualizar la pantalla
-  saveState();
-  renderHistorial();
-  renderDashboard();
-  updateNavBadges();
+  const q = (document.getElementById('hist-search')?.value || '').toLowerCase();
+  let ventas = (state.ventas || []).slice().reverse();
   
-  notify('success', '🗑️', 'Venta Anulada', 'Inventario, caja y facturas actualizados correctamente.');
-}
+  if(q) ventas = ventas.filter(v => (v.desc||'').toLowerCase().includes(q) || (v.cliente||'').toLowerCase().includes(q) || (v.guia||'').toLowerCase().includes(q));
 
-function exportCSV(){
-  const ventas=(state.ventas||[]).filter(v=>!v.archived);
-  const BOM='\uFEFF';
-  const header='Fecha,Canal,Valor,Categoria,Cliente,Guía,Plataforma,Transportadora,Liquidado\n';
-  const rows=ventas.map(v=>[
-    v.fecha, v.canal, v.valor, v.categoria||'', v.cliente||'', v.guia||'',
-    v.empresa||'', v.transportadora||'', v.liquidado?'Sí':'No'
-  ].map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob=new Blob([BOM+header+rows],{type:'text/csv;charset=utf-8;'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ventas_${today()}.csv`;a.click();
-}
-
-// ===================================================================
-// ===== GAME PAGE =====
-// ===================================================================
-function renderGamePage(){
-  const g=state.game||{};const{lv,next,pct,xpToNext}=calcLevelProgress(g.xp||0);const streak=calcStreak();const vm=ventasMes(state);const wkXP=getWeekXP();const{snack,week,year}=getWeekSnack();const snackKey=`${snack.id}_${week}_${year}`;const snackClaimed=g.claimedSnacks&&g.claimedSnacks[snackKey];const snackPct=Math.min(100,(wkXP/SNACK_XP_GOAL)*100);
-  document.getElementById('juego-content').innerHTML=`
-    <div class="game-level-bar"><div style="display:flex;align-items:center;gap:16px"><div style="font-size:48px">${lv.avatar}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="level-name" style="color:var(--accent)">${lv.name}</div><div style="font-size:12px;color:var(--text2)">Nivel ${lv.level}</div></div><div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-top:6px"><span>${g.xp||0} XP</span><span>${next?xpToNext+' XP para '+next.name:'¡Máximo!'}</span></div></div></div></div>
-    <div class="grid-3"><div class="card" style="text-align:center;margin:0"><div style="font-size:28px">🔥</div><div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--accent)">${streak}</div><div style="font-size:11px;color:var(--text2)">Racha</div></div><div class="card" style="text-align:center;margin:0"><div style="font-size:28px">⚡</div><div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--accent2)">${wkXP}</div><div style="font-size:11px;color:var(--text2)">XP semana</div></div><div class="card" style="text-align:center;margin:0"><div style="font-size:28px">🏅</div><div style="font-family:Syne;font-size:22px;font-weight:800;color:#a78bfa">${(g.earnedBadges||[]).length}</div><div style="font-size:11px;color:var(--text2)">Insignias</div></div></div>
-    <div class="card" style="background:linear-gradient(135deg,rgba(0,229,180,.06),rgba(0,196,255,.06));border-color:rgba(0,229,180,.2)"><div class="card-title">🎁 SNACK SEMANA ${week}</div><div style="display:flex;align-items:center;gap:16px"><div style="font-size:48px">${snackClaimed?snack.emoji:'🎁'}</div><div style="flex:1"><div style="font-family:Syne;font-size:16px;font-weight:800;color:var(--accent);margin-bottom:4px">${snackClaimed?snack.name:'¿Qué snack te toca?'}</div><div style="font-size:12px;color:var(--text2);margin-bottom:8px">Meta: ${SNACK_XP_GOAL}XP · Llevas ${wkXP}XP</div><div class="progress-bar-wrap" style="margin-bottom:8px"><div class="progress-bar-fill" style="width:${snackPct}%"></div></div>${snackClaimed?'<span style="color:var(--green);font-weight:700">✓ Reclamado</span>':wkXP>=SNACK_XP_GOAL?`<button class="btn btn-primary btn-sm" onclick="claimWeeklySnack()">🎉 Reclamar!</button>`:`<span style="font-size:12px;color:var(--text2)">Faltan ${SNACK_XP_GOAL-wkXP}XP</span>`}</div></div></div>
-    <div class="card"><div class="card-title">🏅 INSIGNIAS (${(g.earnedBadges||[]).length}/${BADGES.length})</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px">${BADGES.map(b=>{const earned=(g.earnedBadges||[]).includes(b.id);return`<div style="background:${earned?'rgba(0,229,180,.08)':'rgba(255,255,255,.03)'};border:1px solid ${earned?'rgba(0,229,180,.25)':'var(--border)'};border-radius:10px;padding:10px;text-align:center;opacity:${earned?1:.4}" title="${b.desc}"><div style="font-size:24px;margin-bottom:4px">${b.icon}</div><div style="font-size:10px;font-family:Syne;font-weight:700;color:${earned?'var(--accent)':'var(--text2)'}">${b.name}</div></div>`}).join('')}</div></div>`;
-}
-
-function claimWeeklySnack(){const{snack,week,year}=getWeekSnack();const wkXP=getWeekXP();if(wkXP<SNACK_XP_GOAL)return;const key=`${snack.id}_${week}_${year}`;if(state.game.claimedSnacks[key])return;state.game.claimedSnacks[key]=true;saveState();showCelebration(snack.emoji,'¡SNACK!','¡Ganaste un '+snack.name+'!');renderGamePage()}
-
-// ===== RECOMPENSAS =====
-function renderRewards(){
-  const now=new Date();const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  let html='';
-  REWARDS.forEach(r=>{const unlocked=r.condition(state);const claimKey=r.id+'_'+monthKey;const claimed=state.rewards[claimKey];html+=`<div class="reward-card ${unlocked?'unlocked':''} ${claimed?'claimed':''}" style="margin-bottom:16px"><div style="font-size:44px;margin-bottom:10px">${r.icon}</div><div style="font-family:Syne;font-size:16px;font-weight:800;color:${unlocked?'var(--accent)':'var(--text2)'};margin-bottom:6px">${r.name}</div><div style="font-size:12px;color:var(--text2);margin-bottom:14px">${r.desc}</div>${claimed?'<span style="color:var(--green);font-weight:700">✓ Reclamado</span>':unlocked?`<button class="btn btn-primary btn-sm" onclick="claimReward('${r.id}','${monthKey}')">🎉 Reclamar</button>`:'<span style="font-size:11px;color:var(--meta)">🔒 Bloqueado</span>'}</div>`});
-  document.getElementById('recompensas-content').innerHTML=html;
-}
-function claimReward(id,monthKey){const r=REWARDS.find(r=>r.id===id);if(!r||!r.condition(state))return;state.rewards[r.id+'_'+monthKey]=true;saveState();showCelebration(r.icon,'¡RECOMPENSA!','¡'+r.name+'!');renderRewards()}
-
-// ===================================================================
-// ===== CONFIG =====
-// ===================================================================
-
-  function renderConfig(){
-  const emp = state.empresa || {};
-  document.getElementById('config-content').innerHTML = `
-    <div class="card">
-      <div class="card-title">🏢 DATOS DE EMPRESA</div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">NOMBRE COMERCIAL</label><input class="form-control" id="cfg-emp-nombre" value="${emp.nombre||''}" placeholder="Hera Swimwear"></div>
-        <div class="form-group"><label class="form-label">NOMBRE SECUNDARIO</label><input class="form-control" id="cfg-emp-nombre2" value="${emp.nombreComercial||''}" placeholder="EON CLOTHING"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">NIT</label><input class="form-control" id="cfg-emp-nit" value="${emp.nit||''}" placeholder="1037638333-2"></div>
-        <div class="form-group"><label class="form-label">RÉGIMEN FISCAL</label><input class="form-control" id="cfg-emp-regimen" value="${emp.regimenFiscal||''}" placeholder="Régimen ordinario No responsable de IVA"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">DEPARTAMENTO</label><input class="form-control" id="cfg-emp-dpto" value="${emp.departamento||''}" placeholder="Antioquia"></div>
-        <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="cfg-emp-ciudad" value="${emp.ciudad||''}" placeholder="Medellín"></div>
-      </div>
-      <div class="form-group"><label class="form-label">DIRECCIÓN</label><input class="form-control" id="cfg-emp-dir" value="${emp.direccion||''}" placeholder="Carrera 53 # 49-88 Local 311"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">TELÉFONO PRINCIPAL</label><input class="form-control" id="cfg-emp-tel" value="${emp.telefono||''}" placeholder="3169097977"></div>
-        <div class="form-group"><label class="form-label">TELÉFONO LOCAL / SECUNDARIO</label><input class="form-control" id="cfg-emp-tel2" value="${emp.telefono2||''}" placeholder="311"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">EMAIL</label><input class="form-control" id="cfg-emp-email" value="${emp.email||''}" placeholder="eongerencia@gmail.com"></div>
-        <div class="form-group"><label class="form-label">PÁGINA WEB</label><input class="form-control" id="cfg-emp-web" value="${emp.web||''}" placeholder="www.eonclothingonline.com"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">INSTAGRAM / REDES</label><input class="form-control" id="cfg-emp-social" value="${emp.social||''}" placeholder="@eon_clothing"></div>
-        <div class="form-group"><label class="form-label">ELABORADO POR (vendedora)</label><input class="form-control" id="cfg-emp-vendedora" value="${emp.vendedora||''}" placeholder="Nombre vendedora"></div>
+  document.getElementById('historial-content').innerHTML = `
+    <div style="display:flex; margin-bottom: 16px;">
+      <div class="search-bar" style="flex:1; max-width: 400px; margin:0;">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="hist-search" placeholder="Buscar por # factura, cliente o guía..." value="${q}" oninput="renderHistorial()">
       </div>
     </div>
-
     <div class="card">
-      <div class="card-title">🖨️ DISEÑO DE TICKET POS</div>
-      <div class="form-group">
-        <label class="form-label">LOGO DEL TICKET (80mm)</label>
-        <div style="display:flex; gap:12px; align-items:center;">
-          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cfg-logo-file').click()">📁 Subir Logo</button>
-          <input type="file" id="cfg-logo-file" accept="image/*" style="display:none" onchange="processLogoUpload(this)">
-          <div id="cfg-logo-preview" style="width:64px; height:64px; border:1px solid var(--border); border-radius:8px; background: ${emp.logoBase64 ? `url('${emp.logoBase64}') center/contain no-repeat` : 'var(--bg3)'}; background-color:white;"></div>
-        </div>
-      </div>
-      <div class="form-group"><label class="form-label">MENSAJE ENCABEZADO (redes / política de cambios)</label><textarea class="form-control" id="cfg-emp-header" rows="3" placeholder="Síguenos en Instagram @eon_clothing&#10;No se realizan cambios ni devolución del dinero.">${emp.mensajeHeader||''}</textarea></div>
-      <div class="form-group"><label class="form-label">MENSAJE PIE (agradecimiento)</label><textarea class="form-control" id="cfg-emp-footer" rows="2" placeholder="¡GRACIAS POR SU COMPRA!">${emp.mensajePie||''}</textarea></div>
-      <div class="form-group"><label class="form-label">POLÍTICA DE DATOS PERSONALES</label><textarea class="form-control" id="cfg-emp-datos" rows="2" placeholder="EON CLOTHING le informa que todos tus datos serán tratados de acuerdo a la Ley de Protección de Datos Personales.">${emp.politicaDatos||''}</textarea></div>
-      <div class="form-group"><label class="form-label">POLÍTICA CAMBIOS / GARANTÍAS</label><textarea class="form-control" id="cfg-emp-garantias" rows="2" placeholder="PARA CAMBIOS O GARANTÍAS, se debe presentar la factura de venta">${emp.mensajeGarantias||''}</textarea></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">📊 METAS Y TIEMPOS</div>
-      <div class="form-row-3">
-        <div class="form-group"><label class="form-label">META MENSUAL</label><input type="number" class="form-control" id="cfg-meta" value="${state.meta}"></div>
-        <div class="form-group"><label class="form-label">DÍAS LIQ. LOCAL</label><input type="number" class="form-control" id="cfg-dias-local" value="${state.diasLocal}" min="1"></div>
-        <div class="form-group"><label class="form-label">DÍAS LIQ. INTER</label><input type="number" class="form-control" id="cfg-dias-inter" value="${state.diasInter}" min="1"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">📦 BODEGAS</div>
-      <div id="cfg-bodegas-list">${(state.bodegas||[]).map(b=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input class="form-control" value="${b.name}" style="flex:1" disabled><span style="font-size:12px;color:var(--text2)">${b.ubicacion}</span></div>`).join('')}</div>
-      <div class="form-inline" style="margin-top:8px">
-        <input class="form-control" id="cfg-new-bodega" placeholder="Nombre nueva bodega" style="flex:1">
-        <button class="btn btn-sm btn-secondary" onclick="addBodega()">+ Agregar</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">🖥️ HARDWARE POS</div>
-      <div style="font-size:12px;color:var(--text2);line-height:1.8;">
-        <strong>Impresora Térmica:</strong> Compatible con impresoras de 80mm vía navegador.<br>
-        <strong>Cajón POS:</strong> Se envía comando automático al cobrar.<br>
-        <strong>Pistola Scanner:</strong> Conecta tu scanner USB/Bluetooth y usa el ícono de escáner en POS.
-      </div>
-    </div>
-
-    <button class="btn btn-primary" style="width:100%; height:50px; font-size:16px; margin-bottom:16px" onclick="guardarConfig()">💾 Guardar Configuración Completa</button>
-
-    <div class="card">
-      <div class="card-title">⚠️ DATOS</div>
-      <div class="btn-group">
-        <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Exportar CSV Ventas</button>
-        <button class="btn btn-danger btn-sm" onclick="resetGame()">🔄 Reset XP</button>
-      </div>
-    </div>`;
-}
-
-function guardarConfig() {
-  // 1. Actualizar estado local
-  state.meta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
-  state.diasLocal = parseInt(document.getElementById('cfg-dias-local').value) || 1;
-  state.diasInter = parseInt(document.getElementById('cfg-dias-inter').value) || 5;
-
-  // 2. Mantener toda tu estructura robusta intacta
-  state.empresa = {
-    nombre:           document.getElementById('cfg-emp-nombre').value.trim(),
-    nombreComercial:  document.getElementById('cfg-emp-nombre2').value.trim(),
-    nit:              document.getElementById('cfg-emp-nit').value.trim(),
-    regimenFiscal:    document.getElementById('cfg-emp-regimen').value.trim(),
-    departamento:     document.getElementById('cfg-emp-dpto').value.trim(),
-    ciudad:           document.getElementById('cfg-emp-ciudad').value.trim(),
-    direccion:        document.getElementById('cfg-emp-dir').value.trim(),
-    telefono:         document.getElementById('cfg-emp-tel').value.trim(),
-    telefono2:        document.getElementById('cfg-emp-tel2').value.trim(),
-    email:            document.getElementById('cfg-emp-email').value.trim(),
-    web:              document.getElementById('cfg-emp-web').value.trim(),
-    social:           document.getElementById('cfg-emp-social').value.trim(),
-    vendedora:        document.getElementById('cfg-emp-vendedora').value.trim(),
-    mensajeHeader:    document.getElementById('cfg-emp-header').value.trim(),
-    mensajePie:       document.getElementById('cfg-emp-footer').value.trim(),
-    politicaDatos:    document.getElementById('cfg-emp-datos').value.trim(),
-    mensajeGarantias: document.getElementById('cfg-emp-garantias').value.trim(),
-    logoBase64:       _tempLogoBase64 || state.empresa.logoBase64 || ''
-  };
-
-  // 3. --- GUARDADO ATÓMICO (MULTI-USUARIO) ---
-  // Guardamos solo estas ramas en Firebase sin pisar ventas ni inventario
-  database.ref('ventacontrol_state_v3/meta').set(state.meta);
-  database.ref('ventacontrol_state_v3/diasLocal').set(state.diasLocal);
-  database.ref('ventacontrol_state_v3/diasInter').set(state.diasInter);
-  database.ref('ventacontrol_state_v3/empresa').set(state.empresa);
-
-  // 4. Feedback a la usuaria
-  notify('success', '✅', 'Guardado', 'Configuración total actualizada.', { duration: 3000 });
-  renderDashboard();
-}
-
-function addBodega(){
-  const nombre=document.getElementById('cfg-new-bodega').value.trim();if(!nombre)return;
-  state.bodegas.push({id:uid(),name:nombre,ubicacion:'Adicional'});
-  saveState();renderConfig();
-}
-
-function resetGame(){if(!confirm('¿Reiniciar XP e insignias?'))return;state.game={xp:0,streakMax:0,earnedBadges:[],claimedSnacks:{}};saveState();notify('success','🔄','Reset','Juego reiniciado.',{duration:3000})}
-
-// ===== KEYBOARD SHORTCUTS =====
-document.addEventListener('keydown',e=>{
-  if(e.ctrlKey||e.metaKey){
-    if(e.key==='k'){e.preventDefault();showPage('pos');setTimeout(()=>document.getElementById('pos-search')?.focus(),100)}
-  }
-  if(e.key==='Escape'){closeModal();closeScannerOverlay();closeCelebration()}
-});
-
-// ===== INIT =====
-window.addEventListener('load',()=>{loadState()});
-  // ==========================================
-// ===== MÓDULO DE TALENTO HUMANO HERA =====
-// ==========================================
-
-function openEmpleadoModal(id = null) {
-    const emp = id ? state.empleados.find(e => e.id === id) : null;
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">👤 FICHA DE COLABORADOR</div>
-        <div style="text-align:left; max-height: 70vh; overflow-y: auto;">
-            <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre || ''}"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula || ''}"></div>
-                <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono || ''}"></div>
-            </div>
-            <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion || ''}"></div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo || ''}"></div>
-                <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase || 1750000}"></div>
-            </div>
-        </div>
-        <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="saveEmpleado('${id || ''}')">💾 GUARDAR DATOS</button>
-    `, true);
-}
-
-function saveEmpleado(id) {
-    const data = {
-        nombre: document.getElementById('emp-nombre').value.trim(),
-        cedula: document.getElementById('emp-cedula').value.trim(),
-        telefono: document.getElementById('emp-tel').value.trim(),
-        direccion: document.getElementById('emp-dir').value.trim(),
-        cargo: document.getElementById('emp-cargo').value.trim(),
-        salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
-    };
-    if (!data.nombre || !data.cedula) return notify('warning','⚠️','Faltan datos','Nombre y Cédula son obligatorios');
-
-    if (id && id !== '' && id !== 'null') {
-        const idx = state.empleados.findIndex(e => e.id === id);
-        state.empleados[idx] = { ...state.empleados[idx], ...data };
-    } else {
-        data.id = uid();
-        state.empleados.push(data);
-    }
-    saveState(); closeModal(); renderNomina();
-    notify('success','✅','Éxito','Datos de empleado guardados.');
-}
-// ==========================================
-// ===== MÓDULO DE NÓMINA PROFESIONAL =====
-// ==========================================
-
-function renderNomina() {
-  const empleados = state.empleados || [];
-  const container = document.getElementById('dashboard-content');
-  if(!container) return;
-
-  container.innerHTML = `
-    <div class="header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-      <h2 style="font-family:Syne; color:var(--text); font-weight:800;">👥 GESTIÓN DE PERSONAL</h2>
-      <button class="btn btn-primary" onclick="openEmpleadoModal()" style="font-weight:800;">+ VINCULAR COLABORADOR</button>
-    </div>
-
-    <div class="card" style="margin:0">
+      <div class="card-title">HISTORIAL GLOBAL DE VENTAS (${ventas.length})</div>
       <div class="table-wrap">
-        <table style="width:100%; border-collapse:collapse; text-align:left;">
+        <table>
           <thead>
-            <tr style="color:var(--text2); font-size:11px; border-bottom:1px solid var(--border); text-transform:uppercase;">
-              <th style="padding:12px;">Nombre / Cédula</th>
-              <th>Cargo</th>
-              <th>Contacto / Dirección</th>
-              <th style="text-align:right;">Acciones</th>
+            <tr>
+              <th>Fecha</th>
+              <th>Canal</th>
+              <th>Referencia</th>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>Estado</th>
             </tr>
           </thead>
           <tbody>
-            ${empleados.length === 0 ? 
-              '<tr><td colspan="4" style="text-align:center; padding:50px; color:var(--text2); opacity:0.6;">No hay personal registrado.</td></tr>' : 
-              empleados.map(e => `
-                <tr style="border-bottom:1px solid var(--border); font-size:13px;">
-                  <td style="padding:12px;"><strong>${e.nombre}</strong><br><small style="opacity:0.6;">CC: ${e.cedula}</small></td>
-                  <td><span class="badge" style="background:var(--accent); color:#000; font-weight:600;">${e.cargo}</span></td>
-                  <td><small>📞 ${e.telefono}</small><br><small>📍 ${e.direccion}</small></td>
-                  <td style="text-align:right; padding:12px;">
-                    <button class="btn btn-sm btn-secondary" onclick="abrirAsistentePago('${e.id}')" title="Liquidar Mes">💰</button>
-                    <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado('${e.id}', '${e.nombre}')" style="margin-left:5px;">✕</button>
-                  </td>
-                </tr>
-              `).join('')}
+            ${ventas.map(v => `
+              <tr style="${v.archived ? 'opacity: 0.6;' : ''}">
+                <td>${formatDate(v.fecha)}</td>
+                <td><span class="badge badge-${v.canal}">${v.canal}</span></td>
+                <td style="font-weight:bold;">${v.desc || '—'}</td>
+                <td>${v.cliente || '—'}</td>
+                <td style="color:var(--accent); font-weight:700;">${fmt(v.valor)}</td>
+                <td><span class="badge ${v.liquidado ? 'badge-ok' : 'badge-pend'}">${v.liquidado ? 'Liquidado' : 'Pendiente'}</span></td>
+              </tr>
+            `).join('') || '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text2)">Sin historial de ventas</td></tr>'}
           </tbody>
         </table>
       </div>
-    </div>`;
+    </div>
+  `;
 }
 
-function openEmpleadoModal(id = null) {
-  const emp = id ? state.empleados.find(e => e.id === id) : null;
-  openModal(`
-    <div class="modal-title" style="font-family:Syne;">👤 REGISTRO DE COLABORADOR</div>
-    <div style="text-align:left; color:var(--text);">
-      <div class="form-group"><label class="form-label">Nombre Completo</label><input type="text" class="form-control" id="emp-nombre" value="${emp?.nombre||''}"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Cédula (CC)</label><input type="text" class="form-control" id="emp-cedula" value="${emp?.cedula||''}"></div>
-        <div class="form-group"><label class="form-label">Teléfono</label><input type="text" class="form-control" id="emp-tel" value="${emp?.telefono||''}"></div>
+function renderConfig(){
+  const emp = state.empresa || {};
+  document.getElementById('config-content').innerHTML = `
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">⚙️ CONFIGURACIÓN DE EMPRESA</div>
+        <div class="form-group"><label class="form-label">Nombre Comercial</label><input type="text" id="cfg-nombre" class="form-control" value="${emp.nombre || ''}"></div>
+        <div class="form-group"><label class="form-label">NIT / RUT</label><input type="text" id="cfg-nit" class="form-control" value="${emp.nit || ''}"></div>
+        <div class="form-group"><label class="form-label">Teléfono Principal</label><input type="text" id="cfg-tel" class="form-control" value="${emp.telefono || ''}"></div>
+        <div class="form-group"><label class="form-label">Dirección y Ciudad</label><input type="text" id="cfg-dir" class="form-control" value="${emp.direccion || ''}"></div>
+        <div class="form-group"><label class="form-label">Meta Mensual de Ventas ($ COP)</label><input type="number" id="cfg-meta" class="form-control" value="${state.meta || 34000000}"></div>
+        <button class="btn btn-primary" style="width:100%; margin-top: 10px;" onclick="saveConfig()">💾 Guardar Configuración</button>
       </div>
-      <div class="form-group"><label class="form-label">Dirección de Residencia</label><input type="text" class="form-control" id="emp-dir" value="${emp?.direccion||''}"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Cargo</label><input type="text" class="form-control" id="emp-cargo" value="${emp?.cargo||''}"></div>
-        <div class="form-group"><label class="form-label">Salario Base</label><input type="number" class="form-control" id="emp-salario" value="${emp?.salarioBase||1750000}"></div>
+      
+      <div class="card" style="border-color: rgba(248,113,113,0.3);">
+        <div class="card-title" style="color: var(--red);">⚡ ZONA DE PELIGRO</div>
+        <div style="color: var(--text2); font-size: 12px; margin-bottom: 20px;">Las siguientes acciones afectan directamente el estado general del ERP en Firebase. Úsalas con precaución.</div>
+        <button class="btn btn-danger" style="width:100%; margin-bottom:12px;" onclick="forceMonthReset()">🔄 Archivar Ventas del Mes</button>
+        <button class="btn btn-secondary" style="width:100%; color: var(--red); border-color: rgba(248,113,113,0.3);" onclick="location.reload()">🔌 Forzar Recarga del Sistema</button>
       </div>
     </div>
-    <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveEmpleado('${id||''}')">💾 GUARDAR EN HERA</button>
-  `, true);
+  `;
 }
 
-function saveEmpleado(id) {
-  const data = {
-    nombre: document.getElementById('emp-nombre').value.trim(),
-    cedula: document.getElementById('emp-cedula').value.trim(),
-    telefono: document.getElementById('emp-tel').value.trim(),
-    direccion: document.getElementById('emp-dir').value.trim(),
-    cargo: document.getElementById('emp-cargo').value.trim(),
-    salarioBase: parseFloat(document.getElementById('emp-salario').value) || 0
-  };
-  if (!data.nombre || !data.cedula) return notify('warning', '⚠️', 'Faltan datos', 'Nombre y CC obligatorios');
-
-  if (id && id !== '' && id !== 'null') {
-    const idx = state.empleados.findIndex(e => e.id === id);
-    state.empleados[idx] = { ...state.empleados[idx], ...data, id };
-  } else {
-    data.id = uid();
-    state.empleados.push(data);
-  }
-  saveState(); closeModal(); renderNomina();
-  notify('success', '✅', 'Éxito', 'Empleado guardado.');
+function saveConfig(){
+  if(!state.empresa) state.empresa = {};
+  state.empresa.nombre = document.getElementById('cfg-nombre').value.trim();
+  state.empresa.nit = document.getElementById('cfg-nit').value.trim();
+  state.empresa.telefono = document.getElementById('cfg-tel').value.trim();
+  state.empresa.direccion = document.getElementById('cfg-dir').value.trim();
+  
+  const nuevaMeta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
+  state.meta = nuevaMeta;
+  
+  database.ref('ventacontrol_state_v3/empresa').set(state.empresa);
+  database.ref('ventacontrol_state_v3/meta').set(state.meta);
+  
+  notify('success', '✅', 'Configuración guardada', 'Los datos de la empresa han sido actualizados.', {duration: 3000});
+  renderConfig();
+  renderDashboard(); // Refrescar metas en dashboard
 }
 
-function eliminarEmpleado(id, nombre) {
-  if (confirm(`¿Retirar a ${nombre} de la empresa?`)) {
-    state.empleados = state.empleados.filter(e => e.id !== id);
-    saveState(); renderNomina();
-    notify('warning', '✕', 'Baja', nombre + " ha sido eliminado.");
+function forceMonthReset(){
+  if(confirm('⚠️ ¿Estás seguro? Esto archivará todas las ventas actuales y reiniciará el progreso de la meta mensual. Esta acción no se puede deshacer fácilmente.')) {
+    state.currentMonth = null; 
+    checkMonthReset(); 
+    saveState(); 
+    renderAll();
+    notify('success', '🔄', 'Mes Reseteado', 'Las ventas han sido archivadas correctamente.', {duration: 4000});
   }
 }
 
-// === MOTOR DE CÁLCULO COLOMBIA 2026 ===
-function abrirAsistentePago(id) {
-  const emp = state.empleados.find(e => e.id === id);
-  openModal(`
-    <div class="modal-title" style="font-family:Syne;">⚖️ LIQUIDACIÓN MENSUAL LEGAL</div>
-    <div style="text-align:left; color:var(--text);">
-      <div class="form-group"><label class="form-label">Días Trabajados (Mes: 30)</label><input type="number" class="form-control" id="liq-dias" value="30"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
-        <div class="form-group"><label class="form-label">Faltas Injustificadas</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
+// ===================================================================
+// ===== SEPARADOS (SHOWROOM) =====
+// ===================================================================
+
+function renderSeparados(){
+  let separados = (state.ventas || []).filter(v => !v.archived && v.esSeparado).reverse();
+  document.getElementById('separados-content').innerHTML = `
+    <div class="card">
+      <div class="card-title">🛍️ PRENDAS EN SEPARADO DEL LOCAL (${separados.length})</div>
+      <div style="font-size: 12px; color: var(--text2); margin-bottom: 16px;">Aquí aparecen las ventas de vitrina o local que se marcaron como "Separado". El inventario ya fue descontado.</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Factura / Ref</th>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>Método Pago</th>
+              <th>Estado Entrega</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${separados.map(v => `
+              <tr>
+                <td>${formatDate(v.fecha)}</td>
+                <td style="font-weight:bold; color:var(--text2)">${v.desc || '—'}</td>
+                <td style="font-weight:bold;">${v.cliente || 'CLIENTE MOSTRADOR'}</td>
+                <td style="color:var(--accent); font-weight:700;">${fmt(v.valor)}</td>
+                <td><span class="badge badge-info">${v.metodoPago || 'Efectivo'}</span></td>
+                <td><span class="badge ${v.estadoEntrega === 'Entregado' ? 'badge-ok' : 'badge-warn'}">${v.estadoEntrega || 'Pendiente'}</span></td>
+                <td>
+                  ${v.estadoEntrega !== 'Entregado' ? `<button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">📦 Entregar</button>` : '<span style="color:var(--green); font-size:11px; font-weight:bold;">✓ Entregado</span>'}
+                </td>
+              </tr>
+            `).join('') || '<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text2)">No tienes prendas en separado actualmente</td></tr>'}
+          </tbody>
+        </table>
       </div>
-      <div class="form-group"><label class="form-label">Comisiones o Bonos ($)</label><input type="number" class="form-control" id="liq-extras" value="0"></div>
-      <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PLANILLA</button>
     </div>
-  `, true);
-}
-
-function calcularNominaFinal(id) {
-  const emp = state.empleados.find(e => e.id === id);
-  const dias = parseInt(document.getElementById('liq-dias').value) || 0;
-  const incap = parseInt(document.getElementById('liq-incap').value) || 0;
-  const faltas = parseInt(document.getElementById('liq-faltas').value) || 0;
-  const extras = parseFloat(document.getElementById('liq-extras').value) || 0;
-
-  const SMMLV = 1750000; 
-  const AUX_T = 210000;
-
-  let sueldoReal = (emp.salarioBase / 30) * (dias - incap - faltas);
-  let pagoIncap = incap > 0 ? (emp.salarioBase / 30) * incap * 0.6667 : 0;
-  let auxTrans = emp.salarioBase <= (SMMLV * 2) ? (AUX_T / 30) * (dias - faltas) : 0;
-  
-  let ibc = sueldoReal + extras;
-  let saludE = ibc * 0.04;
-  let pensionE = ibc * 0.04;
-
-  let baseP = sueldoReal + extras + auxTrans;
-  let prima = baseP * 0.0833;
-  let cesantias = baseP * 0.0833;
-  let intCes = cesantias * 0.12;
-  let vaca = (sueldoReal + extras) * 0.0417;
-
-  const neto = (sueldoReal + pagoIncap + auxTrans + extras) - (saludE + pensionE);
-
-  // Guardar registro
-  state.nomina_pagos.push({ id: uid(), empleado: emp.nombre, fecha: today(), neto, totalProvisiones: prima+cesantias+intCes+vaca });
-  saveState(); closeModal();
-
-  // Aquí llamamos a tu función de imprimir ticket
-  const facturaNomina = {
-      numero: 'NOM-' + uid().substring(0,4).toUpperCase(),
-      fecha: today(),
-      items: [
-          {nombre: 'Sueldo Básico', qty: dias, precio: sueldoReal / dias},
-          {nombre: 'Auxilio Transporte', qty: 1, precio: auxTrans},
-          {nombre: 'Comisiones/Extras', qty: 1, precio: extras},
-          {nombre: 'Salud/Pensión (Deducción)', qty: 1, precio: -(saludE + pensionE)}
-      ],
-      total: neto,
-      metodo: 'Transferencia'
-  };
-
-  printReceipt(facturaNomina);
-  notify('success', '💰', 'Nómina Procesada', `Pago de ${fmt(neto)} para ${emp.nombre}`);
-}
-  // === 1. FUNCIÓN PARA ELIMINAR (DESPIDOS) ===
-function eliminarEmpleado(id, nombre) {
-    if (confirm(`¿Estás seguro de retirar a ${nombre} de la empresa?`)) {
-        state.empleados = state.empleados.filter(e => e.id !== id);
-        saveState();
-        renderNomina();
-        notify('warning', '✕', 'Baja', `${nombre} ha sido retirado del sistema.`);
-    }
-}
-
-// === 2. ASISTENTE DE LIQUIDACIÓN (NOVEDADES) ===
-function abrirAsistentePago(id) {
-    const emp = state.empleados.find(e => e.id === id);
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">⚖️ LIQUIDACIÓN MENSUAL: ${emp.nombre}</div>
-        <div style="text-align:left; color:var(--text);">
-            <div class="form-group">
-                <label class="form-label">Días Trabajados (Mes completo: 30)</label>
-                <input type="number" class="form-control" id="liq-dias" value="30">
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">Días Incapacidad</label><input type="number" class="form-control" id="liq-incap" value="0"></div>
-                <div class="form-group"><label class="form-label">Faltas (No pagas)</label><input type="number" class="form-control" id="liq-faltas" value="0"></div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Bonificaciones / Extras ($)</label>
-                <input type="number" class="form-control" id="liq-extras" value="0">
-            </div>
-            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="calcularNominaFinal('${id}')">🚀 PROCESAR PAGO Y PDF</button>
-        </div>
-    `, true);
-}
-  // ==========================================
-// ===== GENERADOR DE QR - HERA ERP ========
-// ==========================================
-
-function generateProductQR(id) {
-    // Busca la prenda en tu lista de artículos por su ID único
-    const art = state.articulos.find(a => a.id === id);
-    if (!art) return;
-
-    // Generamos el link hacia tu catálogo web de Eon Clothing
-    const urlCatalogo = `https://eonclothingonline.com/mayoristas/?ref=${art.codigo}`;
-
-    openModal(`
-        <div class="modal-title" style="font-family:'Syne';">📱 QR PARA: ${art.nombre}</div>
-        <div style="display:flex; flex-direction:column; align-items:center; gap:20px; padding:20px;">
-            <div id="qrcode-container" style="background:white; padding:15px; border-radius:12px; border:1px solid var(--border);"></div>
-            
-            <div style="text-align:center;">
-                <div style="font-family:'Syne'; font-weight:800; color:var(--accent); font-size:18px;">${art.codigo}</div>
-                <div style="font-size:12px; color:var(--text2); margin-top:8px;">Ideal para etiquetas en el showroom de Medellín</div>
-            </div>
-            
-            <button class="btn btn-primary" style="width:100%" onclick="printQR('${art.nombre}')">🖨️ IMPRIMIR ETIQUETA QR</button>
-        </div>
-    `);
-
-    // El sistema espera 100 milisegundos a que el modal abra para crear el QR
-    setTimeout(() => {
-        new QRCode(document.getElementById("qrcode-container"), {
-            text: urlCatalogo,
-            width: 200,
-            height: 200,
-            colorDark : "#0a0f1e",
-            colorLight : "#ffffff",
-            correctLevel : QRCode.CorrectLevel.H
-        });
-    }, 100);
-}
-
-function printQR(nombre) {
-    const qrCanvas = document.querySelector("#qrcode-container canvas");
-    if(!qrCanvas) {
-        notify('warning', '⚠️', 'Error', 'No se pudo generar la imagen del QR.');
-        return;
-    }
-    const qrImg = qrCanvas.toDataURL("image/png");
-    
-    // Abre una ventana limpia para enviar a la impresora térmica
-    const pWin = window.open('', '', 'width=450,height=500');
-    pWin.document.write(`
-        <html>
-        <body style="text-align:center; font-family:sans-serif; padding:20px; color:#0a0f1e;">
-            <h1 style="margin-bottom:0;">HERA SWIMWEAR</h1>
-            <p style="font-size:10px; margin-top:5px; margin-bottom:15px; text-transform:uppercase; letter-spacing:2px;">Cali - Medellín - Colombia</p>
-            <img src="${qrImg}" style="width:250px; border:1px solid #eee;">
-            <h2 style="margin-top:15px; font-size:24px;">${nombre.toUpperCase()}</h2>
-            <p style="font-size:12px; color:#666;">Escanea para ver detalles en catálogo</p>
-        </body>
-        </html>`);
-    pWin.document.close();
-    setTimeout(() => { pWin.print(); pWin.close(); }, 500);
-}
-  async function deleteArticulo(id) {
-  // Pedir confirmación por seguridad
-  if (!confirm('¿Estás seguro de eliminar esta prenda? Se borrará de tu ERP y del catálogo web.')) return;
-
-  const art = (state.articulos || []).find(a => a.id === id);
-  if (!art) return;
-
-  showLoadingOverlay('connecting');
-
-  try {
-    // 1. Eliminar del catálogo web (Firebase Firestore)
-    if (art.codigo) {
-      const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
-      if (!queryWeb.empty) {
-        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
-      }
-    }
-
-    // 2. Eliminar localmente del ERP
-    state.articulos = state.articulos.filter(a => a.id !== id);
-    saveState();
-    
-    // 3. Refrescar la vista
-    renderArticulos();
-
-    showLoadingOverlay('hide');
-    notify('success', '🗑️', 'Prenda eliminada', `${art.nombre} fue eliminada exitosamente.`);
-  } catch (error) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error al eliminar', error.message);
-  }
-}
-  function playCashSound() {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1000, ctx.currentTime); 
-    osc.frequency.setValueAtTime(1500, ctx.currentTime + 0.1); 
-    gain.gain.setValueAtTime(0.2, ctx.currentTime); 
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4); 
-    osc.start();
-    osc.stop(ctx.currentTime + 0.4);
-  } catch (e) {
-    console.log("Sonido no soportado");
-  }
-}
-  async function updateCatalogVisibility(articuloId, fromSale = false) {
-  const art = (state.articulos || []).find(a => a.id === articuloId);
-  if (!art || !art.codigo) return;
-
-  const stock = getArticuloStock(articuloId);
-  
-  // 1. Validar si se quedó sin stock después de una venta en el POS
-  if (fromSale && stock <= 0) {
-    alert(`⚠️ STOCK AGOTADO: La prenda ${art.nombre} (Ref: ${art.codigo}) llegó a 0. Se ha ocultado automáticamente de tu catálogo web para evitar ventas sin inventario.`);
-    art.mostrarEnWeb = false;
-    saveState();
-  }
-
-  // 2. Ejecutar la acción en Firebase (Catálogo Web)
-  try {
-    const queryWeb = await dbWeb.collection('products').where('ref', '==', art.codigo).get();
-    
-    // Si el usuario quitó el "chulo" (checkbox) o el stock es 0, lo eliminamos de la web
-   if (art.mostrarEnWeb === false || (stock <= 0 && !art.importadoDeCatalogo)) {
-      if (!queryWeb.empty) {
-        await dbWeb.collection('products').doc(queryWeb.docs[0].id).delete();
-      }
-    } 
-    // Nota: Si el checkbox está activo y hay stock > 0, asumo que tu código actual ya lo sube normalmente.
-  } catch (error) {
-    console.error("Error sincronizando visibilidad:", error);
-  }
-}
-  async function importarDesdeCatalogo() {
-  if (!confirm('¿Importar todos los productos del catálogo web al ERP?\n\nSe importarán sin stock ni costo. Los que ya existan (por referencia) se omitirán.')) return;
-
-  notify('⬇️ Importando catálogo...', 'Conectando con Firestore...', 'info');
-
-  const SECCION_MAP = {
-    'Trajes de Baño': 'Trajes de baño',
-    'Resort & Pijamas': 'Pijamas',
-    'Pijamas': 'Pijamas',
-    'Ropa Deportiva': 'Deportiva',
-    'Activewear': 'Deportiva',
-    'Casual': 'Varias'
-  };
-
-  try {
-    // Leer todos los productos de Firestore (catálogo web)
-    const snap = await dbWeb.collection('products').orderBy('createdAt', 'desc').get();
-    const productosWeb = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    if (!productosWeb.length) {
-      notify('⚠️ Sin productos', 'El catálogo web está vacío.', 'warning');
-      return;
-    }
-
-    // Referencias ya existentes en el ERP
-    const refsExistentes = new Set((state.articulos || []).map(a => (a.ref || '').toUpperCase()));
-
-    let importados = 0;
-    let omitidos = 0;
-
-    for (const p of productosWeb) {
-      const refKey = (p.ref || '').toUpperCase();
-
-      // Omitir si ya existe por referencia
-      if (refKey && refsExistentes.has(refKey)) {
-        omitidos++;
-        continue;
-      }
-
-      // Construir artículo para el ERP
-      const articulo = {
-    id: uid(),
-    codigo: p.ref || '',
-    ref: p.ref || '',
-    nombre: p.name || '',
-    name: p.name || '',
-    categoria: SECCION_MAP[p.seccion] || 'Varias',
-    subcategoria: p.cat || '',
-    seccion: p.seccion || '',
-    cat: p.cat || '',
-    precio: Number(p.price) || 0,
-    precioVenta: Number(p.price) || 0,
-    price: Number(p.price) || 0,
-    costo: 0,
-    precioCompra: 0,
-    tallas: p.sizes || '',
-    sizes: p.sizes || '',
-    colores: Array.isArray(p.colors) ? p.colors.join(', ') : (p.colors || ''),
-    colors: Array.isArray(p.colors) ? p.colors : [],
-    images: Array.isArray(p.images) ? p.images : [],
-    imagen: (Array.isArray(p.images) && p.images[0]) ? p.images[0] : '',
-    stock: 0,
-    stockMin: 0,
-    bodegaId: (state.bodegas && state.bodegas[0]) ? state.bodegas[0].id : '',
-    activo: true,
-    mostrarEnWeb: true,
-    importadoDeCatalogo: true,
-    catalogoId: p.id,
-    createdAt: today()
-};
-
-      state.articulos = state.articulos || [];
-      state.articulos.push(articulo);
-
-      // Agregar a referencias conocidas para no duplicar en esta misma importación
-      if (refKey) refsExistentes.add(refKey);
-      importados++;
-    }
-
-    if (importados > 0) {
-      await saveState();
-      notify('✅ Importación completa',
-        `${importados} producto(s) importados. ${omitidos > 0 ? omitidos + ' ya existían y se omitieron.' : ''}`,
-        'success');
-      renderArticulos(); // refresca la lista
-    } else {
-      notify('ℹ️ Sin cambios', `Todos los productos (${omitidos}) ya estaban en el ERP.`, 'info');
-    }
-
-  } catch (err) {
-    console.error('Error importando catálogo:', err);
-    notify('❌ Error', 'No se pudo conectar con el catálogo web: ' + err.message, 'danger');
-  }
-}
-function renderSeparados() {
-    const content = document.getElementById('separados-content');
-    if (!content) return;
-
-    // Filtramos las ventas que tienen la propiedad esSeparado y están pendientes
-    const separados = (state.ventas || []).filter(v => v.esSeparado === true && v.estadoEntrega === 'Pendiente');
-
-    content.innerHTML = `
-        <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <div class="card-title" style="margin:0">Artículos en Stand-By</div>
-                <button class="btn btn-primary btn-sm" onclick="showPage('pos')">+ Nuevo Separado</button>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Cliente</th>
-                            <th>Productos</th>
-                            <th>Total</th>
-                            <th>Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${separados.length === 0 ? '<tr><td colspan="5" style="text-align:center; padding:24px;">No hay prendas separadas hoy.</td></tr>' : ''}
-                        ${separados.map(v => `
-                            <tr>
-                                <td>${formatDate(v.fecha)}</td>
-                                <td style="font-weight:700">${v.cliente || 'Consumidor Final'}</td>
-                                <td>${v.items ? v.items.map(i => i.nombre).join(', ') : 'Ver factura'}</td>
-                                <td style="color:var(--accent); font-weight:700">${fmt(v.total || v.valor)}</td>
-                                <td>
-                                    <button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">✅ Entregar</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
+  `;
 }
 
 function entregarSeparado(id) {
-    const v = state.ventas.find(x => x.id === id);
-    if (v) {
-        v.estadoEntrega = 'Entregado';
-        
-        // --- GUARDADO ATÓMICO ---
-        saveRecord('ventas', v.id, v);
-        
-        renderSeparados();
-        notify('success', '🛍️', 'Entregado', 'La prenda ha salido de separados.');
-    }
+  if(!confirm('¿El cliente ya recogió la prenda? Esto la marcará como Entregada.')) return;
+  const v = state.ventas.find(x => x.id === id);
+  if(v) {
+    v.estadoEntrega = 'Entregado';
+    saveRecord('ventas', v.id, v);
+    renderSeparados();
+    notify('success', '📦', 'Separado Entregado', `La venta ${v.desc} fue entregada al cliente.`, {duration: 3000});
+  }
 }
-function autocompletarCliente(inputElement) {
-    const valor = inputElement.value.trim();
-    if (valor.length < 5) return; 
 
-    // Buscar el cliente en la memoria
-    const cliente = (state.usu_clientes || []).find(c => 
-        c.cedula === valor || 
-        c.celular === valor || 
-        c.telefono === valor
-    );
+// ===================================================================
+// ===== INICIALIZACIÓN DEL SISTEMA =====
+// ===================================================================
 
-    if (cliente) {
-        // IDs reales de tu sistema ERP actual
-        const inputNombre = document.getElementById('pos-cliente');
-        const inputTel = document.getElementById('pos-telefono');
-        const inputCiudad = document.getElementById('pos-ciudad'); // Campo de ciudad en envíos
+window.onload = () => {
+  // Conectar con Firebase y cargar estado
+  loadState();
+};
 
-        // Rellenar las casillas
-        if(inputNombre) inputNombre.value = cliente.nombre;
-        if(inputTel) inputTel.value = cliente.celular || cliente.telefono || cliente.whatsapp;
-        
-        // Si el envío está activo, poner ciudad + dirección
-        if(inputCiudad) inputCiudad.value = (cliente.ciudad ? cliente.ciudad + ' - ' : '') + (cliente.direccion || '');
-
-        // Guardar silenciosamente en el estado del cajero
-        if (typeof posFormState !== 'undefined') {
-            posFormState.cliente = cliente.nombre;
-            posFormState.cedula = cliente.cedula; 
-            posFormState.telefono = cliente.celular || cliente.telefono;
-            if(inputCiudad) posFormState.ciudad = inputCiudad.value;
-        }
-
-        notify('success', '👤', 'Cliente Encontrado', `Datos de ${cliente.nombre} cargados.`, {duration: 2500});
-    }
-}
-function eliminarImportacionMasiva() {
-    // 🛡️ Filtro ampliado: busca la etiqueta O registros donde el nombre sea un número (error de tu excel)
-    const clientesMalos = (state.usu_clientes || []).filter(c => {
-        const esMasiva = c.observacion === 'Importación masiva';
-        const esErrorColumnas = /^\d+$/.test(c.nombre); // Si el nombre es solo números, es un error
-        return esMasiva || esErrorColumnas;
-    });
-
-    if (clientesMalos.length === 0) {
-        return notify('info', 'ℹ️', 'Sin datos', 'No se detectaron registros de la importación para borrar.');
-    }
-
-    if (!confirm(`⚠️ ¡ATENCIÓN! Se eliminarán ${clientesMalos.length} registros erróneos. ¿Deseas continuar?`)) return;
-
-    showLoadingOverlay('connecting');
-    let batch = {};
-    clientesMalos.forEach(c => { batch[c.id] = null; });
-
-    firebase.database().ref('ventacontrol_state_v3/usu_clientes').update(batch)
-        .then(() => {
-            showLoadingOverlay('hide');
-            notify('success', '🧹', 'Base limpia', 'Se eliminaron ' + clientesMalos.length + ' registros.');
-            
-            // Limpieza local
-            state.usu_clientes = state.usu_clientes.filter(c => !clientesMalos.find(m => m.id === c.id));
-            renderPage('usuarios'); 
-        })
-        .catch(err => {
-            showLoadingOverlay('hide');
-            alert("Error al eliminar: " + err.message);
-        });
-}
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
