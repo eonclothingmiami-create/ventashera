@@ -633,53 +633,63 @@ async function loadState() {
   showLoadingOverlay('connecting');
   
   try {
-    // Cargar productos
-    const { data: products, error: prodErr } = await supabaseClient.from('products').select('*');
-    
+    // Cargar productos + imágenes en paralelo
+    const [
+      { data: products, error: prodErr },
+      { data: mediaRows },
+      { data: customers },
+      { data: employees }
+    ] = await Promise.all([
+      supabaseClient.from('products').select('*'),
+      supabaseClient.from('product_media').select('product_id, url, is_cover'),
+      supabaseClient.from('customers').select('*'),
+      supabaseClient.from('employees').select('*')
+    ]);
+
+    // Agrupar imágenes por product_id
+    const mediaByProduct = {};
+    (mediaRows || []).forEach(m => {
+      if(!mediaByProduct[m.product_id]) mediaByProduct[m.product_id] = [];
+      mediaByProduct[m.product_id].push(m);
+    });
+
     if(!prodErr && products) {
       state.articulos = products.map(p => {
-        const imgs = typeof p.images === 'string' ? JSON.parse(p.images || '[]') : (p.images || []);
-        const cols = typeof p.colors === 'string' ? JSON.parse(p.colors || '[]') : (p.colors || []);
+        const media = mediaByProduct[p.id] || [];
+        // Portada primero, si no hay is_cover toma la primera
+        const cover = media.find(m => m.is_cover) || media[0];
+        const imgs = media.map(m => m.url).filter(Boolean);
+        
         return {
           id: p.id,
-          codigo: p.ref || p.sku || '',
+          codigo: p.ref || '',
           ref: p.ref || '',
           nombre: p.name || '',
           name: p.name || '',
-          categoria: p.categoria || p.cat || '',
+          categoria: p.categoria || '',
           seccion: p.seccion || '',
-          cat: p.cat || '',
+          cat: p.categoria || '',
           descripcion: p.description || '',
           precioVenta: parseFloat(p.price) || 0,
           price: parseFloat(p.price) || 0,
           precioCompra: parseFloat(p.cost) || 0,
-          tallas: p.sizes || '',
-          sizes: p.sizes || '',
-          colors: cols,
-          colores: cols.join(', '),
+          tallas: '',
+          sizes: '',
+          colors: [],
+          colores: '',
           images: imgs,
-          imagen: imgs[0] || '',
+          imagen: cover ? cover.url : (imgs[0] || ''),
           stock: p.stock || 0,
           stockMinimo: p.stock_min || 0,
           activo: p.active !== false,
           mostrarEnWeb: p.visible !== false,
-          importadoDeCatalogo: true,
           supabaseId: p.id
         };
       });
     }
 
-    // Cargar clientes (tolerante a fallo)
-    try {
-      const { data: customers } = await supabaseClient.from('customers').select('*');
-      if(customers) state.usu_clientes = customers;
-    } catch(e) { console.warn('customers table not ready:', e.message); }
-
-    // Cargar empleados (tolerante a fallo)
-    try {
-      const { data: employees } = await supabaseClient.from('employees').select('*');
-      if(employees) state.empleados = employees;
-    } catch(e) { console.warn('employees table not ready:', e.message); }
+    if(customers) state.usu_clientes = customers;
+    if(employees) state.empleados = employees;
 
     _sbConnected = true;
     ['fb-status-dot','fb-status-dot-mobile'].forEach(id => {
@@ -693,7 +703,7 @@ async function loadState() {
 
     if(isFirstLoad){
       isFirstLoad = false;
-      notify('success','☁️','¡Conectado!','Catálogo cargado desde Supabase.',{duration:3000});
+      notify('success','☁️','¡Conectado!',`${(products||[]).length} artículos cargados.`,{duration:3000});
     }
 
   } catch (error) {
@@ -1312,32 +1322,22 @@ function renderPOSProductGrid(){
 
   el.innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);
-    const low=stock<=a.stockMinimo;
-    const out=stock<=0;
+    const low=stock<=a.stockMinimo;const out=stock<=0;
+  const esVideo = a.imagen && a.imagen.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
+const bgImg = (a.imagen && !esVideo) ? `background-image: linear-gradient(to top, rgba(0,0,0,0.8), transparent), url('${a.imagen}'); background-size: cover; background-position: center; color: white; border: none;` : '';
+const videoEl = esVideo ? `<video src="${a.imagen}" autoplay muted loop playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:12px;z-index:0;"></video><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.8),transparent);border-radius:12px;z-index:1;"></div>` : '';
+const videoIcon = (a.video || esVideo) ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border-radius:50%;padding:4px;font-size:12px;z-index:2;">▶️</div>` : '';
 
-    // Obtener imagen correctamente
-    let imgUrl = '';
-    if(a.imagen) {
-      imgUrl = a.imagen;
-    } else if(a.images) {
-      const imgs = typeof a.images === 'string' ? JSON.parse(a.images || '[]') : a.images;
-      imgUrl = Array.isArray(imgs) ? (imgs[0] || '') : '';
-    }
-
-    const esVideo = imgUrl && imgUrl.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
-    const bgImg = (imgUrl && !esVideo) ? `background-image:linear-gradient(to top,rgba(0,0,0,0.8),transparent),url('${imgUrl}');background-size:cover;background-position:center;color:white;border:none;` : '';
-    const videoEl = esVideo ? `<video src="${imgUrl}" autoplay muted loop playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:12px;z-index:0;"></video><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.8),transparent);border-radius:12px;z-index:1;"></div>` : '';
-    const videoIcon = (a.video || esVideo) ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border-radius:50%;padding:4px;font-size:12px;z-index:2;">▶️</div>` : '';
-
-    return `<div class="product-card ${out?'no-stock':low?'low-stock':''}" style="position:relative;min-height:140px;display:flex;flex-direction:column;justify-content:flex-end;${esVideo?'color:white;border:none;':bgImg}" onclick="promptTallaYAgregar('${a.id}')">
-      ${videoEl}
-      ${videoIcon}
-      ${!imgUrl && !esVideo ? `<div class="p-emoji">${a.emoji||'👙'}</div>` : ''}
-      <div class="p-name" style="position:relative;z-index:2;${imgUrl||esVideo?'text-shadow:0 1px 3px rgba(0,0,0,0.8);':''}">${a.nombre}</div>
-      <div class="p-price" style="position:relative;z-index:2;${imgUrl||esVideo?'color:#00e5b4;text-shadow:0 1px 2px rgba(0,0,0,0.8);':''}">${fmt(a.precioVenta)}</div>
-      <div class="p-stock" style="position:relative;z-index:2;${imgUrl||esVideo?'color:#ddd;':''}">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
-    </div>`;
-  }).join('')||'<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
+  return`<div class="product-card ${out?'no-stock':low?'low-stock':''}" style="position:relative; min-height:140px; display:flex; flex-direction:column; justify-content:flex-end; ${esVideo ? 'color:white;border:none;' : bgImg}" onclick="promptTallaYAgregar('${a.id}')">
+  ${videoEl}
+  ${videoIcon}
+  ${!a.imagen && !esVideo ? `<div class="p-emoji">${a.emoji||'👙'}</div>` : ''}
+  <div class="p-name" style="position:relative;z-index:2;${(a.imagen||esVideo)?'text-shadow:0 1px 3px rgba(0,0,0,0.8);':''}">${a.nombre}</div>
+  <div class="p-price" style="position:relative;z-index:2;${(a.imagen||esVideo)?'color:#00e5b4;text-shadow:0 1px 2px rgba(0,0,0,0.8);':''}">${fmt(a.precioVenta)}</div>
+  <div class="p-stock" style="position:relative;z-index:2;${(a.imagen||esVideo)?'color:#ddd;':''}">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
+  ${a.codigo&&!a.imagen&&!esVideo?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+a.codigo+'</div>':''}
+  
+    </div>`}).join('')||'<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
 }
 
 function promptTallaYAgregar(artId){
