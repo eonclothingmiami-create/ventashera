@@ -597,7 +597,7 @@ let posFormState = {
   canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', 
   cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0 
 };
-const CUENTAS_BANCARIAS = ['Bancolombia Principal', 'Bancolombia 2', 'Nequi', 'Daviplata'];
+const CUENTAS_BANCARIAS = ['Nequi','Bancolombia','Daviplata','Bancolombia 2'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
 let _tempGaleria = []; let _portadaIndex = 0;
   let _tempLogoBase64 = null; // Almacena el logo procesado para 80mm
@@ -1502,7 +1502,14 @@ async function procesarVentaPOS() {
     if(!yaExiste){
       const nc={id:uid(),tipo:'cliente',tipoId:'CC',cedula:posFormState.cedula||'',nombre:posFormState.cliente,celular:posFormState.telefono||'',whatsapp:posFormState.telefono||'',ciudad:posFormState.ciudad||'',fechaCreacion:fechaActual};
       state.usu_clientes.push(nc);
-      saveRecord('usu_clientes', nc.id, nc);
+      // Guardar en Supabase customers directamente
+      if(_sbConnected){
+        supabaseClient.from('customers').upsert({
+          id:nc.id, nombre:nc.nombre, cedula:nc.cedula||null,
+          celular:nc.celular||null, telefono:nc.celular||null,
+          whatsapp:nc.whatsapp||null, ciudad:nc.ciudad||null
+        },{onConflict:'id'}).then(({error})=>{ if(error) console.warn('Auto-cliente error:',error.message); });
+      }
     }
   }
 
@@ -1554,31 +1561,111 @@ function handlePOSScan(e){
 // ===== RECEIPT PRINTING =====
 function printReceipt(factura) {
   const emp = state.empresa || {};
+
   const logoHtml = emp.logoBase64
-    ? `<img src="${emp.logoBase64}" style="width:200px; display:block; margin:0 auto 10px; filter:grayscale(1);">`
-    : '';
+    ? `<img src="${emp.logoBase64}" style="max-width:180px;display:block;margin:0 auto 8px;filter:grayscale(1);">`
+    : `<div style="font-family:Arial;font-size:18px;font-weight:900;text-align:center;letter-spacing:2px;margin-bottom:4px">${emp.nombre||'EON CLOTHING'}</div>`;
 
-  const vendedora = emp.vendedora || '';
-  
-  // Mapeamos los items asegurándonos de que lea el formato del carrito o de Supabase
   const itemsList = factura.items || [];
-  const itemsHTML = itemsList.map(i => `
-    <tr>
-      <td style="padding:4px 0; vertical-align:top; line-height:1.4;">
-        <b>${i.name || i.nombre || ''}</b>${i.ref || i.codigo ? ` | Ref. ${i.ref || i.codigo}` : ''}<br>
-        ${i.talla ? '<span>Talla: '+i.talla+'</span>' : ''}
-      </td>
-      <td style="text-align:center; vertical-align:top; padding:4px 2px; white-space:nowrap;">x${i.qty || i.cantidad}</td>
-      <td style="text-align:right; vertical-align:top; padding:4px 0; white-space:nowrap;"><b>${fmtN((i.price || i.precio) * (i.qty || i.cantidad))}</b></td>
-    </tr>`).join('');
-
-  const subtotal = factura.subtotal || factura.total || 0;
+  const subtotal = factura.subtotal || 0;
   const iva = factura.iva || 0;
-  
-  // Nombre del cliente adaptado a la nueva columna 'customer_name'
+  const flete = factura.flete || 0;
+  const total = factura.total || (subtotal + iva + flete);
   const nombreCliente = factura.customer_name || factura.cliente || 'CLIENTE MOSTRADOR';
   const telefonoCliente = factura.customer_phone || factura.telefono || '';
- const numeroFactura = factura.number || factura.numero || 'PREVIEW';
+  const ciudadCliente = factura.ciudad || '';
+  const numeroFactura = factura.number || factura.numero || 'PREVIEW';
+  const fecha = factura.fecha || today();
+  const hora = new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'});
+  const metodo = factura.metodo || factura.metodoPago || 'Efectivo';
+  const vendedora = emp.vendedora || '';
+  const bodega = emp.nombreComercial || emp.nombre || '';
+
+  const itemsHTML = itemsList.map(i => {
+    const precio = i.price || i.precio || 0;
+    const qty = i.qty || i.cantidad || 1;
+    const nom = i.name || i.nombre || '';
+    const ref = i.ref || i.codigo || '';
+    const talla = i.talla || '';
+    return `<tr>
+      <td style="padding:3px 0;vertical-align:top;line-height:1.4;word-break:break-word;">
+        <b>${nom}</b>${ref ? ' | '+ref : ''}${talla ? '<br>Talla: '+talla : ''}
+      </td>
+      <td style="text-align:center;vertical-align:top;padding:3px 4px;white-space:nowrap;">x${qty}</td>
+      <td style="text-align:right;vertical-align:top;white-space:nowrap;"><b>${fmtN(precio*qty)}</b></td>
+    </tr>`;
+  }).join('');
+
+  const receiptHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Courier New',Courier,monospace; font-size:11px; width:72mm; color:#000; }
+    .center { text-align:center; }
+    .bold { font-weight:bold; }
+    .line { border-top:1px dashed #000; margin:5px 0; }
+    table { width:100%; border-collapse:collapse; }
+    th { font-size:10px; border-bottom:1px solid #000; padding:2px 0; text-align:left; }
+    th:last-child, td:last-child { text-align:right; }
+    th:nth-child(2), td:nth-child(2) { text-align:center; }
+    .total-row td { font-size:13px; font-weight:900; padding-top:4px; }
+    .small { font-size:9px; }
+  </style></head><body>
+
+  <div class="center">${logoHtml}</div>
+  <div class="center bold" style="font-size:13px;">${emp.nombre||'EON CLOTHING'}</div>
+  ${emp.nombreComercial && emp.nombreComercial !== emp.nombre ? `<div class="center">${emp.nombreComercial}</div>` : ''}
+  <div class="center small">NIT: ${emp.nit||''} | ${emp.regimenFiscal||'Régimen ordinario No responsable de IVA'}</div>
+  <div class="center small">${emp.departamento||''} / ${emp.ciudad||''} / ${emp.direccion||''}</div>
+  <div class="center small">Teléfonos: ${emp.telefono||''}${emp.telefono2?' / '+emp.telefono2:''}</div>
+  ${emp.email?`<div class="center small">Email: ${emp.email}</div>`:''}
+  ${emp.web?`<div class="center small">Página web: ${emp.web}</div>`:''}
+
+  <div class="line"></div>
+  <div class="center bold" style="font-size:12px;">FACTURA DE VENTA</div>
+  <div class="center bold">No.: ${numeroFactura}</div>
+  <div class="center small">${emp.nombreComercial||emp.nombre||''}</div>
+  <div class="center small">${fecha} ${hora}</div>
+
+  ${emp.mensajeHeader ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;">${emp.mensajeHeader}</div>` : ''}
+
+  <div class="line"></div>
+  <div class="small">Cliente: <b>${nombreCliente}</b>${telefonoCliente?' | '+telefonoCliente:''}${ciudadCliente?' | Ciudad: '+ciudadCliente:''}</div>
+  ${vendedora?`<div class="small">Elaboró: ${vendedora}</div>`:''}
+  ${bodega?`<div class="small">Vendedor: ${vendedora||''} | Bodega: ${bodega}</div>`:''}
+
+  <div class="line"></div>
+  <table>
+    <thead><tr><th>DESCRIPCIÓN</th><th>CANT</th><th>TOTAL</th></tr></thead>
+    <tbody>${itemsHTML}</tbody>
+  </table>
+  <div class="line"></div>
+
+  <table>
+    <tr><td>SUBTOTAL</td><td></td><td style="text-align:right">${fmtN(subtotal)}</td></tr>
+    ${iva > 0 ? `<tr><td>IVA (19%)</td><td></td><td style="text-align:right">${fmtN(iva)}</td></tr>` : ''}
+    ${flete > 0 ? `<tr><td>Flete</td><td></td><td style="text-align:right">${fmtN(flete)}</td></tr>` : ''}
+    <tr class="total-row"><td colspan="2">TOTAL NETO</td><td style="text-align:right;font-size:14px;">${fmtN(total)}</td></tr>
+  </table>
+  <div class="line"></div>
+
+  <div class="small bold">MEDIO DE PAGO:</div>
+  <div class="small">${metodo}</div>
+
+  ${emp.mensajePie ? `<div class="line"></div><div class="center small bold" style="white-space:pre-wrap;">${emp.mensajePie}</div>` : ''}
+  ${emp.politicaDatos ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;">${emp.politicaDatos}</div>` : ''}
+  ${emp.web ? `<div class="center small">${emp.web}</div>` : ''}
+  ${emp.mensajeGarantias ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;font-style:italic;">${emp.mensajeGarantias}</div>` : ''}
+
+  <div class="line"></div>
+  <div class="center small">Factura generada por VentasHera ERP</div>
+
+  </body></html>`;
+
+  const pWin = window.open('', '_blank', 'width=380,height=750,scrollbars=yes');
+  if(!pWin) { notify('warning','⚠️','Popup bloqueado','Permite popups para imprimir.',{duration:4000}); return; }
+  pWin.document.write(receiptHTML);
+  pWin.document.close();
+  setTimeout(() => { pWin.print(); }, 600);
 }
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
@@ -2577,15 +2664,15 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
         }
 
         if(batch.length >= 500) {
-          const {error: batchErr} = await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true});
-          if(batchErr) console.warn('Batch error:', batchErr.message);
+          try { await supabaseClient.from('customers').upsert(batch, {onConflict:'id'}); }
+          catch(ue) { console.warn('Batch upsert:', ue.message); }
           batch = [];
         }
       }
 
       if(batch.length > 0) {
-        const {error: batchErr} = await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true});
-          if(batchErr) console.warn('Batch error:', batchErr.message);
+        try { await supabaseClient.from('customers').upsert(batch, {onConflict:'id'}); }
+        catch(ue) { console.warn('Final upsert:', ue.message); }
       }
 
       input.value = '';
@@ -3211,54 +3298,87 @@ function forceMonthReset(){
 // ===================================================================
 
 function renderSeparados(){
-  let separados = (state.ventas || []).filter(v => !v.archived && v.esSeparado).reverse();
+  const desde = document.getElementById('sep-desde')?.value||'';
+  const hasta = document.getElementById('sep-hasta')?.value||'';
+  const q = (document.getElementById('sep-search')?.value||'').toLowerCase();
+
+  let separados = (state.ventas||[]).filter(v => !v.archived && v.esSeparado);
+  if(desde) separados = separados.filter(v => v.fecha >= desde);
+  if(hasta) separados = separados.filter(v => v.fecha <= hasta);
+  if(q) separados = separados.filter(v => (v.cliente||'').toLowerCase().includes(q) || (v.telefono||'').includes(q) || (v.desc||'').toLowerCase().includes(q));
+  separados = separados.reverse();
+
+  const pendientes = separados.filter(v => v.estadoEntrega !== 'Entregado');
+  const entregados = separados.filter(v => v.estadoEntrega === 'Entregado');
+
   document.getElementById('separados-content').innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="sep-search" placeholder="Cliente, teléfono..." value="${q}" oninput="renderSeparados()">
+      </div>
+      <input type="date" class="form-control" id="sep-desde" style="width:140px" value="${desde}" onchange="renderSeparados()">
+      <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
+      <input type="date" class="form-control" id="sep-hasta" style="width:140px" value="${hasta}" onchange="renderSeparados()">
+      ${(q||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="document.getElementById('sep-search').value='';document.getElementById('sep-desde').value='';document.getElementById('sep-hasta').value='';renderSeparados()">✕ Limpiar</button>`:''}
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="card" style="margin:0;text-align:center">
+        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--yellow)">${pendientes.length}</div>
+        <div style="font-size:11px;color:var(--text2)">⏳ Pendientes de entrega</div>
+      </div>
+      <div class="card" style="margin:0;text-align:center">
+        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--green)">${entregados.length}</div>
+        <div style="font-size:11px;color:var(--text2)">✅ Entregados hoy</div>
+      </div>
+    </div>
+
     <div class="card">
-      <div class="card-title">🛍️ PRENDAS EN SEPARADO DEL LOCAL (${separados.length})</div>
-      <div style="font-size: 12px; color: var(--text2); margin-bottom: 16px;">Aquí aparecen las ventas de vitrina o local que se marcaron como "Separado". El inventario ya fue descontado.</div>
+      <div class="card-title">🛍️ SEPARADOS (${separados.length})</div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Factura / Ref</th>
-              <th>Cliente</th>
-              <th>Total</th>
-              <th>Método Pago</th>
-              <th>Estado Entrega</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>Fecha</th><th>Ref</th><th>Cliente</th><th>Teléfono</th>
+            <th>Artículos</th><th>Total</th><th>Estado</th><th>Acción</th>
+          </tr></thead>
           <tbody>
-            ${separados.map(v => `
-              <tr>
-                <td>${formatDate(v.fecha)}</td>
-                <td style="font-weight:bold; color:var(--text2)">${v.desc || '—'}</td>
-                <td style="font-weight:bold;">${v.cliente || 'CLIENTE MOSTRADOR'}</td>
-                <td style="color:var(--accent); font-weight:700;">${fmt(v.valor)}</td>
-                <td><span class="badge badge-info">${v.metodoPago || 'Efectivo'}</span></td>
-                <td><span class="badge ${v.estadoEntrega === 'Entregado' ? 'badge-ok' : 'badge-warn'}">${v.estadoEntrega || 'Pendiente'}</span></td>
-                <td>
-                  ${v.estadoEntrega !== 'Entregado' ? `<button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">📦 Entregar</button>` : '<span style="color:var(--green); font-size:11px; font-weight:bold;">✓ Entregado</span>'}
-                </td>
-              </tr>
-            `).join('') || '<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text2)">No tienes prendas en separado actualmente</td></tr>'}
+            ${separados.map(v => `<tr style="${v.estadoEntrega==='Entregado'?'opacity:0.5':''}">
+              <td>${formatDate(v.fecha)}</td>
+              <td style="font-weight:700;color:var(--text2)">${v.desc||'—'}</td>
+              <td style="font-weight:700">${v.cliente||'MOSTRADOR'}</td>
+              <td>${v.telefono||'—'}</td>
+              <td style="font-size:11px;color:var(--text2)">${(v.items||[]).map(i=>(i.nombre||i.name||'')+(i.talla?' T:'+i.talla:'')).join(', ')||'—'}</td>
+              <td style="color:var(--accent);font-weight:700">${fmt(v.valor)}</td>
+              <td><span class="badge ${v.estadoEntrega==='Entregado'?'badge-ok':'badge-warn'}">${v.estadoEntrega||'Pendiente'}</span></td>
+              <td>
+                ${v.estadoEntrega!=='Entregado'
+                  ? `<button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">✓ Entregar</button>`
+                  : `<button class="btn btn-xs btn-danger" onclick="eliminarSeparado('${v.id}')">🗑</button>`}
+              </td>
+            </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin separados</td></tr>'}
           </tbody>
         </table>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 function entregarSeparado(id) {
-  if(!confirm('¿El cliente ya recogió la prenda? Esto la marcará como Entregada.')) return;
+  if(!confirm('¿El cliente ya recogió? Se marcará como entregado.')) return;
   const v = state.ventas.find(x => x.id === id);
-  if(v) {
-    v.estadoEntrega = 'Entregado';
-    saveRecord('ventas', v.id, v);
-    renderSeparados();
-    notify('success', '📦', 'Separado Entregado', `La venta ${v.desc} fue entregada al cliente.`, {duration: 3000});
-  }
+  if(!v) return;
+  v.estadoEntrega = 'Entregado';
+  saveRecord('ventas', v.id, v);
+  renderSeparados();
+  notify('success','📦','¡Entregado!',`${v.cliente||'Cliente'} recogió su pedido.`,{duration:3000});
+}
+
+function eliminarSeparado(id) {
+  if(!confirm('¿Eliminar este separado del registro?')) return;
+  state.ventas = state.ventas.filter(v => v.id !== id);
+  deleteRecord('ventas', id);
+  renderSeparados();
+  notify('success','🗑️','Eliminado','Separado removido del registro.',{duration:2000});
 }
 
 // ===================================================================
