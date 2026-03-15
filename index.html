@@ -354,25 +354,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAzWG2WmSldVRw4JtjfHv-e3CLbjwnvbNk",
-  authDomain: "ventacontrol-hera.firebaseapp.com",
-  databaseURL: "https://ventacontrol-hera-default-rtdb.firebaseio.com",
-  projectId: "ventacontrol-hera",
-  storageBucket: "ventacontrol-hera.firebasestorage.app",
-  messagingSenderId: "1950402952",
-  appId: "1:1950402952:web:f343b2b0cc56b7cdd0523d"
-};
+// Inicializar Supabase
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Validar Inicialización de Firebase
-if(typeof firebase==='undefined'){
-    document.body.innerHTML='<div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0f1e;font-family:Syne,sans-serif;text-align:center;padding:32px"><div style="font-size:52px">📡</div><div style="font-size:22px;font-weight:800;color:#f87171;margin-top:16px">Error Firebase</div><button onclick="location.reload()" style="margin-top:24px;background:linear-gradient(135deg,#00e5b4,#00c4ff);color:#0a0f1e;border:none;border-radius:12px;padding:14px 32px;font-family:Syne;font-size:15px;font-weight:800;cursor:pointer">🔄 Reintentar</button></div>';
-} else {
-    firebase.initializeApp(firebaseConfig);
-}
-const database = firebase.database();
-const stateRef = database.ref('ventacontrol_state_v3');
-
+// Variables de control
+let isFirstLoad = true;
+let _sbConnected = false;
 // ===================================================================
 // ===== SUPABASE REST API (FUNCIONES BASE) =====
 // ===================================================================
