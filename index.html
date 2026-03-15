@@ -670,12 +670,16 @@ async function loadState() {
     }
 
     // Cargar clientes (tolerante a fallo)
-    const { data: customers } = await supabaseClient.from('customers').select('*').catch(() => ({data:[]}));
-    if(customers) state.usu_clientes = customers;
+    try {
+      const { data: customers } = await supabaseClient.from('customers').select('*');
+      if(customers) state.usu_clientes = customers;
+    } catch(e) { console.warn('customers table not ready:', e.message); }
 
     // Cargar empleados (tolerante a fallo)
-    const { data: employees } = await supabaseClient.from('employees').select('*').catch(() => ({data:[]}));
-    if(employees) state.empleados = employees;
+    try {
+      const { data: employees } = await supabaseClient.from('employees').select('*');
+      if(employees) state.empleados = employees;
+    } catch(e) { console.warn('employees table not ready:', e.message); }
 
     _sbConnected = true;
     ['fb-status-dot','fb-status-dot-mobile'].forEach(id => {
