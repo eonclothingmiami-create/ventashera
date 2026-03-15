@@ -781,7 +781,7 @@ async function deleteRecord(collection, id) {
   } catch(e) { console.warn(`deleteRecord [${collection}]:`, e.message); }
 }
 
-async function saveConfig(key, value) {
+async async function saveConfig(key, value) {
   if(!_sbConnected) return;
   try { await supabaseClient.from('state_config').upsert({key, value, updated_at:new Date().toISOString()},{onConflict:'key'}); }
   catch(e) { console.warn('saveConfig:', e.message); }
@@ -1265,7 +1265,7 @@ ${posFormState.metodo === 'efectivo' ? (() => {
             </select>
             ${posFormState.metodo === 'transferencia' ? `
             <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
-            ${(['Nequi','Bancolombia','Daviplata','Bancolombia 2']).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
+              ${(window.CUENTAS_BANCARIAS||[]).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>` : ''}
           </div>
 
@@ -1883,7 +1883,7 @@ async function saveArticulo(existingId) {
         showLoadingOverlay('connecting');
         
         // Ejecutamos el UPSERT en la tabla products de Supabase
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('products')
             .upsert(productData, { onConflict: 'id' });
 
@@ -1972,7 +1972,7 @@ async function saveAjusteInv() {
     showLoadingOverlay('connecting');
 
     // 1. Registrar el movimiento en stock_moves
-    const { error: moveError } = await supabase
+    const { error: moveError } = await supabaseClient
       .from('stock_moves')
       .insert({
         product_id: artId,
@@ -1987,7 +1987,7 @@ async function saveAjusteInv() {
     if (product) {
       const newStock = product.stock + qtyFinal;
       
-      const { error: prodError } = await supabase
+      const { error: prodError } = await supabaseClient
         .from('products')
         .update({ stock: newStock })
         .eq('id', artId);
@@ -2715,7 +2715,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
     showLoadingOverlay('connecting');
 
     // Insertar en tu tabla maestra JSONB de Supabase
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from('legacy_docs')
       .insert({
         id: docData.id,
@@ -3286,7 +3286,7 @@ function renderConfig(){
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
               <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cfg-logo-input').click()">📁 Subir Logo</button>
               <input type="file" id="cfg-logo-input" accept="image/*" style="display:none" onchange="procesarLogoConfig(this)">
-              ${emp.logoBase64 ? `<button class="btn btn-xs btn-danger" onclick="state.empresa.logoBase64='';saveConfig('empresa',state.empresa);renderConfig()">✕ Quitar logo</button>` : ''}
+              ${emp.logoBase64 ? `<button class="btn btn-xs btn-danger" onclick="state.empresa.logoBase64='';saveConfig('empresa',state.empresa).then(()=>renderConfig())">✕ Quitar logo</button>` : ''}
               <div style="width:80px;height:40px;border:1px solid var(--border);border-radius:6px;background:${emp.logoBase64?`url('${emp.logoBase64}') center/contain no-repeat white`:'var(--bg3)'}"></div>
             </div>
           </div>
@@ -3360,7 +3360,7 @@ function procesarLogoConfig(input) {
   const reader = new FileReader();
   reader.onload = function(e) {
     const img = new Image();
-    img.onload = function() {
+    img.onload = async function() {
       const canvas = document.createElement('canvas');
       const MAX_W = 400;
       const scale = Math.min(1, MAX_W / img.width);
@@ -3370,7 +3370,7 @@ function procesarLogoConfig(input) {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       if(!state.empresa) state.empresa = {};
       state.empresa.logoBase64 = canvas.toDataURL('image/png');
-      saveConfig('empresa', state.empresa);
+      await saveConfig('empresa', state.empresa);
       renderConfig();
       notify('success','🖼️','Logo cargado','Se ajustó automáticamente para 80mm.',{duration:3000});
     };
@@ -3379,7 +3379,7 @@ function procesarLogoConfig(input) {
   reader.readAsDataURL(file);
 }
 
-function guardarConfigCompleta() {
+async function guardarConfigCompleta() {
   if(!state.empresa) state.empresa = {};
   state.empresa.nombre        = document.getElementById('cfg-nombre')?.value.trim() || state.empresa.nombre;
   state.empresa.nombreComercial = document.getElementById('cfg-nombre2')?.value.trim() || '';
@@ -3403,10 +3403,10 @@ function guardarConfigCompleta() {
   state.diasLocal = parseInt(document.getElementById('cfg-dias-local')?.value) || 1;
   state.diasInter = parseInt(document.getElementById('cfg-dias-inter')?.value) || 5;
 
-  saveConfig('empresa', state.empresa);
-  saveConfig('meta', state.meta);
-  saveConfig('diasLocal', state.diasLocal);
-  saveConfig('diasInter', state.diasInter);
+  await saveConfig('empresa', state.empresa);
+  await saveConfig('meta', state.meta);
+  await saveConfig('diasLocal', state.diasLocal);
+  await saveConfig('diasInter', state.diasInter);
 
   notify('success','✅','Configuración guardada','Los datos se reflejan en el ticket.',{duration:3000});
   renderConfig();
