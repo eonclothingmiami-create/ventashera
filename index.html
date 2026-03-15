@@ -598,7 +598,8 @@ let state = {
 
 let posFormState = { 
   canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', 
-  cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0 
+  cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0,
+  tipoPago: 'contado'
 };
 const CUENTAS_BANCARIAS = ['Nequi','Bancolombia','Daviplata','Bancolombia 2'];
 let histFilters = { canal: '', cat: '', start: '', end: '' };
@@ -697,7 +698,9 @@ async function loadState() {
       cliente:v.cliente||'',telefono:v.telefono||'',guia:v.guia||'',empresa:v.empresa||'',
       transportadora:v.transportadora||'',ciudad:v.ciudad||'',
       liquidado:v.liquidado||false,fechaLiquidacion:v.fecha_liquidacion,
-      esSeparado:v.es_separado||false,estadoEntrega:v.estado_entrega||'Pendiente',
+      esSeparado:v.es_separado||false,esContraEntrega:v.es_contraentrega||false,
+      tipoPago:v.tipo_pago||'contado',
+      estadoEntrega:v.estado_entrega||'Pendiente',
       desc:v.referencia||'',metodoPago:v.metodo_pago||'efectivo',archived:v.archived||false}));
 
     // Facturas
@@ -761,7 +764,7 @@ function saveState(){ /* Supabase handles persistence */ }
 // Guarda un registro individual sin sobreescribir todo el estado (Seguridad Multi-Usuario)
 // Mapa de colecciones a tablas Supabase
 const COLLECTION_MAP = {
-  'ventas':          { table:'ventas', mapFn:(d)=>({id:d.id,fecha:d.fecha,canal:d.canal,valor:d.valor,cliente:d.cliente||'',telefono:d.telefono||'',guia:d.guia||'',empresa:d.empresa||'',transportadora:d.transportadora||'',ciudad:d.ciudad||'',liquidado:d.liquidado||false,fecha_liquidacion:d.fechaLiquidacion||null,es_separado:d.esSeparado||false,estado_entrega:d.estadoEntrega||'Pendiente',referencia:d.desc||'',metodo_pago:d.metodoPago||'efectivo',archived:d.archived||false}) },
+  'ventas':          { table:'ventas', mapFn:(d)=>({id:d.id,fecha:d.fecha,canal:d.canal,valor:d.valor,cliente:d.cliente||'',telefono:d.telefono||'',guia:d.guia||'',empresa:d.empresa||'',transportadora:d.transportadora||'',ciudad:d.ciudad||'',liquidado:d.liquidado||false,fecha_liquidacion:d.fechaLiquidacion||null,es_separado:d.esSeparado||false,es_contraentrega:d.esContraEntrega||false,tipo_pago:d.tipoPago||'contado',estado_entrega:d.estadoEntrega||'Pendiente',referencia:d.desc||'',metodo_pago:d.metodoPago||'efectivo',archived:d.archived||false}) },
   'facturas':        { table:'invoices', mapFn:(d)=>({id:d.id,number:d.numero||'',customer_name:d.cliente||'',customer_phone:d.telefono||'',total:d.total||0}) },
   'cajas':           { table:'cajas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',saldo:d.saldo||0,estado:d.estado||'abierta',apertura:d.apertura||null}) },
   'tes_movimientos': { table:'tes_movimientos', mapFn:(d)=>({id:d.id,caja_id:d.cajaId||null,tipo:d.tipo||'',valor:d.valor||0,concepto:d.concepto||'',fecha:d.fecha||null,metodo:d.metodo||'efectivo'}) },
@@ -1088,7 +1091,7 @@ function syncPOSFormState() {
   const iva = document.getElementById('pos-apply-iva'); if(iva) posFormState.applyIva = iva.checked;
   const fleteChk = document.getElementById('pos-apply-flete'); if(fleteChk) posFormState.applyFlete = fleteChk.checked;
   const fleteVal = document.getElementById('pos-flete-valor'); if(fleteVal) posFormState.flete = parseFloat(fleteVal.value)||0;
-  
+  const tipoPagoEl = document.getElementById('pos-tipo-pago'); if(tipoPagoEl) posFormState.tipoPago = tipoPagoEl.value;
   // NUEVO: Capturar efectivo recibido
   const montoRec = document.getElementById('pos-monto-recibido'); if(montoRec) posFormState.montoRecibido = parseFloat(montoRec.value) || '';
 }
@@ -1241,6 +1244,14 @@ function renderPOS(){
              <input type="text" class="form-control" id="pos-guia" placeholder="Número de Guía" value="${posFormState.guia}">
              <input type="text" class="form-control" id="pos-ciudad" placeholder="Ciudad / Dirección" value="${posFormState.ciudad}">
              <div id="pos-liq-info" style="font-size:10px; color:var(--accent); margin-top:4px"></div>
+             <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:2px">
+               <label style="font-size:10px;color:var(--text2);font-weight:700;display:block;margin-bottom:4px">TIPO DE COBRO</label>
+               <select class="form-control" id="pos-tipo-pago" onchange="syncPOSFormState();renderPOS()" style="padding:8px">
+                 <option value="contado" ${posFormState.tipoPago==='contado'?'selected':''}>💵 Pago de Contado</option>
+                 <option value="contraentrega" ${posFormState.tipoPago==='contraentrega'?'selected':''}>📦 Contra Entrega</option>
+               </select>
+               ${posFormState.tipoPago==='contraentrega' ? `<div style="font-size:10px;color:var(--yellow);margin-top:4px">⚠️ Se registrará en Cobros Pendientes hasta recibir el pago.</div>` : `<div style="font-size:10px;color:var(--green);margin-top:4px">✅ Pago inmediato — solo se registra en facturas.</div>`}
+             </div>
           </div>
 ${posFormState.metodo === 'efectivo' ? (() => {
               let displayStr = '$0'; let colorStr = 'var(--text2)';
@@ -1474,13 +1485,22 @@ async function procesarVentaPOS() {
     esSeparado
   };
 
+  const tipoPago = (canal === 'vitrina') ? 'contado' : (posFormState.tipoPago || 'contado');
+  const esContraEntrega = tipoPago === 'contraentrega';
+  // Contado: ya está liquidado. ContraEntrega: pendiente hasta cobro.
+  const liquidadoInicial = canal === 'vitrina' || tipoPago === 'contado';
+  // Fecha de liquidación según canal
+  const fechaLiq = liquidadoInicial ? fechaActual : addBusinessDays(fechaActual, canal === 'local' ? (state.diasLocal||1) : (state.diasInter||5));
+
   const ventaRecord = {
     id:factura.id, fecha:fechaActual, canal, valor:total,
     cliente:posFormState.cliente, telefono:posFormState.telefono,
     guia:posFormState.guia, empresa:posFormState.empresa,
     transportadora:posFormState.transportadora, ciudad:posFormState.ciudad,
-    liquidado:canal==='vitrina', esSeparado,
-    estadoEntrega:'Pendiente', desc:numFactura, metodoPago:posFormState.metodo
+    liquidado:liquidadoInicial, fechaLiquidacion:fechaLiq,
+    esContraEntrega, tipoPago,
+    esSeparado, estadoEntrega:'Pendiente',
+    desc:numFactura, metodoPago:posFormState.metodo
   };
 
   // Guardar en state local
@@ -1497,7 +1517,7 @@ async function procesarVentaPOS() {
   if(_sbConnected){
     try {
       await supabaseClient.from('invoices').insert({id:factura.id,number:numFactura,customer_name:posFormState.cliente||'CLIENTE MOSTRADOR',customer_phone:posFormState.telefono||'',total});
-      await supabaseClient.from('ventas').upsert({id:ventaRecord.id,fecha:fechaActual,canal,valor:total,cliente:posFormState.cliente||'',telefono:posFormState.telefono||'',guia:posFormState.guia||'',empresa:posFormState.empresa||'',transportadora:posFormState.transportadora||'',ciudad:posFormState.ciudad||'',liquidado:canal==='vitrina',referencia:numFactura,metodo_pago:posFormState.metodo},{onConflict:'id'});
+      await supabaseClient.from('ventas').upsert({id:ventaRecord.id,fecha:fechaActual,canal,valor:total,cliente:posFormState.cliente||'',telefono:posFormState.telefono||'',guia:posFormState.guia||'',empresa:posFormState.empresa||'',transportadora:posFormState.transportadora||'',ciudad:posFormState.ciudad||'',liquidado:liquidadoInicial,fecha_liquidacion:fechaLiq,referencia:numFactura,metodo_pago:posFormState.metodo,tipo_pago:tipoPago,es_contraentrega:esContraEntrega},{onConflict:'id'});
       for(const item of cart){
         const art=state.articulos.find(a=>a.id===item.articuloId);
         if(art){const ns=Math.max(0,(art.stock||0)-item.qty);await supabaseClient.from('products').update({stock:ns}).eq('id',item.articuloId);art.stock=ns;}
@@ -2818,14 +2838,15 @@ function renderLogistica(){
 }
 
 function renderPendientes(){
-  const pend=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado).sort((a,b)=>a.fechaLiquidacion>b.fechaLiquidacion?1:-1);
+  // Solo contra entrega pendiente va a cobros (contado ya está liquidado al vender)
+  const pend=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado&&v.esContraEntrega!==false).sort((a,b)=>(a.fechaLiquidacion||'')>(b.fechaLiquidacion||'')?1:-1);
   const totalPend=pend.reduce((a,v)=>a+v.valor,0);
   let html=`<div class="grid-2" style="margin-bottom:20px"><div class="card" style="margin:0"><div class="stat-val" style="color:var(--red)">${pend.length}</div><div class="stat-label">Sin liquidar</div></div><div class="card" style="margin:0"><div class="stat-val" style="color:var(--yellow)">${fmt(totalPend)}</div><div class="stat-label">Total pendiente</div></div></div>`;
   if(pend.length===0)html+='<div class="empty-state"><div class="es-icon">✅</div><div class="es-title" style="color:var(--green)">¡Todo al día!</div><div class="es-text">No tienes cobros pendientes</div></div>';
   else pend.forEach(v=>{
     const diff=daysDiff(v.fechaLiquidacion);const urgClass=diff<0?'urgent':diff<=1?'warning':'ok';const urgLabel=diff<0?`⚡ VENCIDO hace ${Math.abs(diff)}d`:diff===0?'⚠️ Vence HOY':diff===1?'⚠️ Vence mañana':`✓ Vence en ${diff}d`;
     const empresaString = v.empresa ? (v.transportadora ? `${v.empresa} (${v.transportadora})` : v.empresa) : '';
-    html+=`<div class="urgency-item ${urgClass}"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span class="badge badge-${v.canal}">${v.canal==='local'?'🛵 Local':'📦 Inter'}</span> <span style="font-family:Syne;font-weight:700;color:var(--accent)">${fmt(v.valor)}</span></div><span style="font-size:11px;font-weight:700;color:${urgClass==='urgent'?'var(--red)':urgClass==='warning'?'var(--yellow)':'var(--green)'}">${urgLabel}</span></div>${v.guia?'<div style="font-size:12px;color:var(--text2);margin-bottom:4px">Guía: '+v.guia+' · '+empresaString+'</div>':''}<div style="font-size:12px;color:var(--text2);margin-bottom:10px">${formatDate(v.fecha)} → Liq: ${formatDate(v.fechaLiquidacion)}</div><div class="btn-group"><button class="btn btn-primary btn-sm" onclick="marcarLiquidado('${v.id}')">✓ Liquidar (+20XP)</button></div></div>`});
+    html+=`<div class="urgency-item ${urgClass}"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><span class="badge badge-${v.canal}">${v.canal==='local'?'🛵 Local':'📦 Inter'}</span> <span class="badge badge-warn" style="margin-left:4px">📦 Contraentrega</span> <span style="font-family:Syne;font-weight:700;color:var(--accent);margin-left:6px">${fmt(v.valor)}</span></div><span style="font-size:11px;font-weight:700;color:${urgClass==='urgent'?'var(--red)':urgClass==='warning'?'var(--yellow)':'var(--green)'}">${urgLabel}</span></div><div style="font-size:12px;margin-bottom:4px"><b>${v.cliente||'Sin nombre'}</b>${v.telefono?' · '+v.telefono:''}</div>${v.guia?'<div style="font-size:12px;color:var(--text2);margin-bottom:4px">Guía: '+v.guia+' · '+empresaString+'</div>':''}<div style="font-size:12px;color:var(--text2);margin-bottom:10px">${formatDate(v.fecha)} → Liq: ${formatDate(v.fechaLiquidacion)}</div><div class="btn-group"><button class="btn btn-primary btn-sm" onclick="marcarLiquidado('${v.id}')">✓ Liquidar (+20XP)</button></div></div>`});
   document.getElementById('pendientes-content').innerHTML=html;
 }
 function marcarLiquidado(id) {
@@ -4000,7 +4021,7 @@ function buildAlerts() {
   const alerts = [];
 
   // --- Cobros pendientes ---
-  const pend = (state.ventas||[]).filter(v => !v.archived && v.canal !== 'vitrina' && !v.liquidado);
+  const pend = (state.ventas||[]).filter(v => !v.archived && v.canal !== 'vitrina' && !v.liquidado && v.esContraEntrega !== false);
   if(pend.length > 0) alerts.push({
     type: 'warning', icon: '⏳',
     title: `${pend.length} cobro${pend.length>1?'s':''} pendiente${pend.length>1?'s':''}`,
@@ -4133,7 +4154,7 @@ function renderHistorial(){
             ${ventas.map(v => `
               <tr style="${v.archived ? 'opacity: 0.6;' : ''}">
                 <td>${formatDate(v.fecha)}</td>
-                <td><span class="badge badge-${v.canal}">${v.canal}</span></td>
+                <td><span class="badge badge-${v.canal}">${v.canal}</span>${v.canal!=='vitrina'?`<span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega?'📦CE':'💵CD'}</span>`:''}</td>
                 <td style="font-weight:bold;">${v.desc || '—'}</td>
                 <td>${v.cliente || '—'}</td>
                 <td style="color:var(--accent); font-weight:700;">${fmt(v.valor)}</td>
