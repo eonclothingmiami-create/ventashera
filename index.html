@@ -678,7 +678,8 @@ async function loadState() {
         precioCompra:parseFloat(p.cost)||0,tallas:'',sizes:'',colors:[],colores:'',
         images:imgs,imagen:cover?cover.url:(imgs[0]||''),
         stock:p.stock||0,stockMinimo:p.stock_min||0,
-        activo:p.active!==false,mostrarEnWeb:p.visible!==false,supabaseId:p.id};
+        activo:p.active!==false,mostrarEnWeb:p.visible!==false,supabaseId:p.id,
+        tituloMercancia:p.titulo_mercancia||'',proveedorId:p.proveedor_id||null,proveedorNombre:p.proveedor_nombre||''};
     });
 
     // Clientes / Empleados / Proveedores
@@ -1695,7 +1696,7 @@ function renderArticulos(){
       <button class="btn btn-secondary btn-sm" onclick="importarDesdeCatalogo()" style="margin-left:8px;border-color:rgba(0,229,180,.3);color:var(--accent);">⬇️ Importar Catálogo</button>
     </div>
     <div class="card"><div class="card-title">CATÁLOGO DE PRENDAS (${items.length})</div>
-      <div class="table-wrap"><table><thead><tr><th>Foto</th><th>Referencia</th><th>Nombre</th><th>Categoría</th><th>P.Compra</th><th>P.Venta</th><th>Stock</th><th>Min</th><th></th></tr></thead><tbody id="art-tbody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Foto</th><th>Referencia</th><th>Nombre</th><th>Categoría</th><th>Título</th><th>Proveedor</th><th>P.Compra</th><th>P.Venta</th><th>Stock</th><th>Min</th><th></th></tr></thead><tbody id="art-tbody"></tbody></table></div>
     </div>`;
   renderArticulosList();
 }
@@ -1706,11 +1707,14 @@ function renderArticulosList(){
   document.getElementById('art-tbody').innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
     const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
+   const tituloLabel = {propia:'🏷️ Propia',contado:'💵 Contado',credito:'💳 Crédito'};
    return `<tr>
         <td style="width:50px">${thumb}</td>
         <td>${a.codigo || '—'}</td>
         <td style="font-weight:700">${a.nombre}</td>
         <td><span class="badge badge-info">${a.categoria || '—'}</span></td>
+        <td>${a.tituloMercancia ? `<span class="badge badge-warn">${tituloLabel[a.tituloMercancia]||a.tituloMercancia}</span>` : '—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${a.proveedorNombre||'—'}</td>
         <td>${fmt(a.precioCompra)}</td>
         <td style="color:var(--accent); font-weight:700">${fmt(a.precioVenta)}</td>
         <td style="color:${low ? 'var(--red)' : 'var(--green)'}; font-weight:700">${stock}</td>
@@ -1775,13 +1779,27 @@ function openArticuloModal(id){
                 <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art?.colors?.join(', ') || ''}"></div>
             </div>
 
-            <div class="form-group"><label class="form-label">LINK DE VIDEO (Opcional)</label><input class="form-control" id="m-art-video" value="${art?.video || ''}" placeholder="URL mp4 o YouTube"></div>
+            <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
+                    <select class="form-control" id="m-art-titulo-mercancia">
+                        <option value="" ${!art?.tituloMercancia ? 'selected' : ''}>— Seleccionar —</option>
+                        <option value="propia" ${art?.tituloMercancia === 'propia' ? 'selected' : ''}>🏷️ Mercancía Propia</option>
+                        <option value="contado" ${art?.tituloMercancia === 'contado' ? 'selected' : ''}>💵 Mercancía de Contado</option>
+                        <option value="credito" ${art?.tituloMercancia === 'credito' ? 'selected' : ''}>💳 Mercancía a Crédito</option>
+                    </select>
+                </div>
 
             <div class="card-title" style="margin-top:10px; border-top:1px solid var(--border); padding-top:15px; color:var(--accent);">💰 INVENTARIO Y PRECIOS</div>
             <div class="form-row-3">
                 <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra || 0}"></div>
                 <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta || 0}"></div>
                 <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva ?? 19}"></div>
+            </div>
+            <div class="form-group"><label class="form-label">🏭 PROVEEDOR</label>
+                <select class="form-control" id="m-art-proveedor">
+                    <option value="">— Sin proveedor —</option>
+                    ${(state.usu_proveedores||[]).map(p => `<option value="${p.id}" ${art?.proveedorId === p.id ? 'selected' : ''}>${p.nombre}${p.cedula ? ' · ' + p.cedula : ''}</option>`).join('')}
+                </select>
+                ${(state.usu_proveedores||[]).length === 0 ? '<span style="font-size:10px;color:var(--text2)">Sin proveedores. <a onclick="closeModal();showPage(\'usu_proveedores\')" style="color:var(--accent);cursor:pointer">→ Crear proveedor</a></span>' : ''}
             </div>
             <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
@@ -1864,8 +1882,12 @@ async function saveArticulo(existingId) {
     if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
 
     // Preparamos el objeto EXACTO para la tabla 'products' de Supabase
+    const tituloMercancia = document.getElementById('m-art-titulo-mercancia')?.value || '';
+    const proveedorId = document.getElementById('m-art-proveedor')?.value || null;
+    const proveedorObj = proveedorId ? (state.usu_proveedores||[]).find(p=>p.id===proveedorId) : null;
+
     const productData = {
-        id: existingId || crypto.randomUUID(), // Genera un UUID válido para Postgres
+        id: existingId || crypto.randomUUID(),
         ref: refID,
         name: nombre,
         seccion: document.getElementById('m-art-seccion').value,
@@ -1873,9 +1895,12 @@ async function saveArticulo(existingId) {
         description: document.getElementById('m-art-desc').value.trim(),
         price: parseFloat(document.getElementById('m-art-pv').value) || 0,
         cost: parseFloat(document.getElementById('m-art-pc').value) || 0,
-        stock: parseInt(document.getElementById('m-art-stock0').value) || 0, // Stock inicial
+        stock: parseInt(document.getElementById('m-art-stock0').value) || 0,
         active: true,
         visible: document.getElementById('art-mostrar-web').checked,
+        titulo_mercancia: tituloMercancia || null,
+        proveedor_id: proveedorId || null,
+        proveedor_nombre: proveedorObj?.nombre || null,
         updated_at: new Date().toISOString()
     };
 
@@ -2900,7 +2925,7 @@ function saveConcepto(){
 // ===================================================================
 
 // Constantes legales Colombia 2025
-const SMMLV_2025 = 1750000;
+const SMMLV_2025 = 1423500;
 const AUX_TRANSPORTE_2025 = 200000;
 const UVT_2025 = 47065;
 
