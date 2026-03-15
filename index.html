@@ -2577,13 +2577,15 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
         }
 
         if(batch.length >= 500) {
-          await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true}).catch(e=>console.warn(e.message));
+          const {error: batchErr} = await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true});
+          if(batchErr) console.warn('Batch error:', batchErr.message);
           batch = [];
         }
       }
 
       if(batch.length > 0) {
-        await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true}).catch(e=>console.warn(e.message));
+        const {error: batchErr} = await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true});
+          if(batchErr) console.warn('Batch error:', batchErr.message);
       }
 
       input.value = '';
