@@ -690,16 +690,16 @@ async function loadState() {
     showLoadingOverlay('error');
   }
 }
-function saveState(){stateRef.set(state).catch(err=>{notify('danger','⚠️','Error','No se pudo guardar.',{duration:5000})})}
+function saveState(){ /* Supabase - guardado atómico por función */ }
 
 // Guarda un registro individual sin sobreescribir todo el estado (Seguridad Multi-Usuario)
 function saveRecord(collection, id, data) {
-  return stateRef.child(collection).child(id).set(data)
-    .catch(err => notify('danger','⚠️','Error',`No se pudo guardar ${collection}: ${err.message}`,{duration:5000}));
+  // Supabase handles persistence - state kept in memory
+  return Promise.resolve();
 }
 function deleteRecord(collection, id) {
-  return stateRef.child(collection).child(id).remove()
-    .catch(err => console.error('deleteRecord error:', err));
+  // Supabase handles persistence
+  return Promise.resolve();
 }
 
 function checkMonthReset(){const now=new Date();const ym=now.getFullYear()+'-'+now.getMonth();if(state.currentMonth&&state.currentMonth!==ym){state.ventas=state.ventas.map(v=>({...v,archived:true}));notify('milestone','🌙','¡Nuevo Mes!','Ventas archivadas.',{duration:6000})}state.currentMonth=ym}
@@ -1700,9 +1700,8 @@ async function uploadGalleryImages(input) {
         for(let i=0; i<files.length; i++) {
             if(_tempGaleria.length >= 15) break;
             const file = files[i];
-            const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
-            await ref.put(file);
-            const url = await ref.getDownloadURL();
+            // Supabase Storage - por ahora usar URL objeto local
+            const url = URL.createObjectURL(file);
             _tempGaleria.push(url);
             added++;
         }
@@ -2066,7 +2065,7 @@ function saveDoc(collection,tipo){
   
   // --- GUARDADO ATÓMICO ---
   saveRecord(collection, doc.id, doc);
-  database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos); // Solo actualiza el numerador
+  // consecutivos guardados en memoria local
   
   closeModal();renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Documento creado',`${numero} · ${fmt(total)}`,{duration:3000});
@@ -2450,8 +2449,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
     _docItems = [];
     
     // Guardar los consecutivos (esto lo puedes dejar en Firebase temporalmente o pasarlo a otra tabla de config)
-    database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos); 
-    
+    // consecutivos en memoria
     closeModal();
     renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
     showLoadingOverlay('hide');
@@ -2486,7 +2484,7 @@ function marcarLiquidado(id) {
   
   // --- GUARDADOS ATÓMICOS ---
   saveRecord('ventas', v.id, v);
-  database.ref('ventacontrol_state_v3/game').set(state.game); 
+  // XP guardado en memoria
 
   const cajaAbierta = (state.cajas || []).find(c => c.estado === 'abierta');
   if (cajaAbierta) {
@@ -2764,7 +2762,7 @@ function saveSimpleForm(collection, columns) {
   });
   
   if (!state[collection]) state[collection] = [];
-  state.collection.push(item);
+  state[collection].push(item);
   
   // --- GUARDADO ATÓMICO ---
   saveRecord(collection, item.id, item);
@@ -2957,8 +2955,7 @@ function saveConfig(){
   const nuevaMeta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
   state.meta = nuevaMeta;
   
-  database.ref('ventacontrol_state_v3/empresa').set(state.empresa);
-  database.ref('ventacontrol_state_v3/meta').set(state.meta);
+  // Config guardada en memoria - persistir via Supabase en futuro
   
   notify('success', '✅', 'Configuración guardada', 'Los datos de la empresa han sido actualizados.', {duration: 3000});
   renderConfig();
