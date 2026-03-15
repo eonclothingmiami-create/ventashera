@@ -1416,7 +1416,8 @@ ${posFormState.metodo === 'efectivo' ? (() => {
             <input type="text" class="form-control" id="pos-cedula" placeholder="🔍 Cédula o Celular (Buscar)" style="padding:8px 12px; font-weight:bold; color:var(--accent)" onblur="autocompletarCliente(this)">
           </div>
           <div class="form-row" style="gap:8px; margin-bottom:10px">
-            <input type="text" class="form-control" id="pos-cliente" placeholder="Cliente (opcional)" style="padding:8px 12px" value="${posFormState.cliente}">
+            <input type="text" class="form-control" id="pos-cliente" placeholder="Cliente (opcional)" style="padding:8px 12px" value="${posFormState.cliente}" oninput="acBuscar('pos-cliente','cliente')" onkeydown="acKeydown(event,'pos-cliente')" autocomplete="off">
+            <div class="ac-dropdown" id="ac-drop-pos-cliente" style="display:none;position:absolute;width:100%;z-index:9999"></div>
             <input type="tel" class="form-control" id="pos-telefono" placeholder="Teléfono (opcional)" style="padding:8px 12px" value="${posFormState.telefono}">
           </div>
 
@@ -2232,7 +2233,15 @@ function openDocModal(collection,tipo,existingId){
     <div class="modal-title">Nueva ${label}<button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">FECHA</label><input type="date" class="form-control" id="m-doc-fecha" value="${today()}"></div>
-      <div class="form-group"><label class="form-label">CLIENTE</label><input class="form-control" id="m-doc-cliente" placeholder="Nombre del cliente"></div>
+      <div class="form-group"><label class="form-label">CLIENTE</label>
+      <div style="position:relative">
+        <input class="form-control" id="m-doc-cliente" placeholder="Buscar cliente..." oninput="acBuscar('m-doc-cliente','cliente')" onkeydown="acKeydown(event,'m-doc-cliente')" autocomplete="off">
+        <div class="ac-dropdown" id="ac-drop-m-doc-cliente" style="display:none;position:absolute;width:100%;z-index:9999"></div>
+      </div></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">TELÉFONO</label><input class="form-control" id="m-doc-telefono" placeholder="Teléfono del cliente"></div>
+      <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="m-doc-ciudad" placeholder="Ciudad"></div>
     </div>
     ${(tipo==='nc'||tipo==='nd'||tipo==='devolucion')?`<div class="form-group"><label class="form-label">FACTURA REFERENCIA</label><select class="form-control" id="m-doc-ref"><option value="">— Seleccionar —</option>${(state.facturas||[]).map(f=>'<option value="'+f.id+'">'+f.numero+' · '+fmt(f.total)+'</option>').join('')}</select></div>`:''}
     <div class="form-group"><label class="form-label">OBSERVACIONES</label><textarea class="form-control" id="m-doc-obs" rows="2"></textarea></div>
@@ -2813,7 +2822,11 @@ function renderNomAusencias(){
 function openNomAusenciaModal(){
   openModal(`
     <div class="modal-title">Nueva Ausencia<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">EMPLEADO</label><input class="form-control" id="m-na-emp" placeholder="Nombre del empleado"></div>
+    <div class="form-group"><label class="form-label">EMPLEADO</label>
+      <div style="position:relative">
+        <input class="form-control" id="m-na-emp" placeholder="Buscar empleado..." oninput="acBuscar('m-na-emp','empleado')" onkeydown="acKeydown(event,'m-na-emp')" autocomplete="off">
+        <div class="ac-dropdown" id="ac-drop-m-na-emp" style="display:none;position:absolute;width:100%;z-index:9999"></div>
+      </div></div>
     <div class="form-group"><label class="form-label">TIPO</label><select class="form-control" id="m-na-tipo"><option value="Vacaciones">Vacaciones</option><option value="Incapacidad">Incapacidad</option><option value="Licencia">Licencia</option><option value="Permiso">Permiso</option><option value="Maternidad">Maternidad</option><option value="Calamidad">Calamidad</option></select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">DESDE</label><input type="date" class="form-control" id="m-na-desde" value="${today()}"></div>
@@ -2886,7 +2899,11 @@ function openNominaModal(){
   openModal(`
     <div class="modal-title">Nueva Nómina<button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">EMPLEADO</label><input class="form-control" id="m-nom-emp" placeholder="Nombre"></div>
+      <div class="form-group"><label class="form-label">EMPLEADO</label>
+      <div style="position:relative">
+        <input class="form-control" id="m-nom-emp" placeholder="Buscar empleado..." oninput="acBuscar('m-nom-emp','empleado')" onkeydown="acKeydown(event,'m-nom-emp')" autocomplete="off">
+        <div class="ac-dropdown" id="ac-drop-m-nom-emp" style="display:none;position:absolute;width:100%;z-index:9999"></div>
+      </div></div>
       <div class="form-group"><label class="form-label">PERIODO</label><input class="form-control" id="m-nom-periodo" placeholder="Ej: Mar 1-15 2026" value="${new Date().toLocaleDateString('es-CO',{month:'short',year:'numeric'})}"></div>
     </div>
     <div class="form-group"><label class="form-label">SALARIO BASE</label><input type="number" class="form-control" id="m-nom-salario" value="1750000"></div>
@@ -3332,6 +3349,251 @@ window.onload = () => {
   loadState();
 };
   
+
+
+// ===================================================================
+// ===== SISTEMA DE AUTOCOMPLETADO UNIVERSAL =====
+// ===================================================================
+
+// Estilos del dropdown
+const AC_STYLES = `
+  .ac-wrap{position:relative;width:100%}
+  .ac-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--accent);border-radius:10px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5);margin-top:2px}
+  .ac-item{padding:10px 14px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);transition:background .1s}
+  .ac-item:hover{background:rgba(0,229,180,.1)}
+  .ac-item:last-child{border-bottom:none}
+  .ac-item-name{font-weight:700;color:var(--text)}
+  .ac-item-sub{font-size:10px;color:var(--text2);margin-top:2px}
+  .ac-item-new{color:var(--accent);font-style:italic}
+`;
+if(!document.getElementById('ac-styles')){
+  const s=document.createElement('style');s.id='ac-styles';s.textContent=AC_STYLES;document.head.appendChild(s);
+}
+
+let _acTimeout = null;
+
+function crearInputAutocompletar({
+  containerId,   // id del div contenedor donde insertar
+  inputId,       // id del input
+  placeholder,
+  tipo,          // 'cliente' | 'empleado' | 'proveedor' | 'articulo' | 'bodega'
+  onSelect,      // callback(item) cuando selecciona
+  value = '',
+  label = '',
+  allowNew = true,  // permite crear nuevo
+  extraClass = ''
+}){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  container.innerHTML = `
+    ${label ? `<label class="form-label">${label}</label>` : ''}
+    <div class="ac-wrap" id="ac-wrap-${inputId}">
+      <input type="text" class="form-control ${extraClass}" id="${inputId}" 
+        placeholder="${placeholder}" value="${value}"
+        oninput="acBuscar('${inputId}','${tipo}')"
+        onkeydown="acKeydown(event,'${inputId}')"
+        autocomplete="off">
+      <div class="ac-dropdown" id="ac-drop-${inputId}" style="display:none"></div>
+    </div>`;
+}
+
+function acGetItems(tipo, q){
+  q = (q||'').toLowerCase();
+  let items = [];
+  
+  if(tipo === 'cliente'){
+    items = (state.usu_clientes||[])
+      .filter(c => !q || (c.nombre||'').toLowerCase().includes(q) || (c.cedula||'').includes(q) || (c.celular||'').includes(q))
+      .slice(0,8)
+      .map(c => ({
+        id: c.id, label: c.nombre, sub: [c.cedula, c.celular, c.ciudad].filter(Boolean).join(' · '),
+        data: c
+      }));
+  } else if(tipo === 'empleado'){
+    items = (state.empleados||[])
+      .filter(e => !q || (e.nombre||'').toLowerCase().includes(q))
+      .slice(0,8)
+      .map(e => ({id: e.id, label: e.nombre, sub: e.tipoContrato||'', data: e}));
+  } else if(tipo === 'proveedor'){
+    items = (state.usu_proveedores||[])
+      .filter(p => !q || (p.nombre||'').toLowerCase().includes(q) || (p.cedula||'').includes(q))
+      .slice(0,8)
+      .map(p => ({id: p.id, label: p.nombre, sub: [p.cedula, p.ciudad].filter(Boolean).join(' · '), data: p}));
+  } else if(tipo === 'articulo'){
+    items = (state.articulos||[])
+      .filter(a => !q || (a.nombre||'').toLowerCase().includes(q) || (a.codigo||'').toLowerCase().includes(q))
+      .slice(0,10)
+      .map(a => ({id: a.id, label: a.nombre, sub: `${a.codigo||''} · ${fmt(a.precioVenta)}`, data: a}));
+  } else if(tipo === 'bodega'){
+    items = (state.bodegas||[])
+      .filter(b => !q || (b.name||b.nombre||'').toLowerCase().includes(q))
+      .slice(0,6)
+      .map(b => ({id: b.id, label: b.name||b.nombre, sub: b.ubicacion||'', data: b}));
+  }
+  
+  return items;
+}
+
+function acBuscar(inputId, tipo){
+  clearTimeout(_acTimeout);
+  _acTimeout = setTimeout(() => {
+    const input = document.getElementById(inputId);
+    const drop = document.getElementById('ac-drop-' + inputId);
+    if(!input || !drop) return;
+    
+    const q = input.value;
+    const items = acGetItems(tipo, q);
+    
+    if(items.length === 0 && !q){
+      drop.style.display = 'none';
+      return;
+    }
+    
+    drop.innerHTML = items.map((item, i) => `
+      <div class="ac-item" onclick="acSeleccionar('${inputId}','${tipo}',${i})" data-idx="${i}">
+        <div class="ac-item-name">${item.label}</div>
+        ${item.sub ? `<div class="ac-item-sub">${item.sub}</div>` : ''}
+      </div>`).join('') +
+      `<div class="ac-item" onclick="acNuevo('${inputId}','${tipo}')">
+        <div class="ac-item-name ac-item-new">+ ${q ? 'Agregar "'+q+'"' : 'Nuevo '+tipo}</div>
+      </div>`;
+    
+    drop.style.display = 'block';
+    drop._items = items;
+  }, 150);
+}
+
+function acSeleccionar(inputId, tipo, idx){
+  const drop = document.getElementById('ac-drop-' + inputId);
+  const input = document.getElementById(inputId);
+  if(!drop || !drop._items) return;
+  
+  const item = drop._items[idx];
+  if(!item) return;
+  
+  input.value = item.label;
+  drop.style.display = 'none';
+  
+  // Disparar callback si existe
+  const fn = window['_acCallback_' + inputId];
+  if(fn) fn(item.data);
+  
+  // Autocompletar campos relacionados
+  acRellenarCampos(inputId, tipo, item.data);
+}
+
+function acRellenarCampos(inputId, tipo, data){
+  if(tipo === 'cliente'){
+    // Si el input es en POS
+    if(inputId === 'pos-cliente'){
+      const tel = document.getElementById('pos-telefono');
+      if(tel && data.celular) tel.value = data.celular;
+      const ced = document.getElementById('pos-cedula');
+      if(ced && data.cedula) ced.value = data.cedula;
+      const ciu = document.getElementById('pos-ciudad');
+      if(ciu && data.ciudad) ciu.value = data.ciudad;
+      syncPOSFormState();
+    }
+    // Si el input es en documentos
+    if(inputId === 'm-doc-cliente'){
+      const tel = document.getElementById('m-doc-telefono');
+      if(tel && data.celular) tel.value = data.celular;
+      const ciu = document.getElementById('m-doc-ciudad');
+      if(ciu && data.ciudad) ciu.value = data.ciudad;
+    }
+  }
+  if(tipo === 'empleado'){
+    const sal = document.getElementById('m-nom-salario');
+    if(sal && data.salarioBase) sal.value = data.salarioBase;
+    // También rellenar nombre en campos de texto simples
+    const empFields = ['m-na-emp', 'm-nom-emp'];
+    empFields.forEach(fId => {
+      if(inputId !== fId) return;
+      const el = document.getElementById(fId);
+      if(el) el.value = data.nombre || '';
+    });
+  }
+}
+
+function acNuevo(inputId, tipo){
+  const drop = document.getElementById('ac-drop-' + inputId);
+  const input = document.getElementById(inputId);
+  if(drop) drop.style.display = 'none';
+  
+  const nombre = input?.value || '';
+  const pageMap = {
+    cliente: 'usu_clientes', empleado: 'usu_empleados', proveedor: 'usu_proveedores'
+  };
+  if(pageMap[tipo]){
+    openUsuarioModal(pageMap[tipo], tipo);
+    // Pre-llenar nombre si ya escribió algo
+    setTimeout(() => {
+      const el = document.getElementById('usu-nombre');
+      if(el && nombre) el.value = nombre;
+    }, 100);
+  }
+}
+
+function acKeydown(e, inputId){
+  if(e.key === 'Escape'){
+    const drop = document.getElementById('ac-drop-' + inputId);
+    if(drop) drop.style.display = 'none';
+  }
+}
+
+// Cerrar dropdowns al hacer click afuera
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.ac-dropdown').forEach(d => {
+    if(!d.closest('.ac-wrap')?.contains(e.target)){
+      d.style.display = 'none';
+    }
+  });
+});
+
+// ===== AUTOCOMPLETAR EN POS =====
+function autocompletarCliente(input){
+  const q = input.value.trim();
+  if(!q) return;
+  const found = (state.usu_clientes||[]).find(c => 
+    c.cedula === q || c.celular === q || c.telefono === q
+  );
+  if(found){
+    const cl = document.getElementById('pos-cliente');
+    const tel = document.getElementById('pos-telefono');
+    const ciu = document.getElementById('pos-ciudad');
+    if(cl) cl.value = found.nombre;
+    if(tel) tel.value = found.celular || found.telefono || '';
+    if(ciu) ciu.value = found.ciudad || '';
+    syncPOSFormState();
+    notify('success','👤','Cliente encontrado', found.nombre, {duration:2000});
+  }
+}
+
+// Activar autocompletado en campos de texto al escribir
+function activarAC(inputId, tipo, callbackFn){
+  const input = document.getElementById(inputId);
+  if(!input) return;
+  
+  // Crear wrapper si no existe
+  if(!document.getElementById('ac-drop-' + inputId)){
+    const wrap = document.createElement('div');
+    wrap.className = 'ac-wrap';
+    wrap.id = 'ac-wrap-' + inputId;
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const drop = document.createElement('div');
+    drop.className = 'ac-dropdown';
+    drop.id = 'ac-drop-' + inputId;
+    drop.style.display = 'none';
+    wrap.appendChild(drop);
+  }
+  
+  if(callbackFn) window['_acCallback_' + inputId] = callbackFn;
+  
+  input.setAttribute('oninput', `acBuscar('${inputId}','${tipo}')`);
+  input.setAttribute('onkeydown', `acKeydown(event,'${inputId}')`);
+  input.setAttribute('autocomplete', 'off');
+}
 
 </script>
 </body>
