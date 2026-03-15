@@ -355,7 +355,7 @@ const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
 
 // Inicializar Supabase
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Variables de control
 let isFirstLoad = true;
@@ -631,75 +631,152 @@ function getArticuloStock(artId,bodegaId){return(state.inv_movimientos||[]).filt
 
 async function loadState() {
   showLoadingOverlay('connecting');
-  
   try {
-    // Descargamos todas las tablas principales en paralelo para mayor velocidad
     const [
-      { data: products },
-      { data: customers },
-      { data: employees },
-      { data: invoices },
-      { data: guias }
+      {data:products}, {data:mediaRows}, {data:customers},
+      {data:employees}, {data:ventas}, {data:cajas},
+      {data:tesMov}, {data:nomNominas}, {data:nomAusencias},
+      {data:nomAnticipos}, {data:invAjustes}, {data:invTraslados},
+      {data:bodegas}, {data:configs}, {data:proveedores}, {data:facturas}
     ] = await Promise.all([
-      supabase.from('products').select('*'),
-      supabase.from('customers').select('*'),
-      supabase.from('employees').select('*'),
-      supabase.from('invoices').select('*'),
-      supabase.from('guias').select('*')
+      supabaseClient.from('products').select('*'),
+      supabaseClient.from('product_media').select('product_id,url,is_cover'),
+      supabaseClient.from('customers').select('*'),
+      supabaseClient.from('employees').select('*'),
+      supabaseClient.from('ventas').select('*'),
+      supabaseClient.from('cajas').select('*'),
+      supabaseClient.from('tes_movimientos').select('*'),
+      supabaseClient.from('nom_nominas').select('*'),
+      supabaseClient.from('nom_ausencias').select('*'),
+      supabaseClient.from('nom_anticipos').select('*'),
+      supabaseClient.from('inv_ajustes').select('*'),
+      supabaseClient.from('inv_traslados').select('*'),
+      supabaseClient.from('bodegas').select('*'),
+      supabaseClient.from('state_config').select('*'),
+      supabaseClient.from('proveedores').select('*'),
+      supabaseClient.from('invoices').select('*')
     ]);
 
-    _sbConnected = true;
-    
-    // Mapeamos los datos de Supabase a tu variable 'state' local
-    // Hacemos un mapeo para que los campos coincidan con lo que espera tu frontend
-    state.articulos = (products || []).map(p => ({
-      id: p.id,
-      codigo: p.ref,
-      nombre: p.name,
-      categoria: p.categoria,
-      seccion: p.seccion,
-      descripcion: p.description,
-      precioVenta: p.price,
-      precioCompra: p.cost,
-      stock: p.stock,
-      activo: p.active,
-      mostrarEnWeb: p.visible
-    }));
-
-    state.usu_clientes = customers || [];
-    state.empleados = employees || [];
-    state.facturas = invoices || [];
-    state.ventas = guias || []; 
-
-    ['fb-status-dot','fb-status-dot-mobile'].forEach(id => {
-      const el = document.getElementById(id);
-      if(el){ el.style.background = '#22c55e'; el.title = 'Conectado a Supabase'; }
+    // Productos + imágenes
+    const mediaByProduct = {};
+    (mediaRows||[]).forEach(m=>{if(!mediaByProduct[m.product_id])mediaByProduct[m.product_id]=[];mediaByProduct[m.product_id].push(m)});
+    state.articulos = (products||[]).map(p=>{
+      const media=mediaByProduct[p.id]||[];
+      const cover=media.find(m=>m.is_cover)||media[0];
+      const imgs=media.map(m=>m.url).filter(Boolean);
+      return {id:p.id,codigo:p.ref||'',ref:p.ref||'',nombre:p.name||'',name:p.name||'',
+        categoria:p.categoria||'',seccion:p.seccion||'',cat:p.categoria||'',
+        descripcion:p.description||'',precioVenta:parseFloat(p.price)||0,price:parseFloat(p.price)||0,
+        precioCompra:parseFloat(p.cost)||0,tallas:'',sizes:'',colors:[],colores:'',
+        images:imgs,imagen:cover?cover.url:(imgs[0]||''),
+        stock:p.stock||0,stockMinimo:p.stock_min||0,
+        activo:p.active!==false,mostrarEnWeb:p.visible!==false,supabaseId:p.id};
     });
 
+    // Clientes / Empleados / Proveedores
+    state.usu_clientes = (customers||[]).map(c=>({...c,tipo:'cliente',tipoId:'CC',celular:c.celular||'',fechaCreacion:c.created_at?c.created_at.split('T')[0]:today()}));
+    state.empleados = (employees||[]).map(e=>({...e,salarioBase:parseFloat(e.salario_base)||0,tipoContrato:e.tipo_contrato||'indefinido'}));
+    state.usu_proveedores = (proveedores||[]).map(p=>({...p,tipo:'proveedor'}));
+
+    // Ventas
+    state.ventas = (ventas||[]).map(v=>({id:v.id,fecha:v.fecha,canal:v.canal,valor:parseFloat(v.valor)||0,
+      cliente:v.cliente||'',telefono:v.telefono||'',guia:v.guia||'',empresa:v.empresa||'',
+      transportadora:v.transportadora||'',ciudad:v.ciudad||'',
+      liquidado:v.liquidado||false,fechaLiquidacion:v.fecha_liquidacion,
+      esSeparado:v.es_separado||false,estadoEntrega:v.estado_entrega||'Pendiente',
+      desc:v.referencia||'',metodoPago:v.metodo_pago||'efectivo',archived:v.archived||false}));
+
+    // Facturas
+    state.facturas = (facturas||[]).map(f=>({id:f.id,numero:f.number||'',fecha:f.created_at?f.created_at.split('T')[0]:today(),
+      cliente:f.customer_name||'',telefono:f.customer_phone||'',total:parseFloat(f.total)||0,estado:'pagada',tipo:'pos'}));
+
+    // Bodegas y Cajas
+    if(bodegas&&bodegas.length>0) state.bodegas=bodegas.map(b=>({id:b.id,name:b.nombre,ubicacion:b.ubicacion}));
+    if(cajas&&cajas.length>0) state.cajas=cajas.map(c=>({id:c.id,nombre:c.nombre,saldo:parseFloat(c.saldo)||0,estado:c.estado||'abierta',apertura:c.apertura}));
+
+    // Tesorería
+    state.tes_movimientos = (tesMov||[]).map(m=>({id:m.id,cajaId:m.caja_id,tipo:m.tipo,valor:parseFloat(m.valor)||0,concepto:m.concepto||'',fecha:m.fecha,metodo:m.metodo||'efectivo'}));
+
+    // Nómina
+    state.nom_nominas = (nomNominas||[]).map(n=>({id:n.id,numero:n.numero,empleado:n.empleado_nombre,periodo:n.periodo,salario:parseFloat(n.salario_base)||0,devengado:parseFloat(n.devengado)||0,deducciones:parseFloat(n.deducciones)||0,neto:parseFloat(n.neto)||0,detalles:n.detalles||[],pagada:n.pagada||false,fecha:n.fecha}));
+    state.nom_ausencias = (nomAusencias||[]).map(a=>({id:a.id,empleado:a.empleado_nombre,tipo:a.tipo,desde:a.desde,hasta:a.hasta,dias:a.dias||0,observaciones:a.observaciones||'',aprobada:a.aprobada||false}));
+    state.nom_anticipos = (nomAnticipos||[]).map(a=>({id:a.id,empleado:a.empleado_nombre,valor:parseFloat(a.valor)||0,motivo:a.motivo||'',fecha:a.fecha}));
+
+    // Inventario - reconstruir movimientos
+    state.inv_ajustes = (invAjustes||[]).map(a=>({id:a.id,articuloId:a.articulo_id,bodegaId:a.bodega_id,tipo:a.tipo,cantidad:a.cantidad,motivo:a.motivo||'',fecha:a.fecha}));
+    state.inv_traslados = (invTraslados||[]).map(t=>({id:t.id,articuloId:t.articulo_id,origenId:t.origen_id,destinoId:t.destino_id,cantidad:t.cantidad,nota:t.nota||'',fecha:t.fecha}));
+    state.inv_movimientos = [];
+    state.inv_ajustes.forEach(a=>{state.inv_movimientos.push({id:'aj_'+a.id,articuloId:a.articuloId,bodegaId:a.bodegaId||'bodega_main',cantidad:a.tipo==='entrada'?a.cantidad:-a.cantidad,tipo:'ajuste_'+a.tipo,fecha:a.fecha,referencia:'Ajuste',nota:a.motivo})});
+    state.inv_traslados.forEach(t=>{state.inv_movimientos.push({id:'tr_o_'+t.id,articuloId:t.articuloId,bodegaId:t.origenId,cantidad:-t.cantidad,tipo:'traslado_salida',fecha:t.fecha,referencia:'Traslado',nota:t.nota},{id:'tr_i_'+t.id,articuloId:t.articuloId,bodegaId:t.destinoId,cantidad:t.cantidad,tipo:'traslado_entrada',fecha:t.fecha,referencia:'Traslado',nota:t.nota})});
+
+    // Configuración
+    (configs||[]).forEach(c=>{
+      try {
+        const val=typeof c.value==='string'?JSON.parse(c.value):c.value;
+        if(c.key==='empresa')state.empresa=val;
+        else if(c.key==='meta')state.meta=parseFloat(val)||34000000;
+        else if(c.key==='diasLocal')state.diasLocal=parseInt(val)||1;
+        else if(c.key==='diasInter')state.diasInter=parseInt(val)||5;
+        else if(c.key==='game')state.game=val;
+        else if(c.key==='consecutivos')state.consecutivos=val;
+      } catch(e){}
+    });
+
+    _sbConnected = true;
+    ['fb-status-dot','fb-status-dot-mobile'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.background='#22c55e';el.title='Conectado a Supabase';}});
     checkMonthReset();
     showLoadingOverlay('hide');
     renderAll();
+    if(isFirstLoad){isFirstLoad=false;notify('success','☁️','¡Conectado!',`${(products||[]).length} artículos · ${(ventas||[]).length} ventas.`,{duration:3000});}
 
-    if(isFirstLoad){
-      isFirstLoad = false;
-      notify('success','☁️','¡Conectado!','Datos sincronizados desde Supabase.',{duration:3000});
-    }
-
-  } catch (error) {
-    console.error("Error cargando base de datos:", error);
-    showLoadingOverlay('error');
+  } catch(error) {
+    console.error("Error cargando BD:", error);
+    _sbConnected = false;
+    ['fb-status-dot','fb-status-dot-mobile'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.background='#f87171';el.title='Sin conexión';}});
+    showLoadingOverlay('hide');
+    renderAll();
+    notify('warning','📡','Modo offline','Sin conexión a Supabase.',{duration:4000});
   }
 }
-function saveState(){stateRef.set(state).catch(err=>{notify('danger','⚠️','Error','No se pudo guardar.',{duration:5000})})}
+function saveState(){ /* Supabase handles persistence */ }
 
 // Guarda un registro individual sin sobreescribir todo el estado (Seguridad Multi-Usuario)
-function saveRecord(collection, id, data) {
-  return stateRef.child(collection).child(id).set(data)
-    .catch(err => notify('danger','⚠️','Error',`No se pudo guardar ${collection}: ${err.message}`,{duration:5000}));
+// Mapa de colecciones a tablas Supabase
+const COLLECTION_MAP = {
+  'ventas':          { table:'ventas', mapFn:(d)=>({id:d.id,fecha:d.fecha,canal:d.canal,valor:d.valor,cliente:d.cliente||'',telefono:d.telefono||'',guia:d.guia||'',empresa:d.empresa||'',transportadora:d.transportadora||'',ciudad:d.ciudad||'',liquidado:d.liquidado||false,fecha_liquidacion:d.fechaLiquidacion||null,es_separado:d.esSeparado||false,estado_entrega:d.estadoEntrega||'Pendiente',referencia:d.desc||'',metodo_pago:d.metodoPago||'efectivo',archived:d.archived||false}) },
+  'facturas':        { table:'invoices', mapFn:(d)=>({id:d.id,number:d.numero||'',customer_name:d.cliente||'',customer_phone:d.telefono||'',total:d.total||0}) },
+  'cajas':           { table:'cajas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',saldo:d.saldo||0,estado:d.estado||'abierta',apertura:d.apertura||null}) },
+  'tes_movimientos': { table:'tes_movimientos', mapFn:(d)=>({id:d.id,caja_id:d.cajaId||null,tipo:d.tipo||'',valor:d.valor||0,concepto:d.concepto||'',fecha:d.fecha||null,metodo:d.metodo||'efectivo'}) },
+  'nom_nominas':     { table:'nom_nominas', mapFn:(d)=>({id:d.id,numero:d.numero||'',empleado_nombre:d.empleado||'',periodo:d.periodo||'',salario_base:d.salario||0,devengado:d.devengado||0,deducciones:d.deducciones||0,neto:d.neto||0,detalles:d.detalles||[],pagada:d.pagada||false,fecha:d.fecha||null}) },
+  'nom_ausencias':   { table:'nom_ausencias', mapFn:(d)=>({id:d.id,empleado_nombre:d.empleado||'',tipo:d.tipo||'',desde:d.desde||null,hasta:d.hasta||null,dias:d.dias||0,observaciones:d.observaciones||'',aprobada:d.aprobada||false,fecha:d.fecha||null}) },
+  'nom_anticipos':   { table:'nom_anticipos', mapFn:(d)=>({id:d.id,empleado_nombre:d.empleado||'',valor:d.valor||0,motivo:d.motivo||'',fecha:d.fecha||null}) },
+  'inv_ajustes':     { table:'inv_ajustes', mapFn:(d)=>({id:d.id,articulo_id:d.articuloId||null,bodega_id:d.bodegaId||null,tipo:d.tipo||'',cantidad:d.cantidad||0,motivo:d.motivo||'',fecha:d.fecha||null}) },
+  'inv_traslados':   { table:'inv_traslados', mapFn:(d)=>({id:d.id,articulo_id:d.articuloId||null,origen_id:d.origenId||null,destino_id:d.destinoId||null,cantidad:d.cantidad||0,nota:d.nota||'',fecha:d.fecha||null}) },
+  'usu_clientes':    { table:'customers', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',cedula:d.cedula||null,celular:d.celular||null,telefono:d.telefono||null,whatsapp:d.whatsapp||null,ciudad:d.ciudad||null,direccion:d.direccion||null}) },
+  'usu_proveedores': { table:'proveedores', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',cedula:d.cedula||'',tipo_id:d.tipoId||'NIT',celular:d.celular||'',whatsapp:d.whatsapp||'',email:d.email||'',ciudad:d.ciudad||'',departamento:d.departamento||'',direccion:d.direccion||'',tipo_persona:d.tipoPersona||'Natural',observacion:d.observacion||''}) }
+};
+
+async function saveRecord(collection, id, data) {
+  const mapping = COLLECTION_MAP[collection];
+  if(!mapping || !_sbConnected) return;
+  try {
+    const row = mapping.mapFn(data);
+    await supabaseClient.from(mapping.table).upsert(row, {onConflict:'id'});
+  } catch(e) { console.warn(`saveRecord [${collection}]:`, e.message); }
 }
-function deleteRecord(collection, id) {
-  return stateRef.child(collection).child(id).remove()
-    .catch(err => console.error('deleteRecord error:', err));
+
+async function deleteRecord(collection, id) {
+  const mapping = COLLECTION_MAP[collection];
+  if(!mapping || !_sbConnected) return;
+  try {
+    await supabaseClient.from(mapping.table).delete().eq('id', id);
+  } catch(e) { console.warn(`deleteRecord [${collection}]:`, e.message); }
+}
+
+async function saveConfig(key, value) {
+  if(!_sbConnected) return;
+  try { await supabaseClient.from('state_config').upsert({key, value, updated_at:new Date().toISOString()},{onConflict:'key'}); }
+  catch(e) { console.warn('saveConfig:', e.message); }
 }
 
 function checkMonthReset(){const now=new Date();const ym=now.getFullYear()+'-'+now.getMonth();if(state.currentMonth&&state.currentMonth!==ym){state.ventas=state.ventas.map(v=>({...v,archived:true}));notify('milestone','🌙','¡Nuevo Mes!','Ventas archivadas.',{duration:6000})}state.currentMonth=ym}
@@ -1357,117 +1434,89 @@ function clearPOSCart(){syncPOSFormState();state.pos_cart=[];renderPOS()}
 async function procesarVentaPOS() {
   syncPOSFormState();
   const cart = state.pos_cart || [];
-  if (cart.length === 0) return;
+  if(cart.length === 0) return;
 
   const canal = posFormState.canal;
-  const subtotal = cart.reduce((a, item) => a + (item.precio * item.qty), 0);
-  const iva = posFormState.applyIva ? subtotal * 0.19 : 0;
-  const flete = (posFormState.applyFlete && (canal === 'local' || canal === 'inter')) ? (posFormState.flete || 0) : 0;
-  const total = subtotal + iva + flete;
+  const subtotal = cart.reduce((a,item)=>a+(item.precio*item.qty),0);
+  const iva = posFormState.applyIva ? subtotal*0.19 : 0;
+  const flete = (posFormState.applyFlete&&(canal==='local'||canal==='inter'))?(posFormState.flete||0):0;
+  const total = subtotal+iva+flete;
+  const numFactura = 'POS-'+getNextConsec('factura');
+  const fechaActual = today();
+  const esSeparado = document.getElementById('pos-es-separado')?document.getElementById('pos-es-separado').checked:false;
 
-  // Generamos el consecutivo localmente por ahora
-  const numFactura = 'POS-' + getNextConsec('factura'); 
-  const esSeparado = document.getElementById('pos-es-separado') ? document.getElementById('pos-es-separado').checked : false;
+  // Construir objetos locales
+  const factura = {
+    id:uid(), numero:numFactura, fecha:fechaActual,
+    cliente:posFormState.cliente, telefono:posFormState.telefono,
+    items:cart.map(c=>({...c})), subtotal, iva, flete, total,
+    metodo:posFormState.metodo, estado:'pagada', tipo:'pos',
+    canal, guia:posFormState.guia, empresa:posFormState.empresa,
+    transportadora:posFormState.transportadora, ciudad:posFormState.ciudad,
+    esSeparado
+  };
 
-  try {
-    showLoadingOverlay('connecting');
+  const ventaRecord = {
+    id:factura.id, fecha:fechaActual, canal, valor:total,
+    cliente:posFormState.cliente, telefono:posFormState.telefono,
+    guia:posFormState.guia, empresa:posFormState.empresa,
+    transportadora:posFormState.transportadora, ciudad:posFormState.ciudad,
+    liquidado:canal==='vitrina', esSeparado,
+    estadoEntrega:'Pendiente', desc:numFactura, metodoPago:posFormState.metodo
+  };
 
-    // 1. CREAR LA FACTURA (Tabla 'invoices')
-    const { data: invoiceData, error: invError } = await supabase
-      .from('invoices')
-      .insert({
-        number: numFactura,
-        customer_name: posFormState.cliente || 'CLIENTE MOSTRADOR',
-        customer_phone: posFormState.telefono || '',
-        total: total
-      })
-      .select()
-      .single();
+  // Guardar en state local
+  state.facturas.push(factura);
+  state.ventas.push(ventaRecord);
 
-    if (invError) throw invError;
+  // Descontar stock local
+  cart.forEach(item=>{
+    const mov={id:uid(),articuloId:item.articuloId,bodegaId:'bodega_main',cantidad:-item.qty,tipo:'venta',fecha:fechaActual,referencia:numFactura,nota:`Talla: ${item.talla}`};
+    state.inv_movimientos.push(mov);
+  });
 
-    // 2. CREAR LOS ÍTEMS VENDIDOS (Tabla 'invoice_items')
-    // Mapeamos el carrito para que coincida con las columnas de tu base de datos
-    const itemsToInsert = cart.map(item => ({
-      invoice_id: invoiceData.id,
-      product_id: item.articuloId,
-      ref: item.codigo || item.ref || '',
-      name: item.nombre,
-      qty: item.qty,
-      price: item.precio
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('invoice_items')
-      .insert(itemsToInsert);
-
-    if (itemsError) throw itemsError;
-
-    // 3. CREAR LA GUÍA SI ES ENVÍO (Tabla 'guias')
-    let guiaData = null;
-    if (canal === 'local' || canal === 'inter') {
-      const { data: gData, error: guiaError } = await supabase
-        .from('guias')
-        .insert({
-          numero: posFormState.guia || ('G-' + numFactura),
-          destinatario: posFormState.cliente,
-          telefono: posFormState.telefono,
-          destino: posFormState.ciudad,
-          transportadora: posFormState.transportadora || posFormState.empresa,
-          estado: esSeparado ? 'Separado' : 'Pendiente'
-        })
-        .select()
-        .single();
-        
-      if (guiaError) throw guiaError;
-      guiaData = gData;
-    }
-
-    // 4. DESCONTAR EL STOCK (Tabla 'products')
-    for (const item of cart) {
-      const product = state.articulos.find(a => a.id === item.articuloId);
-      if (product) {
-        const newStock = product.stock - item.qty;
-        // Actualizamos en BD
-        await supabase.from('products').update({ stock: newStock }).eq('id', item.articuloId);
-        // Actualizamos en la vista local
-        product.stock = newStock; 
+  // Guardar en Supabase (no bloquea si falla)
+  if(_sbConnected){
+    try {
+      await supabaseClient.from('invoices').insert({id:factura.id,number:numFactura,customer_name:posFormState.cliente||'CLIENTE MOSTRADOR',customer_phone:posFormState.telefono||'',total});
+      await supabaseClient.from('ventas').upsert({id:ventaRecord.id,fecha:fechaActual,canal,valor:total,cliente:posFormState.cliente||'',telefono:posFormState.telefono||'',guia:posFormState.guia||'',empresa:posFormState.empresa||'',transportadora:posFormState.transportadora||'',ciudad:posFormState.ciudad||'',liquidado:canal==='vitrina',referencia:numFactura,metodo_pago:posFormState.metodo},{onConflict:'id'});
+      for(const item of cart){
+        const art=state.articulos.find(a=>a.id===item.articuloId);
+        if(art){const ns=Math.max(0,(art.stock||0)-item.qty);await supabaseClient.from('products').update({stock:ns}).eq('id',item.articuloId);art.stock=ns;}
       }
-    }
-
-    // 5. ACTUALIZAR INTERFAZ Y ESTADO LOCAL
-    state.facturas.push(invoiceData);
-    if (guiaData) state.ventas.push(guiaData); // Mantenemos tu array 'ventas' retrocompatible
-    
-    // Premiar con XP (Gamificación)
-    const xpGained = calcXP(canal, total);
-    awardXP(xpGained); 
-    checkBadges();
-
-    // Limpiar el carrito y formulario
-    state.pos_cart = [];
-    posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0, montoRecibido: '' };
-
-    // Efectos visuales y de hardware
-    openCashDrawer(); 
-    // Pasamos los items mapeados para que la tirilla se imprima correctamente
-    printReceipt({...invoiceData, items: cart}); 
-    if (typeof playCashSound === "function") playCashSound();
-
-    notify('sale', '✅', '¡Venta registrada!', `${numFactura} · ${fmt(total)} · +${xpGained}XP`, {duration: 4000});
-    spawnConfetti(); 
-    screenFlash('green');
-    
-    renderPOS();
-    updateNavBadges();
-    showLoadingOverlay('hide');
-
-  } catch (err) {
-    showLoadingOverlay('hide');
-    console.error("Error procesando venta POS:", err);
-    notify('danger', '⚠️', 'Error en la venta', err.message, {duration: 6000});
+    } catch(e){ console.warn('Supabase POS save failed:', e.message); }
   }
+
+  // Auto-registrar cliente
+  if(posFormState.cliente){
+    if(!Array.isArray(state.usu_clientes))state.usu_clientes=[];
+    const yaExiste=state.usu_clientes.some(u=>(u.cedula&&u.cedula===posFormState.cedula)||(u.nombre&&u.nombre.toLowerCase()===posFormState.cliente.toLowerCase()));
+    if(!yaExiste){
+      const nc={id:uid(),tipo:'cliente',tipoId:'CC',cedula:posFormState.cedula||'',nombre:posFormState.cliente,celular:posFormState.telefono||'',whatsapp:posFormState.telefono||'',ciudad:posFormState.ciudad||'',fechaCreacion:fechaActual};
+      state.usu_clientes.push(nc);
+      saveRecord('usu_clientes', nc.id, nc);
+    }
+  }
+
+  const xpGained=calcXP(canal,total);
+  awardXP(xpGained);
+  checkBadges();
+  saveConfig('game', state.game);
+  saveConfig('consecutivos', state.consecutivos);
+
+  state.pos_cart=[];
+  posFormState={canal:'vitrina',empresa:'',transportadora:'',guia:'',ciudad:'',cliente:'',telefono:'',metodo:'efectivo',cuenta:'',applyIva:true,applyFlete:false,flete:0};
+
+  openCashDrawer();
+  printReceipt(factura);
+  notify('sale','✅','¡Venta registrada!',`${numFactura} · ${fmt(total)} · +${xpGained}XP`,{duration:4000});
+  spawnConfetti();
+  screenFlash('green');
+  renderPOS();
+  updateNavBadges();
 }
+
+
 // ===== SCANNER =====
 function openScannerOverlay(){
   document.getElementById('scanner-overlay').classList.add('active');
@@ -1700,9 +1749,7 @@ async function uploadGalleryImages(input) {
         for(let i=0; i<files.length; i++) {
             if(_tempGaleria.length >= 15) break;
             const file = files[i];
-            const ref = firebase.storage().ref('catalogo/galeria/' + uid() + '_' + file.name);
-            await ref.put(file);
-            const url = await ref.getDownloadURL();
+            const url = URL.createObjectURL(file); // Temporal - usar Supabase Storage
             _tempGaleria.push(url);
             added++;
         }
@@ -2066,7 +2113,7 @@ function saveDoc(collection,tipo){
   
   // --- GUARDADO ATÓMICO ---
   saveRecord(collection, doc.id, doc);
-  database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos); // Solo actualiza el numerador
+  // consecutivos en memoria local
   
   closeModal();renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Documento creado',`${numero} · ${fmt(total)}`,{duration:3000});
@@ -2291,7 +2338,7 @@ async function guardarUsuario(collection, tipo, pageId, existingId) {
     showLoadingOverlay('connecting');
     
     // UPSERT: Inserta si es nuevo, actualiza si ya existe
-    const { error } = await supabase.from(table).upsert(data, { onConflict: 'id' });
+    const { error } = await supabaseClient.from(table).upsert(data, { onConflict: 'id' });
     if (error) throw error;
 
     // Actualizar la vista local para que la interfaz responda al instante
@@ -2324,7 +2371,7 @@ async function eliminarUsuario(collection, id, pageId, titulo, tipo) {
   try {
     showLoadingOverlay('connecting');
     
-    const { error } = await supabase.from(table).delete().eq('id', id);
+    const { error } = await supabaseClient.from(table).delete().eq('id', id);
     if (error) throw error;
 
     // Remover de la vista local
@@ -2566,7 +2613,8 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
     _docItems = [];
     
     // Guardar los consecutivos (esto lo puedes dejar en Firebase temporalmente o pasarlo a otra tabla de config)
-    database.ref('ventacontrol_state_v3/consecutivos').set(state.consecutivos); 
+    // consecutivos en memoria local
+    
     
     closeModal();
     renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
@@ -2582,6 +2630,40 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
 // ===================================================================
 // ===== COBROS / PENDIENTES =====
 // ===================================================================
+
+function renderLogistica(){
+  const el=document.getElementById('logistica-content');if(!el)return;
+  const q=(document.getElementById('log-search')?.value||'').toLowerCase();
+  const desde=document.getElementById('log-desde')?.value||'';
+  const hasta=document.getElementById('log-hasta')?.value||'';
+  const canal=document.getElementById('log-canal')?.value||'';
+  const trans=document.getElementById('log-trans')?.value||'';
+  let guias=[...(state.ventas||[])].filter(v=>v.canal==='local'||v.canal==='inter').reverse();
+  if(canal)guias=guias.filter(v=>v.canal===canal);
+  if(trans)guias=guias.filter(v=>(v.transportadora||'').toLowerCase().includes(trans.toLowerCase()));
+  if(desde)guias=guias.filter(v=>v.fecha>=desde);
+  if(hasta)guias=guias.filter(v=>v.fecha<=hasta);
+  if(q)guias=guias.filter(v=>(v.cliente||'').toLowerCase().includes(q)||(v.guia||'').toLowerCase().includes(q)||(v.telefono||'').toLowerCase().includes(q)||(v.ciudad||'').toLowerCase().includes(q));
+  const total=(state.ventas||[]).filter(v=>v.canal==='local'||v.canal==='inter').length;
+  el.innerHTML=`
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0"><span class="search-icon">🔍</span>
+        <input type="text" id="log-search" placeholder="Cliente, guía, teléfono..." value="${q}" oninput="renderLogistica()"></div>
+      <select class="form-control" id="log-canal" style="width:130px" onchange="renderLogistica()">
+        <option value="">Todos</option><option value="local" ${canal==='local'?'selected':''}>🛵 Local</option>
+        <option value="inter" ${canal==='inter'?'selected':''}>📦 Inter</option></select>
+      <input type="text" class="form-control" id="log-trans" placeholder="Transportadora..." style="width:140px" value="${trans}" oninput="renderLogistica()">
+      <input type="date" class="form-control" id="log-desde" style="width:130px" value="${desde}" onchange="renderLogistica()">
+      <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
+      <input type="date" class="form-control" id="log-hasta" style="width:130px" value="${hasta}" onchange="renderLogistica()">
+      ${(q||canal||trans||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="['log-search','log-trans'].forEach(id=>{document.getElementById(id).value=''});['log-canal','log-desde','log-hasta'].forEach(id=>{document.getElementById(id).value=''});renderLogistica()">✕</button>`:''}
+    </div>
+    <div class="card"><div class="card-title">🚚 GUÍAS — ${guias.length} de ${total}</div>
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Canal</th><th>Cliente</th><th>Teléfono</th><th>Ciudad</th><th>Transportadora</th><th>N° Guía</th><th>Total</th><th>Estado</th></tr></thead><tbody>
+    ${guias.map(v=>`<tr><td>${formatDate(v.fecha)}</td><td><span class="badge ${v.canal==='local'?'badge-warn':'badge-inter'}">${v.canal==='local'?'🛵':'📦'} ${v.canal}</span></td><td style="font-weight:700">${v.cliente||'—'}</td><td>${v.telefono||'—'}</td><td>${v.ciudad||'—'}</td><td>${v.transportadora||v.empresa||'—'}</td><td style="color:var(--accent);font-weight:700">${v.guia||'—'}</td><td style="font-weight:700">${fmt(v.valor||0)}</td><td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'✓ Liq':'⏳ Pend'}</span></td></tr>`).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin guías</td></tr>'}
+    </tbody></table></div></div>`;
+}
+
 function renderPendientes(){
   const pend=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado).sort((a,b)=>a.fechaLiquidacion>b.fechaLiquidacion?1:-1);
   const totalPend=pend.reduce((a,v)=>a+v.valor,0);
@@ -2602,7 +2684,8 @@ function marcarLiquidado(id) {
   
   // --- GUARDADOS ATÓMICOS ---
   saveRecord('ventas', v.id, v);
-  database.ref('ventacontrol_state_v3/game').set(state.game); 
+  saveConfig('game', state.game);
+  
 
   const cajaAbierta = (state.cajas || []).find(c => c.estado === 'abierta');
   if (cajaAbierta) {
@@ -2880,7 +2963,7 @@ function saveSimpleForm(collection, columns) {
   });
   
   if (!state[collection]) state[collection] = [];
-  state.collection.push(item);
+  state[collection].push(item);
   
   // --- GUARDADO ATÓMICO ---
   saveRecord(collection, item.id, item);
@@ -3073,8 +3156,8 @@ function saveConfig(){
   const nuevaMeta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
   state.meta = nuevaMeta;
   
-  database.ref('ventacontrol_state_v3/empresa').set(state.empresa);
-  database.ref('ventacontrol_state_v3/meta').set(state.meta);
+  saveConfig('empresa', state.empresa);
+  saveConfig('meta', state.meta);
   
   notify('success', '✅', 'Configuración guardada', 'Los datos de la empresa han sido actualizados.', {duration: 3000});
   renderConfig();
