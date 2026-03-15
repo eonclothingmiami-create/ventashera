@@ -1365,109 +1365,101 @@ async function procesarVentaPOS() {
   const flete = (posFormState.applyFlete && (canal === 'local' || canal === 'inter')) ? (posFormState.flete || 0) : 0;
   const total = subtotal + iva + flete;
 
-  // Generamos el consecutivo localmente por ahora
-  const numFactura = 'POS-' + getNextConsec('factura'); 
+  const numFactura = 'POS-' + getNextConsec('factura');
+  const fechaActual = today();
   const esSeparado = document.getElementById('pos-es-separado') ? document.getElementById('pos-es-separado').checked : false;
 
-  try {
-    showLoadingOverlay('connecting');
+  // Construir factura local
+  const factura = {
+    id: uid(), numero: numFactura, fecha: fechaActual,
+    cliente: posFormState.cliente, telefono: posFormState.telefono,
+    items: cart.map(c => ({...c})), subtotal, iva, flete, total,
+    metodo: posFormState.metodo, estado: 'pagada', tipo: 'pos',
+    canal, guia: posFormState.guia, empresa: posFormState.empresa,
+    transportadora: posFormState.transportadora, ciudad: posFormState.ciudad,
+    esSeparado, liquidado: canal === 'vitrina'
+  };
 
-    // 1. CREAR LA FACTURA (Tabla 'invoices')
-    const { data: invoiceData, error: invError } = await supabase
-      .from('invoices')
-      .insert({
-        number: numFactura,
-        customer_name: posFormState.cliente || 'CLIENTE MOSTRADOR',
-        customer_phone: posFormState.telefono || '',
-        total: total
-      })
-      .select()
-      .single();
+  // Guardar en state local
+  state.facturas.push(factura);
+  state.ventas.push({
+    id: factura.id, fecha: fechaActual, canal, valor: total,
+    cliente: posFormState.cliente, telefono: posFormState.telefono,
+    guia: posFormState.guia, empresa: posFormState.empresa,
+    transportadora: posFormState.transportadora, ciudad: posFormState.ciudad,
+    liquidado: canal === 'vitrina', esSeparado,
+    estadoEntrega: 'Pendiente', desc: numFactura
+  });
 
-    if (invError) throw invError;
+  // Descontar stock en state local
+  cart.forEach(item => {
+    const mov = {
+      id: uid(), articuloId: item.articuloId, bodegaId: 'bodega_main',
+      cantidad: -item.qty, tipo: 'venta', fecha: fechaActual,
+      referencia: numFactura, nota: `Talla: ${item.talla}`
+    };
+    state.inv_movimientos.push(mov);
+  });
 
-    // 2. CREAR LOS ÍTEMS VENDIDOS (Tabla 'invoice_items')
-    // Mapeamos el carrito para que coincida con las columnas de tu base de datos
-    const itemsToInsert = cart.map(item => ({
-      invoice_id: invoiceData.id,
-      product_id: item.articuloId,
-      ref: item.codigo || item.ref || '',
-      name: item.nombre,
-      qty: item.qty,
-      price: item.precio
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('invoice_items')
-      .insert(itemsToInsert);
-
-    if (itemsError) throw itemsError;
-
-    // 3. CREAR LA GUÍA SI ES ENVÍO (Tabla 'guias')
-    let guiaData = null;
-    if (canal === 'local' || canal === 'inter') {
-      const { data: gData, error: guiaError } = await supabase
-        .from('guias')
-        .insert({
-          numero: posFormState.guia || ('G-' + numFactura),
-          destinatario: posFormState.cliente,
-          telefono: posFormState.telefono,
-          destino: posFormState.ciudad,
-          transportadora: posFormState.transportadora || posFormState.empresa,
-          estado: esSeparado ? 'Separado' : 'Pendiente'
-        })
-        .select()
-        .single();
-        
-      if (guiaError) throw guiaError;
-      guiaData = gData;
-    }
-
-    // 4. DESCONTAR EL STOCK (Tabla 'products')
-    for (const item of cart) {
-      const product = state.articulos.find(a => a.id === item.articuloId);
-      if (product) {
-        const newStock = product.stock - item.qty;
-        // Actualizamos en BD
-        await supabaseClient.from('products').update({ stock: newStock }).eq('id', item.articuloId);
-        // Actualizamos en la vista local
-        product.stock = newStock; 
+  // Intentar guardar en Supabase (no bloquea si falla)
+  if(_sbConnected) {
+    try {
+      await supabaseClient.from('invoices').insert({
+        number: numFactura, customer_name: posFormState.cliente || 'CLIENTE MOSTRADOR',
+        customer_phone: posFormState.telefono || '', total
+      });
+      // Descontar stock en Supabase
+      for(const item of cart) {
+        const art = state.articulos.find(a => a.id === item.articuloId);
+        if(art) {
+          await supabaseClient.from('products').update({ stock: Math.max(0, (art.stock||0) - item.qty) }).eq('id', item.articuloId);
+          art.stock = Math.max(0, (art.stock||0) - item.qty);
+        }
       }
+    } catch(e) {
+      console.warn('Supabase save failed, data kept locally:', e.message);
     }
-
-    // 5. ACTUALIZAR INTERFAZ Y ESTADO LOCAL
-    state.facturas.push(invoiceData);
-    if (guiaData) state.ventas.push(guiaData); // Mantenemos tu array 'ventas' retrocompatible
-    
-    // Premiar con XP (Gamificación)
-    const xpGained = calcXP(canal, total);
-    awardXP(xpGained); 
-    checkBadges();
-
-    // Limpiar el carrito y formulario
-    state.pos_cart = [];
-    posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0, montoRecibido: '' };
-
-    // Efectos visuales y de hardware
-    openCashDrawer(); 
-    // Pasamos los items mapeados para que la tirilla se imprima correctamente
-    printReceipt({...invoiceData, items: cart}); 
-    if (typeof playCashSound === "function") playCashSound();
-
-    notify('sale', '✅', '¡Venta registrada!', `${numFactura} · ${fmt(total)} · +${xpGained}XP`, {duration: 4000});
-    spawnConfetti(); 
-    screenFlash('green');
-    
-    renderPOS();
-    updateNavBadges();
-    showLoadingOverlay('hide');
-
-  } catch (err) {
-    showLoadingOverlay('hide');
-    console.error("Error procesando venta POS:", err);
-    notify('danger', '⚠️', 'Error en la venta', err.message, {duration: 6000});
   }
+
+  // Auto-registrar cliente
+  if(posFormState.cliente) {
+    if(!Array.isArray(state.usu_clientes)) state.usu_clientes = [];
+    const yaExiste = state.usu_clientes.some(u =>
+      (u.cedula && u.cedula === posFormState.cedula) ||
+      (u.nombre && u.nombre.toLowerCase() === posFormState.cliente.toLowerCase())
+    );
+    if(!yaExiste) {
+      const nuevoCliente = {
+        id: uid(), tipo: 'cliente', tipoId: 'CC',
+        cedula: posFormState.cedula || '', nombre: posFormState.cliente,
+        celular: posFormState.telefono || '', whatsapp: posFormState.telefono || '',
+        ciudad: posFormState.ciudad || '', fechaCreacion: fechaActual
+      };
+      state.usu_clientes.push(nuevoCliente);
+    }
+  }
+
+  // XP y gamificación
+  const xpGained = calcXP(canal, total);
+  awardXP(xpGained);
+  checkBadges();
+
+  // Limpiar carrito
+  state.pos_cart = [];
+  posFormState = { canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', cliente: '', telefono: '', metodo: 'efectivo', cuenta: '', applyIva: true, applyFlete: false, flete: 0 };
+
+  openCashDrawer();
+  printReceipt(factura);
+  if(typeof playCashSound === 'function') playCashSound();
+
+  notify('sale','✅','¡Venta registrada!',`${numFactura} · ${fmt(total)} · +${xpGained}XP`,{duration:4000});
+  spawnConfetti();
+  screenFlash('green');
+  renderPOS();
+  updateNavBadges();
 }
+
+
 // ===== SCANNER =====
 function openScannerOverlay(){
   document.getElementById('scanner-overlay').classList.add('active');
