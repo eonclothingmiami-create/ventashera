@@ -2465,41 +2465,68 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
   reader.onload = async function(e) {
     try {
       showLoadingOverlay('connecting');
-      const text = e.target.result.replace(/^\uFEFF/, ''); // quitar BOM
+      const raw = e.target.result;
 
-      // Detectar separador
-      const firstLine = text.split(/\r?\n/)[0];
-      const sep = firstLine.includes(';') ? ';' : ',';
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if(lines.length < 2) throw new Error("Archivo vacío o sin datos.");
+      let rows = []; // Array de arrays de strings
 
-      // Detectar formato EFFI por encabezados
-      const isEFFI = firstLine.includes('Tipo de identificaci') || firstLine.includes('mero de identificaci') || firstLine.includes('Nombre');
+      // Detectar si es HTML (XLS de EFFI/Excel exportado como HTML)
+      const isHTML = raw.trim().startsWith('<') || raw.includes('<table') || raw.includes('<tr');
+
+      if(isHTML) {
+        // Parsear tabla HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(raw, 'text/html');
+        const trs = doc.querySelectorAll('tr');
+        trs.forEach(tr => {
+          const cells = [...tr.querySelectorAll('th,td')].map(td => td.textContent.trim());
+          if(cells.length > 0) rows.push(cells);
+        });
+      } else {
+        // CSV/TSV texto plano
+        const text = raw.replace(/^\uFEFF/, '');
+        const firstLine = text.split(/\r?\n/)[0];
+        const sep = firstLine.includes('\t') ? '\t' : firstLine.includes(';') ? ';' : ',';
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        lines.forEach(line => {
+          if(sep === '\t') {
+            rows.push(line.split('\t').map(c => c.trim()));
+          } else {
+            const cols = [];
+            let cur = '', inQ = false;
+            for(const ch of (line + sep)) {
+              if(ch === '"') { inQ = !inQ; }
+              else if(ch === sep && !inQ) { cols.push(cur.trim()); cur = ''; }
+              else cur += ch;
+            }
+            rows.push(cols);
+          }
+        });
+      }
+
+      if(rows.length < 2) throw new Error("Archivo vacío o sin datos.");
+
+      // Detectar fila de encabezados
+      const headerRow = rows[0];
+      const isEFFI = headerRow.some(h => h.includes('Tipo de identificaci') || h.includes('mero de identificaci') || h.includes('ID EFFI'));
 
       let importados = 0, duplicados = 0;
       if(!Array.isArray(state[collection])) state[collection] = [];
       const existentes = new Set(state[collection].map(u => u.cedula).filter(Boolean));
       let batch = [];
 
-      for(let i = 1; i < lines.length; i++) {
-        // Parsear CSV respetando comillas
-        const cols = [];
-        let cur = '', inQ = false;
-        for(const ch of (lines[i] + sep)) {
-          if(ch === '"') { inQ = !inQ; }
-          else if(ch === sep && !inQ) { cols.push(cur.trim()); cur = ''; }
-          else cur += ch;
-        }
+      for(let i = 1; i < rows.length; i++) {
+        const cols = rows[i];
         if(cols.length < 3) continue;
 
         const clean = (n) => (cols[n]||'').replace(/^"|"$/g,'').trim();
 
         let u;
         if(isEFFI) {
-          // col: 0=ID tipo, 1=Tipo ID, 2=Número ID, 3=Nombre
-          //      4=Tel1, 5=Tel2, 6=Celular, 7=WhatsApp
-          //      10=Email, 14=Departamento, 15=Ciudad, 17=Dirección
-          //      18=Fecha nac, 19=Género, 20=Tipo persona, 35=Observación
+          // Formato EFFI exacto (43 columnas)
+          // 0=ID EFFI tipo, 1=Tipo ID texto, 2=Número ID, 3=Nombre
+          // 4=Tel1, 5=Tel2, 6=Celular, 7=WhatsApp, 10=Email
+          // 13=País, 14=Departamento, 15=Ciudad, 17=Dirección
+          // 18=Fecha nac, 19=Género, 20=Tipo persona, 35=Observación
           const cedula = clean(2);
           const nombre = clean(3);
           if(!nombre) continue;
@@ -2521,20 +2548,18 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
             fechaCreacion: today()
           };
         } else {
-          // Formato simple: Tipo ID, Número ID, Nombre, Celular, WhatsApp, Email, Ciudad, Dpto, Dirección, Tipo Persona, Fecha Nac, Observaciones
+          // Formato simple VentasHera
           const cedula = clean(1);
           const nombre = clean(2);
           if(!nombre) continue;
           if(cedula && existentes.has(cedula)) { duplicados++; continue; }
           u = {
-            id: crypto.randomUUID(), tipo,
-            tipoId: clean(0) || 'CC',
+            id: crypto.randomUUID(), tipo, tipoId: clean(0)||'CC',
             cedula, nombre,
             celular: clean(3), whatsapp: clean(4), email: clean(5),
             ciudad: clean(6), departamento: clean(7), direccion: clean(8),
-            tipoPersona: clean(9) || 'Natural',
-            fechaNac: clean(10), observacion: clean(11),
-            fechaCreacion: today()
+            tipoPersona: clean(9)||'Natural', fechaNac: clean(10),
+            observacion: clean(11), fechaCreacion: today()
           };
         }
 
@@ -2545,23 +2570,20 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
         if(tipo === 'cliente') {
           batch.push({
             id: u.id, nombre: u.nombre,
-            cedula: u.cedula || null,
-            celular: u.celular || null,
-            telefono: u.telefono || null,
-            whatsapp: u.whatsapp || null,
-            ciudad: u.ciudad || null,
-            direccion: u.direccion || null
+            cedula: u.cedula||null, celular: u.celular||null,
+            telefono: u.telefono||null, whatsapp: u.whatsapp||null,
+            ciudad: u.ciudad||null, direccion: u.direccion||null
           });
         }
 
         if(batch.length >= 500) {
-          await supabaseClient.from('customers').upsert(batch, {onConflict: 'id', ignoreDuplicates: true}).catch(e => console.warn(e.message));
+          await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true}).catch(e=>console.warn(e.message));
           batch = [];
         }
       }
 
       if(batch.length > 0) {
-        await supabaseClient.from('customers').upsert(batch, {onConflict: 'id', ignoreDuplicates: true}).catch(e => console.warn(e.message));
+        await supabaseClient.from('customers').upsert(batch, {onConflict:'id',ignoreDuplicates:true}).catch(e=>console.warn(e.message));
       }
 
       input.value = '';
