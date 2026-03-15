@@ -1521,7 +1521,8 @@ function printReceipt(factura) {
   // Nombre del cliente adaptado a la nueva columna 'customer_name'
   const nombreCliente = factura.customer_name || factura.cliente || 'CLIENTE MOSTRADOR';
   const telefonoCliente = factura.customer_phone || factura.telefono || '';
-  const numeroFactura = factura.number || factura.numero || 'PREVIEW';
+ const numeroFactura = factura.number || factura.numero || 'PREVIEW';
+}
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
   const subtotal=cart.reduce((a,i)=>a+(i.precio*i.qty),0);
