@@ -1265,7 +1265,7 @@ ${posFormState.metodo === 'efectivo' ? (() => {
             </select>
             ${posFormState.metodo === 'transferencia' ? `
             <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
-              ${(window.CUENTAS_BANCARIAS||[]).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
+            ${(['Nequi','Bancolombia','Daviplata','Bancolombia 2']).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>` : ''}
           </div>
 
@@ -3244,44 +3244,177 @@ function renderHistorial(){
 function renderConfig(){
   const emp = state.empresa || {};
   document.getElementById('config-content').innerHTML = `
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-title">⚙️ CONFIGURACIÓN DE EMPRESA</div>
-        <div class="form-group"><label class="form-label">Nombre Comercial</label><input type="text" id="cfg-nombre" class="form-control" value="${emp.nombre || ''}"></div>
-        <div class="form-group"><label class="form-label">NIT / RUT</label><input type="text" id="cfg-nit" class="form-control" value="${emp.nit || ''}"></div>
-        <div class="form-group"><label class="form-label">Teléfono Principal</label><input type="text" id="cfg-tel" class="form-control" value="${emp.telefono || ''}"></div>
-        <div class="form-group"><label class="form-label">Dirección y Ciudad</label><input type="text" id="cfg-dir" class="form-control" value="${emp.direccion || ''}"></div>
-        <div class="form-group"><label class="form-label">Meta Mensual de Ventas ($ COP)</label><input type="number" id="cfg-meta" class="form-control" value="${state.meta || 34000000}"></div>
-        <button class="btn btn-primary" style="width:100%; margin-top: 10px;" onclick="saveConfig()">💾 Guardar Configuración</button>
-      </div>
-      
-      <div class="card" style="border-color: rgba(248,113,113,0.3);">
-        <div class="card-title" style="color: var(--red);">⚡ ZONA DE PELIGRO</div>
-        <div style="color: var(--text2); font-size: 12px; margin-bottom: 20px;">Las siguientes acciones afectan directamente el estado general del ERP en Firebase. Úsalas con precaución.</div>
-        <button class="btn btn-danger" style="width:100%; margin-bottom:12px;" onclick="forceMonthReset()">🔄 Archivar Ventas del Mes</button>
-        <button class="btn btn-secondary" style="width:100%; color: var(--red); border-color: rgba(248,113,113,0.3);" onclick="location.reload()">🔌 Forzar Recarga del Sistema</button>
+
+    <div class="card">
+      <div class="card-title">🖨️ VISTA PREVIA TICKET 80mm</div>
+      <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="background:white;color:#000;font-family:'Courier New',monospace;font-size:10px;width:72mm;padding:8px;border:1px solid #ddd;border-radius:4px;margin:0 auto">
+            ${emp.logoBase64 ? `<div style="text-align:center;margin-bottom:4px"><img src="${emp.logoBase64}" style="max-width:160px"></div>` : `<div style="text-align:center;font-weight:900;font-size:13px;letter-spacing:2px">${emp.nombre||'NOMBRE EMPRESA'}</div>`}
+            <div style="text-align:center;font-weight:700">${emp.nombre||'NOMBRE EMPRESA'}</div>
+            ${emp.nombreComercial?`<div style="text-align:center">${emp.nombreComercial}</div>`:''}
+            <div style="text-align:center;font-size:9px">NIT: ${emp.nit||'---'} | ${emp.regimenFiscal||'Régimen ordinario'}</div>
+            <div style="text-align:center;font-size:9px">${emp.departamento||''}/${emp.ciudad||''} / ${emp.direccion||''}</div>
+            <div style="text-align:center;font-size:9px">Tel: ${emp.telefono||''}${emp.telefono2?' / '+emp.telefono2:''}</div>
+            ${emp.email?`<div style="text-align:center;font-size:9px">Email: ${emp.email}</div>`:''}
+            ${emp.web?`<div style="text-align:center;font-size:9px">${emp.web}</div>`:''}
+            <div style="border-top:1px dashed #000;margin:4px 0"></div>
+            <div style="text-align:center;font-weight:700">FACTURA DE VENTA</div>
+            <div style="text-align:center;font-weight:700">No.: 00001</div>
+            <div style="text-align:center;font-size:9px">${today()} 17:54</div>
+            ${emp.mensajeHeader?`<div style="border-top:1px dashed #000;margin:4px 0"></div><div style="text-align:center;font-size:9px;white-space:pre-wrap">${emp.mensajeHeader}</div>`:''}
+            <div style="border-top:1px dashed #000;margin:4px 0"></div>
+            <div style="font-size:9px">Cliente: <b>CLIENTE MOSTRADOR</b></div>
+            <div style="border-top:1px dashed #000;margin:4px 0"></div>
+            <table style="width:100%;font-size:9px"><thead><tr><th style="text-align:left">DESCRIPCIÓN</th><th>CANT</th><th style="text-align:right">TOTAL</th></tr></thead>
+            <tbody><tr><td>Producto ejemplo | REF<br>Talla: M</td><td style="text-align:center">x1</td><td style="text-align:right">48.000</td></tr></tbody></table>
+            <div style="border-top:1px dashed #000;margin:4px 0"></div>
+            <table style="width:100%;font-size:9px"><tr><td>SUBTOTAL</td><td style="text-align:right">48.000</td></tr><tr><td style="font-weight:900;font-size:11px">TOTAL NETO</td><td style="text-align:right;font-weight:900;font-size:11px">48.000</td></tr></table>
+            <div style="border-top:1px dashed #000;margin:4px 0"></div>
+            <div style="font-size:9px"><b>MEDIO DE PAGO:</b> Efectivo</div>
+            ${emp.mensajePie?`<div style="border-top:1px dashed #000;margin:4px 0"></div><div style="text-align:center;font-size:9px;white-space:pre-wrap">${emp.mensajePie}</div>`:''}
+            ${emp.politicaDatos?`<div style="text-align:center;font-size:8px;white-space:pre-wrap">${emp.politicaDatos}</div>`:''}
+            ${emp.mensajeGarantias?`<div style="text-align:center;font-size:8px;font-style:italic;white-space:pre-wrap">${emp.mensajeGarantias}</div>`:''}
+            <div style="border-top:1px dashed #000;margin:4px 0"></div>
+            <div style="text-align:center;font-size:8px">Factura generada por VentasHera ERP</div>
+          </div>
+        </div>
+        <div style="flex:2;min-width:280px">
+          <p style="font-size:11px;color:var(--text2);margin-bottom:12px">Configura los datos y el logo — la vista previa se actualiza al guardar.</p>
+          <div class="form-group">
+            <label class="form-label">📸 LOGO (recomendado: 400x120px, fondo blanco o transparente)</label>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cfg-logo-input').click()">📁 Subir Logo</button>
+              <input type="file" id="cfg-logo-input" accept="image/*" style="display:none" onchange="procesarLogoConfig(this)">
+              ${emp.logoBase64 ? `<button class="btn btn-xs btn-danger" onclick="state.empresa.logoBase64='';saveConfig('empresa',state.empresa);renderConfig()">✕ Quitar logo</button>` : ''}
+              <div style="width:80px;height:40px;border:1px solid var(--border);border-radius:6px;background:${emp.logoBase64?`url('${emp.logoBase64}') center/contain no-repeat white`:'var(--bg3)'}"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  `;
+
+    <div class="card">
+      <div class="card-title">🏢 DATOS DE EMPRESA</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">NOMBRE EMPRESA</label><input class="form-control" id="cfg-nombre" value="${emp.nombre||''}" placeholder="EON CLOTHING"></div>
+        <div class="form-group"><label class="form-label">NOMBRE SECUNDARIO</label><input class="form-control" id="cfg-nombre2" value="${emp.nombreComercial||''}" placeholder="EON CLOTHING"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">NIT</label><input class="form-control" id="cfg-nit" value="${emp.nit||''}" placeholder="1037638333-2"></div>
+        <div class="form-group"><label class="form-label">RÉGIMEN FISCAL</label><input class="form-control" id="cfg-regimen" value="${emp.regimenFiscal||''}" placeholder="Régimen ordinario No responsable de IVA"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">DEPARTAMENTO</label><input class="form-control" id="cfg-dpto" value="${emp.departamento||''}" placeholder="Antioquia"></div>
+        <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="cfg-ciudad" value="${emp.ciudad||''}" placeholder="Medellín"></div>
+      </div>
+      <div class="form-group"><label class="form-label">DIRECCIÓN</label><input class="form-control" id="cfg-dir" value="${emp.direccion||''}" placeholder="Carrera 53 # 49-68 Local 311"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">TELÉFONO PRINCIPAL</label><input class="form-control" id="cfg-tel" value="${emp.telefono||''}" placeholder="3195937977"></div>
+        <div class="form-group"><label class="form-label">TELÉFONO 2</label><input class="form-control" id="cfg-tel2" value="${emp.telefono2||''}" placeholder="311"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">EMAIL</label><input class="form-control" id="cfg-email" value="${emp.email||''}" placeholder="eongerencia@gmail.com"></div>
+        <div class="form-group"><label class="form-label">PÁGINA WEB</label><input class="form-control" id="cfg-web" value="${emp.web||''}" placeholder="www.eonclothingonline.com"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">VENDEDORA (elaborado por)</label><input class="form-control" id="cfg-vendedora" value="${emp.vendedora||''}" placeholder="Nombre vendedora"></div>
+        <div class="form-group"><label class="form-label">INSTAGRAM / REDES</label><input class="form-control" id="cfg-social" value="${emp.social||''}" placeholder="@eon_clothing"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🧾 TEXTOS DEL TICKET</div>
+      <div class="form-group"><label class="form-label">MENSAJE ENCABEZADO (después del número de factura)</label>
+        <textarea class="form-control" id="cfg-header" rows="3" placeholder="Síguenos en Instagram @eon_clothing EON CLOTHING&#10;No se realizan cambios, ni devolución del dinero.">${emp.mensajeHeader||''}</textarea></div>
+      <div class="form-group"><label class="form-label">MENSAJE PIE (agradecimiento)</label>
+        <textarea class="form-control" id="cfg-pie" rows="2" placeholder="¡GRACIAS POR SU COMPRA!">${emp.mensajePie||''}</textarea></div>
+      <div class="form-group"><label class="form-label">POLÍTICA DE DATOS PERSONALES</label>
+        <textarea class="form-control" id="cfg-datos" rows="2" placeholder="EON CLOTHING le informa que todos tus datos serán tratados de acuerdo a la Ley de Protección de Datos Personales.">${emp.politicaDatos||''}</textarea></div>
+      <div class="form-group"><label class="form-label">POLÍTICA CAMBIOS / GARANTÍAS</label>
+        <textarea class="form-control" id="cfg-garantias" rows="2" placeholder="PARA CAMBIOS O GARANTÍAS, se debe presentar la factura de venta">${emp.mensajeGarantias||''}</textarea></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📊 METAS Y TIEMPOS</div>
+      <div class="form-row-3">
+        <div class="form-group"><label class="form-label">META MENSUAL</label><input type="number" class="form-control" id="cfg-meta" value="${state.meta||34000000}"></div>
+        <div class="form-group"><label class="form-label">DÍAS LIQ. LOCAL</label><input type="number" class="form-control" id="cfg-dias-local" value="${state.diasLocal||1}"></div>
+        <div class="form-group"><label class="form-label">DÍAS LIQ. INTER</label><input type="number" class="form-control" id="cfg-dias-inter" value="${state.diasInter||5}"></div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;height:50px;font-size:16px;margin-bottom:16px" onclick="guardarConfigCompleta()">💾 Guardar Configuración Completa</button>
+
+    <div class="card" style="border-color:rgba(248,113,113,0.3)">
+      <div class="card-title" style="color:var(--red)">⚡ ZONA DE PELIGRO</div>
+      <div class="btn-group">
+        <button class="btn btn-danger btn-sm" onclick="forceMonthReset()">🔄 Archivar Ventas del Mes</button>
+        <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="location.reload()">🔌 Forzar Recarga</button>
+      </div>
+    </div>`;
 }
 
-function saveConfig(){
+function procesarLogoConfig(input) {
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const MAX_W = 400;
+      const scale = Math.min(1, MAX_W / img.width);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      if(!state.empresa) state.empresa = {};
+      state.empresa.logoBase64 = canvas.toDataURL('image/png');
+      saveConfig('empresa', state.empresa);
+      renderConfig();
+      notify('success','🖼️','Logo cargado','Se ajustó automáticamente para 80mm.',{duration:3000});
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function guardarConfigCompleta() {
   if(!state.empresa) state.empresa = {};
-  state.empresa.nombre = document.getElementById('cfg-nombre').value.trim();
-  state.empresa.nit = document.getElementById('cfg-nit').value.trim();
-  state.empresa.telefono = document.getElementById('cfg-tel').value.trim();
-  state.empresa.direccion = document.getElementById('cfg-dir').value.trim();
-  
-  const nuevaMeta = parseFloat(document.getElementById('cfg-meta').value) || 34000000;
-  state.meta = nuevaMeta;
-  
+  state.empresa.nombre        = document.getElementById('cfg-nombre')?.value.trim() || state.empresa.nombre;
+  state.empresa.nombreComercial = document.getElementById('cfg-nombre2')?.value.trim() || '';
+  state.empresa.nit           = document.getElementById('cfg-nit')?.value.trim() || '';
+  state.empresa.regimenFiscal = document.getElementById('cfg-regimen')?.value.trim() || '';
+  state.empresa.departamento  = document.getElementById('cfg-dpto')?.value.trim() || '';
+  state.empresa.ciudad        = document.getElementById('cfg-ciudad')?.value.trim() || '';
+  state.empresa.direccion     = document.getElementById('cfg-dir')?.value.trim() || '';
+  state.empresa.telefono      = document.getElementById('cfg-tel')?.value.trim() || '';
+  state.empresa.telefono2     = document.getElementById('cfg-tel2')?.value.trim() || '';
+  state.empresa.email         = document.getElementById('cfg-email')?.value.trim() || '';
+  state.empresa.web           = document.getElementById('cfg-web')?.value.trim() || '';
+  state.empresa.vendedora     = document.getElementById('cfg-vendedora')?.value.trim() || '';
+  state.empresa.social        = document.getElementById('cfg-social')?.value.trim() || '';
+  state.empresa.mensajeHeader = document.getElementById('cfg-header')?.value.trim() || '';
+  state.empresa.mensajePie    = document.getElementById('cfg-pie')?.value.trim() || '';
+  state.empresa.politicaDatos = document.getElementById('cfg-datos')?.value.trim() || '';
+  state.empresa.mensajeGarantias = document.getElementById('cfg-garantias')?.value.trim() || '';
+
+  state.meta      = parseFloat(document.getElementById('cfg-meta')?.value) || 34000000;
+  state.diasLocal = parseInt(document.getElementById('cfg-dias-local')?.value) || 1;
+  state.diasInter = parseInt(document.getElementById('cfg-dias-inter')?.value) || 5;
+
   saveConfig('empresa', state.empresa);
   saveConfig('meta', state.meta);
-  
-  notify('success', '✅', 'Configuración guardada', 'Los datos de la empresa han sido actualizados.', {duration: 3000});
+  saveConfig('diasLocal', state.diasLocal);
+  saveConfig('diasInter', state.diasInter);
+
+  notify('success','✅','Configuración guardada','Los datos se reflejan en el ticket.',{duration:3000});
   renderConfig();
-  renderDashboard(); // Refrescar metas en dashboard
+  renderDashboard();
 }
+
+// Mantener saveConfig como función legacy (no confundir con la async de Supabase)
+function saveConfigLegacy() { guardarConfigCompleta(); }
 
 function forceMonthReset(){
   if(confirm('⚠️ ¿Estás seguro? Esto archivará todas las ventas actuales y reiniciará el progreso de la meta mensual. Esta acción no se puede deshacer fácilmente.')) {
