@@ -351,11 +351,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ===== CREDENCIALES & CONEXIÓN =====
 // ===================================================================
 
-const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
+const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabaseClient.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
 
 // Inicializar Supabase
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Variables de control
 let isFirstLoad = true;
@@ -641,11 +641,11 @@ async function loadState() {
       { data: invoices },
       { data: guias }
     ] = await Promise.all([
-      supabase.from('products').select('*'),
-      supabase.from('customers').select('*'),
-      supabase.from('employees').select('*'),
-      supabase.from('invoices').select('*'),
-      supabase.from('guias').select('*')
+      supabaseClient.from('products').select('*'),
+      supabaseClient.from('customers').select('*'),
+      supabaseClient.from('employees').select('*'),
+      supabaseClient.from('invoices').select('*'),
+      supabaseClient.from('guias').select('*')
     ]);
 
     _sbConnected = true;
@@ -1429,7 +1429,7 @@ async function procesarVentaPOS() {
       if (product) {
         const newStock = product.stock - item.qty;
         // Actualizamos en BD
-        await supabase.from('products').update({ stock: newStock }).eq('id', item.articuloId);
+        await supabaseClient.from('products').update({ stock: newStock }).eq('id', item.articuloId);
         // Actualizamos en la vista local
         product.stock = newStock; 
       }
@@ -2292,7 +2292,7 @@ async function guardarUsuario(collection, tipo, pageId, existingId) {
     showLoadingOverlay('connecting');
     
     // UPSERT: Inserta si es nuevo, actualiza si ya existe
-    const { error } = await supabase.from(table).upsert(data, { onConflict: 'id' });
+    const { error } = await supabaseClient.from(table).upsert(data, { onConflict: 'id' });
     if (error) throw error;
 
     // Actualizar la vista local para que la interfaz responda al instante
@@ -2325,7 +2325,7 @@ async function eliminarUsuario(collection, id, pageId, titulo, tipo) {
   try {
     showLoadingOverlay('connecting');
     
-    const { error } = await supabase.from(table).delete().eq('id', id);
+    const { error } = await supabaseClient.from(table).delete().eq('id', id);
     if (error) throw error;
 
     // Remover de la vista local
@@ -2381,7 +2381,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
 
         // Insertar en Supabase en bloques de 500 para no saturar la red
         if (batch.length >= 500) {
-          const { error } = await supabase.from('customers').insert(batch);
+          const { error } = await supabaseClient.from('customers').insert(batch);
           if(error) throw error;
           batch = []; 
         }
@@ -2389,7 +2389,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
 
       // Insertar el resto
       if (batch.length > 0) {
-        const { error } = await supabase.from('customers').insert(batch);
+        const { error } = await supabaseClient.from('customers').insert(batch);
         if(error) throw error;
       }
       
@@ -3036,7 +3036,6 @@ window.onload = () => {
   loadState();
 };
   
-
 
 </script>
 </body>
