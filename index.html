@@ -633,44 +633,51 @@ async function loadState() {
   showLoadingOverlay('connecting');
   
   try {
-    // Descargamos todas las tablas principales en paralelo para mayor velocidad
-    const [
-      { data: products },
-      { data: customers },
-      { data: employees },
-      { data: invoices },
-      { data: guias }
-    ] = await Promise.all([
-      supabaseClient.from('products').select('*'),
-      supabaseClient.from('customers').select('*'),
-      supabaseClient.from('employees').select('*'),
-      supabaseClient.from('invoices').select('*'),
-      supabaseClient.from('guias').select('*')
-    ]);
+    // Cargar productos
+    const { data: products, error: prodErr } = await supabaseClient.from('products').select('*');
+    
+    if(!prodErr && products) {
+      state.articulos = products.map(p => {
+        const imgs = typeof p.images === 'string' ? JSON.parse(p.images || '[]') : (p.images || []);
+        const cols = typeof p.colors === 'string' ? JSON.parse(p.colors || '[]') : (p.colors || []);
+        return {
+          id: p.id,
+          codigo: p.ref || p.sku || '',
+          ref: p.ref || '',
+          nombre: p.name || '',
+          name: p.name || '',
+          categoria: p.categoria || p.cat || '',
+          seccion: p.seccion || '',
+          cat: p.cat || '',
+          descripcion: p.description || '',
+          precioVenta: parseFloat(p.price) || 0,
+          price: parseFloat(p.price) || 0,
+          precioCompra: parseFloat(p.cost) || 0,
+          tallas: p.sizes || '',
+          sizes: p.sizes || '',
+          colors: cols,
+          colores: cols.join(', '),
+          images: imgs,
+          imagen: imgs[0] || '',
+          stock: p.stock || 0,
+          stockMinimo: p.stock_min || 0,
+          activo: p.active !== false,
+          mostrarEnWeb: p.visible !== false,
+          importadoDeCatalogo: true,
+          supabaseId: p.id
+        };
+      });
+    }
+
+    // Cargar clientes (tolerante a fallo)
+    const { data: customers } = await supabaseClient.from('customers').select('*').catch(() => ({data:[]}));
+    if(customers) state.usu_clientes = customers;
+
+    // Cargar empleados (tolerante a fallo)
+    const { data: employees } = await supabaseClient.from('employees').select('*').catch(() => ({data:[]}));
+    if(employees) state.empleados = employees;
 
     _sbConnected = true;
-    
-    // Mapeamos los datos de Supabase a tu variable 'state' local
-    // Hacemos un mapeo para que los campos coincidan con lo que espera tu frontend
-    state.articulos = (products || []).map(p => ({
-      id: p.id,
-      codigo: p.ref,
-      nombre: p.name,
-      categoria: p.categoria,
-      seccion: p.seccion,
-      descripcion: p.description,
-      precioVenta: p.price,
-      precioCompra: p.cost,
-      stock: p.stock,
-      activo: p.active,
-      mostrarEnWeb: p.visible
-    }));
-
-    state.usu_clientes = customers || [];
-    state.empleados = employees || [];
-    state.facturas = invoices || [];
-    state.ventas = guias || []; 
-
     ['fb-status-dot','fb-status-dot-mobile'].forEach(id => {
       const el = document.getElementById(id);
       if(el){ el.style.background = '#22c55e'; el.title = 'Conectado a Supabase'; }
@@ -682,12 +689,19 @@ async function loadState() {
 
     if(isFirstLoad){
       isFirstLoad = false;
-      notify('success','☁️','¡Conectado!','Datos sincronizados desde Supabase.',{duration:3000});
+      notify('success','☁️','¡Conectado!','Catálogo cargado desde Supabase.',{duration:3000});
     }
 
   } catch (error) {
     console.error("Error cargando base de datos:", error);
-    showLoadingOverlay('error');
+    _sbConnected = false;
+    ['fb-status-dot','fb-status-dot-mobile'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el){ el.style.background = '#f87171'; el.title = 'Sin conexión'; }
+    });
+    showLoadingOverlay('hide');
+    renderAll();
+    notify('warning','📡','Modo offline','Sin conexión a Supabase.',{duration:4000});
   }
 }
 function saveState(){ /* Supabase - guardado atómico por función */ }
