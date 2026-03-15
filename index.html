@@ -628,8 +628,6 @@ function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday
 function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
 function getArticuloStock(artId,bodegaId){return(state.inv_movimientos||[]).filter(m=>m.articuloId===artId&&(!bodegaId||m.bodegaId===bodegaId)).reduce((a,m)=>a+m.cantidad,0)}
 
-// ===== CONEXIÓN ERP FIREBASE =====
-let isFirstLoad=true;let _fbConnected=false;let _fbTimeoutId=null;
 
 // ===================================================================
 // ===== CREDENCIALES & CONEXIÓN SUPABASE =====
