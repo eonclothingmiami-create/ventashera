@@ -352,10 +352,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ===================================================================
 
 const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
 
 // Inicializar Supabase
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Variables de control
 let isFirstLoad = true;
@@ -368,7 +368,7 @@ async function supabaseCall(method, table, data = null, id = null, filters = nul
   try {
     let url = `${SUPABASE_URL}/rest/v1/${table}`;
     const headers = {
-      'apikey': SUPABASE_KEY,
+      'apikey': SUPABASE_ANON_KEY,
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
@@ -628,18 +628,6 @@ function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday
 function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
 function getArticuloStock(artId,bodegaId){return(state.inv_movimientos||[]).filter(m=>m.articuloId===artId&&(!bodegaId||m.bodegaId===bodegaId)).reduce((a,m)=>a+m.cantidad,0)}
 
-
-// ===================================================================
-// ===== CREDENCIALES & CONEXIÓN SUPABASE =====
-// ===================================================================
-
-const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
-
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-let isFirstLoad = true;
-let _sbConnected = false;
 
 async function loadState() {
   showLoadingOverlay('connecting');
