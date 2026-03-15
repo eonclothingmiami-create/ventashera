@@ -781,7 +781,7 @@ async function deleteRecord(collection, id) {
   } catch(e) { console.warn(`deleteRecord [${collection}]:`, e.message); }
 }
 
-async async function saveConfig(key, value) {
+async function saveConfig(key, value) {
   if(!_sbConnected) return;
   try { await supabaseClient.from('state_config').upsert({key, value, updated_at:new Date().toISOString()},{onConflict:'key'}); }
   catch(e) { console.warn('saveConfig:', e.message); }
