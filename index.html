@@ -1616,8 +1616,12 @@ async function procesarVentaPOS() {
     guia: posFormState.guia, empresa: posFormState.empresa,
     transportadora: posFormState.transportadora, ciudad: posFormState.ciudad,
     liquidado: canal === 'vitrina', esSeparado,
-    estadoEntrega: 'Pendiente', desc: numFactura
-  });
+    estadoEntrega: 'Pendiente', desc: numFactura,
+    metodoPago: posFormState.metodo
+  };
+  state.ventas.push(ventaRecord);
+  saveRecord('ventas', ventaRecord.id, ventaRecord);
+  saveRecord('facturas', factura.id, factura);
 
   // Descontar stock en state local
   cart.forEach(item => {
