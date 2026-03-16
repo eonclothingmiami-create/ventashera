@@ -832,10 +832,10 @@ async function loadState() {
       const {data: bds} = await supabaseClient.from('bodegas').select('*');
       if(bds && bds.length > 0) state.bodegas = bds.map(b=>({id:b.id,name:b.nombre,ubicacion:b.ubicacion||''}));
       // Nom conceptos override
-      const {data: ncs} = await supabaseClient.from('nom_conceptos_cfg').select('*');
+      const {data: ncs} = await supabaseClient.from('nom_conceptos_cfg').select('*').limit(100);
       if(ncs && ncs.length > 0) state.nom_conceptos = ncs.map(c=>({id:c.id,nombre:c.nombre,tipo:c.tipo,formula:c.formula,valor:parseFloat(c.valor)||0}));
       // Game config
-      const {data: gcfg} = await supabaseClient.from('state_config').select('value').eq('key','cfg_game').single();
+      const {data: gcfg} = await supabaseClient.from('state_config').select('value').eq('key','cfg_game').maybeSingle();
       if(gcfg?.value) state.cfg_game = {...state.cfg_game, ...(typeof gcfg.value==='string'?JSON.parse(gcfg.value):gcfg.value)};
     } catch(e) { console.warn('Config tables not yet created:', e.message); }
 
@@ -2013,7 +2013,13 @@ function openArticuloModal(id){
 
             <div class="form-row">
                 <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas || []).map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
-                <div class="form-group"><label class="form-label">${art ? 'AJUSTE → usar Inventario → Ajustes' : 'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
+                <div class="form-group">
+                  <label class="form-label">${art ? 'STOCK ACTUAL' : 'STOCK INICIAL'}</label>
+                  <input type="number" class="form-control" id="m-art-stock0"
+                    value="${art ? (art.stock||0) : 0}"
+                    ${art ? 'readonly style="opacity:0.5;cursor:not-allowed"' : 'min="0"'}>
+                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para ajustar el stock usa: Inventario → Ajustes</div>' : ''}
+                </div>
             </div>
         </div>
         <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveArticulo('${id || ''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
