@@ -1425,7 +1425,7 @@ ${posFormState.metodo === 'efectivo' ? (() => {
             </select>
             ${posFormState.metodo === 'transferencia' ? `
             <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
-             ${(['Nequi','Bancolombia','Daviplata','Bancolombia 2']).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
+              ${(window.CUENTAS_BANCARIAS||[]).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>` : ''}
           </div>
 
@@ -2696,9 +2696,22 @@ async function guardarUsuario(collection, tipo, pageId, existingId) {
       salario_base: 0 
     };
   } else {
-    // Para proveedores, como no hay tabla aún, los guardaremos en memoria temporalmente
-    notify('warning', '⚠️', 'Aviso', 'La tabla de proveedores se creará en el futuro.');
-    return;
+    // Proveedor → tabla proveedores
+    table = 'proveedores';
+    data = {
+      id: recordId,
+      nombre: nombre,
+      tipo_id: document.getElementById('usu-tipoid')?.value || 'CC',
+      cedula: document.getElementById('usu-cedula')?.value.trim() || '',
+      celular: document.getElementById('usu-celular')?.value.trim() || '',
+      whatsapp: document.getElementById('usu-whatsapp')?.value.trim() || '',
+      email: document.getElementById('usu-email')?.value.trim() || '',
+      ciudad: document.getElementById('usu-ciudad')?.value.trim() || '',
+      departamento: document.getElementById('usu-dpto')?.value.trim() || '',
+      direccion: document.getElementById('usu-dir')?.value.trim() || '',
+      tipo_persona: document.getElementById('usu-tipopersona')?.value || 'Natural',
+      observacion: document.getElementById('usu-obs')?.value.trim() || ''
+    };
   }
 
   try {
@@ -3763,10 +3776,12 @@ async function pagarNomina(id){
 // ===================================================================
 
 function calcDeudaProveedor(provId) {
-  // Mercancía a crédito de este proveedor
-  const articulos = (state.articulos||[]).filter(a =>
-    a.tituloMercancia === 'credito' && a.proveedorId === provId
-  );
+  const esSinEspecificar = provId === '__sin_proveedor__';
+  const articulos = (state.articulos||[]).filter(a => {
+    if(a.tituloMercancia !== 'credito') return false;
+    if(esSinEspecificar) return !a.proveedorId || a.proveedorId === '';
+    return a.proveedorId === provId;
+  });
   // Deuda bruta: costo × stock
   const deudaBruta = articulos.reduce((sum, a) => sum + ((a.precioCompra||0) * (a.stock||0)), 0);
   // Abonos realizados
@@ -3781,10 +3796,22 @@ function renderTesPagosProv() {
   if(!el) return;
 
   // Recopilar proveedores que tienen mercancía a crédito
+  // Proveedores registrados con deuda
   const provConDeuda = (state.usu_proveedores||[]).map(p => {
     const d = calcDeudaProveedor(p.id);
     return { ...p, ...d };
   }).filter(p => p.deudaBruta > 0);
+
+  // Artículos a crédito sin proveedor especificado
+  const dSinProv = calcDeudaProveedor('__sin_proveedor__');
+  if(dSinProv.deudaBruta > 0) {
+    provConDeuda.push({
+      id: '__sin_proveedor__',
+      nombre: '⚠️ Sin Proveedor Especificado',
+      cedula: '', ciudad: '',
+      ...dSinProv
+    });
+  }
 
   // Totales generales
   const totalDeuda = provConDeuda.reduce((s,p) => s + p.deudaBruta, 0);
@@ -4283,16 +4310,23 @@ function buildAlerts() {
   });
 
   // --- Deudas a proveedores (diaria) ---
-  const provConDeuda = (state.usu_proveedores||[]).map(p => {
-    const artCredito = (state.articulos||[]).filter(a => a.tituloMercancia === 'credito' && a.proveedorId === p.id);
-    const deudaBruta = artCredito.reduce((s,a) => s + ((a.precioCompra||0)*(a.stock||0)), 0);
-    const abonos = (state.tes_abonos_prov||[]).filter(ab=>ab.proveedorId===p.id).reduce((s,ab)=>s+(ab.valor||0),0);
-    const saldo = Math.max(0, deudaBruta - abonos);
-    // Días desde la deuda más antigua
-    const fechas = artCredito.map(a=>a.fechaCompra||a.createdAt||'').filter(Boolean).sort();
-    const diasDeuda = fechas.length ? Math.round((new Date()-new Date(fechas[0]))/86400000) : 0;
-    return { ...p, saldo, diasDeuda, artCredito };
-  }).filter(p => p.saldo > 0);
+  const _buildProvList = () => {
+    const list = (state.usu_proveedores||[]).map(p => {
+      const artCredito = (state.articulos||[]).filter(a => a.tituloMercancia === 'credito' && a.proveedorId === p.id);
+      const deudaBruta = artCredito.reduce((s,a) => s + ((a.precioCompra||0)*(a.stock||0)), 0);
+      const abonos = (state.tes_abonos_prov||[]).filter(ab=>ab.proveedorId===p.id).reduce((s,ab)=>s+(ab.valor||0),0);
+      const saldo = Math.max(0, deudaBruta - abonos);
+      const fechas = artCredito.map(a=>a.fechaCompra||a.createdAt||'').filter(Boolean).sort();
+      const diasDeuda = fechas.length ? Math.round((new Date()-new Date(fechas[0]))/86400000) : 0;
+      return { ...p, saldo, diasDeuda, artCredito };
+    }).filter(p => p.saldo > 0);
+    // Sin especificar
+    const sinProv = (state.articulos||[]).filter(a => a.tituloMercancia==='credito' && (!a.proveedorId||a.proveedorId===''));
+    const deudaSin = sinProv.reduce((s,a)=>s+((a.precioCompra||0)*(a.stock||0)),0);
+    if(deudaSin > 0) list.push({id:'__sin_proveedor__',nombre:'Sin proveedor',saldo:deudaSin,diasDeuda:0,artCredito:sinProv});
+    return list;
+  };
+  const provConDeuda = _buildProvList();
 
   const totalDeuda = provConDeuda.reduce((s,p)=>s+p.saldo, 0);
 
