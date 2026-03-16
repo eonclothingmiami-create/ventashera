@@ -2309,7 +2309,7 @@ function openAjusteModal(){
       <div class="form-group"><label class="form-label">CANTIDAD</label><input type="number" class="form-control" id="m-aj-cant" min="1" value="1"></div>
     </div>
     <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-aj-bod">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-    <div class="form-group"><label class="form-label">MOTIVO</label><input class="form-control" id="m-aj-motivo" placeholder="Motivo del ajuste"></div>
+   <div class="form-group"><label class="form-label">MOTIVO</label><select class="form-control" id="m-aj-motivo"><option value="Compra de mercancía">📦 Compra de mercancía (Entrada)</option><option value="Devolución de cliente">↩️ Devolución de cliente (Entrada)</option><option value="Mercancía encontrada">🔍 Mercancía encontrada (Entrada)</option><option value="Corrección de inventario">✏️ Corrección de inventario</option><option value="Venta no registrada">💸 Venta no registrada (Salida)</option><option value="Mercancía dañada">💔 Mercancía dañada (Salida)</option><option value="Mercancía perdida">❓ Mercancía perdida (Salida)</option><option value="Muestra / Regalo">🎁 Muestra / Regalo (Salida)</option><option value="Otro">📝 Otro</option></select></div>
     <button class="btn btn-primary" style="width:100%" onclick="saveAjusteInv()">Guardar Ajuste</button>
   `);
 }
