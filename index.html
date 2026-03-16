@@ -1469,11 +1469,10 @@ ${posFormState.metodo === 'efectivo' ? (() => {
           })() : ''}
           <div class="form-group" style="margin-bottom:10px; display:flex; gap:8px;">
             <select class="form-control" id="pos-metodo-pago" style="padding:8px 12px" onchange="renderPOS()">
-              <option value="efectivo" ${posFormState.metodo === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>
-              <option value="tarjeta" ${posFormState.metodo === 'tarjeta' ? 'selected' : ''}>💳 Tarjeta</option>
-              <option value="transferencia" ${posFormState.metodo === 'transferencia' ? 'selected' : ''}>📱 Transferencia</option>
-              <option value="addi" ${posFormState.metodo === 'addi' ? 'selected' : ''}>💜 Addi</option>
-              <option value="mixto" ${posFormState.metodo === 'mixto' ? 'selected' : ''}>🔄 Mixto</option>
+              ${(state.cfg_metodos_pago && state.cfg_metodos_pago.filter(m=>m.activo!==false).length > 0
+                ? state.cfg_metodos_pago.filter(m=>m.activo!==false)
+                : [{id:'efectivo',nombre:'💵 Efectivo'},{id:'tarjeta',nombre:'💳 Tarjeta'},{id:'transferencia',nombre:'📱 Transferencia'},{id:'addi',nombre:'💜 Addi'},{id:'mixto',nombre:'🔄 Mixto'}]
+              ).map(m=>`<option value="${m.id}" ${posFormState.metodo===m.id?'selected':''}>${m.nombre}</option>`).join('')}
             </select>
             ${posFormState.metodo === 'transferencia' ? `
             <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
@@ -4207,12 +4206,10 @@ function openAbonoProvModal(provId='', provNombre='') {
       </div>
       <div class="form-group"><label class="form-label">MÉTODO DE PAGO</label>
         <select class="form-control" id="ab-metodo">
-          <option value="efectivo">💵 Efectivo</option>
-          <option value="transferencia">📱 Transferencia</option>
-          <option value="nequi">Nequi</option>
-          <option value="bancolombia">Bancolombia</option>
-          <option value="daviplata">Daviplata</option>
-          <option value="cheque">Cheque</option>
+          ${(state.cfg_metodos_pago && state.cfg_metodos_pago.filter(m=>m.activo!==false).length > 0
+          ? state.cfg_metodos_pago.filter(m=>m.activo!==false)
+          : [{id:'efectivo',nombre:'💵 Efectivo'},{id:'transferencia',nombre:'📱 Transferencia'},{id:'nequi',nombre:'Nequi'},{id:'daviplata',nombre:'Daviplata'},{id:'cheque',nombre:'Cheque'}]
+        ).map(m=>`<option value="${m.id}">${m.nombre}</option>`).join('')}
         </select>
       </div>
     </div>
