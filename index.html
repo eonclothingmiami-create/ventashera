@@ -760,17 +760,38 @@ async function loadState() {
       supabaseClient.from('tes_abonos_prov').select('*')
     ]);
 
-    // Productos + imágenes
+    // Productos + imágenes + tallas + colores
     const mediaByProduct = {};
     (mediaRows||[]).forEach(m=>{if(!mediaByProduct[m.product_id])mediaByProduct[m.product_id]=[];mediaByProduct[m.product_id].push(m)});
+
+    // Cargar tallas y colores en paralelo
+    const [{data: allSizes}, {data: allColors}] = await Promise.all([
+      supabaseClient.from('product_sizes').select('product_id, sizes(label)'),
+      supabaseClient.from('product_colors').select('product_id, colors(label)')
+    ]);
+    const sizesByProduct = {};
+    const colorsByProduct = {};
+    (allSizes||[]).forEach(ps => {
+      if(!sizesByProduct[ps.product_id]) sizesByProduct[ps.product_id] = [];
+      if(ps.sizes?.label) sizesByProduct[ps.product_id].push(ps.sizes.label);
+    });
+    (allColors||[]).forEach(pc => {
+      if(!colorsByProduct[pc.product_id]) colorsByProduct[pc.product_id] = [];
+      if(pc.colors?.label) colorsByProduct[pc.product_id].push(pc.colors.label);
+    });
+
     state.articulos = (products||[]).map(p=>{
       const media=mediaByProduct[p.id]||[];
       const cover=media.find(m=>m.is_cover)||media[0];
       const imgs=media.map(m=>m.url).filter(Boolean);
+      const tallasArr = sizesByProduct[p.id]||[];
+      const coloresArr = colorsByProduct[p.id]||[];
       return {id:p.id,codigo:p.ref||'',ref:p.ref||'',nombre:p.name||'',name:p.name||'',
         categoria:p.categoria||'',seccion:p.seccion||'',cat:p.categoria||'',
         descripcion:p.description||'',precioVenta:parseFloat(p.price)||0,price:parseFloat(p.price)||0,
-        precioCompra:parseFloat(p.cost)||0,tallas:'',sizes:'',colors:[],colores:'',
+        precioCompra:parseFloat(p.cost)||0,
+        tallas:tallasArr.join(', '),sizes:tallasArr.join(', '),
+        colors:coloresArr,colores:coloresArr.join(', '),
         images:imgs,imagen:cover?cover.url:(imgs[0]||''),
         stock:p.stock||0,stockMinimo:p.stock_min||0,
         activo:p.active!==false,mostrarEnWeb:p.visible!==false,supabaseId:p.id,
@@ -1907,8 +1928,11 @@ function renderArticulosList(){
 
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
+    // Cargar imágenes existentes del artículo en la galería temporal
     _tempGaleria = art ? [...(art.images || art.galeria || [])] : [];
-    _portadaIndex = 0; 
+    _portadaIndex = 0;
+    // Flag para saber si es edición (preservar imágenes si no se tocan)
+    window._editingArticuloId = id || null; 
     
     openModal(`
         <div class="modal-title" style="font-family:'Syne'; letter-spacing:1px;">🚀 MAQUETADOR DE PRENDA PROFESIONAL</div>
@@ -1946,8 +1970,8 @@ function openArticuloModal(id){
             <div class="form-group"><label class="form-label">DESCRIPCIÓN (Para el Catálogo)</label><textarea class="form-control" id="m-art-desc" rows="2">${art?.descripcion || ''}</textarea></div>
 
             <div class="form-row">
-                <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas || 'S, M, L, XL'}"></div>
-                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art?.colors?.join(', ') || ''}"></div>
+                <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas || (art ? '' : 'S, M, L, XL')}"></div>
+                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art ? (art.colores||art.colors?.join(', ')||'') : ''}"></div>
             </div>
 
             <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
@@ -2030,21 +2054,27 @@ async function uploadGalleryImages(input) {
     showLoadingOverlay('connecting');
     try {
         let added = 0;
-        for(let i=0; i<files.length; i++) {
+        for(let i = 0; i < files.length; i++) {
             if(_tempGaleria.length >= 15) break;
             const file = files[i];
-            const url = URL.createObjectURL(file); // Temporal - usar Supabase Storage
-            _tempGaleria.push(url);
+            // Sanitize filename
+            const safeName = file.name.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._-]/g,'').toLowerCase();
+            const fileName = `products/temp/${Date.now()}_${safeName}`;
+            const { error: upErr } = await supabaseClient.storage.from('Catalog-media').upload(fileName, file, {upsert:true});
+            if(upErr) throw upErr;
+            const { data: { publicUrl } } = supabaseClient.storage.from('Catalog-media').getPublicUrl(fileName);
+            _tempGaleria.push(publicUrl);
             added++;
         }
         renderGaleriaVisual();
         showLoadingOverlay('hide');
-        notify('success', '📸', 'Galería cargada', `+${added} fotos.`);
+        notify('success', '📸', 'Galería cargada', `+${added} fotos subidas a Supabase.`);
     } catch(e) {
         showLoadingOverlay('hide');
-        notify('danger', '⚠️', 'Error', e.message);
+        notify('danger', '⚠️', 'Error subiendo fotos', e.message, {duration:5000});
     }
 }
+
 
 async function saveArticulo(existingId) {
     const nombre = document.getElementById('m-art-nombre').value.trim();
@@ -2075,25 +2105,120 @@ async function saveArticulo(existingId) {
         updated_at: new Date().toISOString()
     };
 
+    const productId = productData.id;
+
     try {
         showLoadingOverlay('connecting');
         
-        // Ejecutamos el UPSERT en la tabla products de Supabase
+        // 1. UPSERT del producto
         const { error } = await supabaseClient
             .from('products')
             .upsert(productData, { onConflict: 'id' });
-
         if (error) throw error;
 
-        // Si guardó en DB, actualizamos la vista local
+        // 2. MANEJAR IMÁGENES en product_media
+        // Solo actualizar si hay cambios en la galería (_tempGaleria fue modificada)
+        if(_tempGaleria !== null) {
+          // Obtener imágenes actuales en BD
+          const { data: existingMedia } = await supabaseClient
+            .from('product_media')
+            .select('id, url, is_cover')
+            .eq('product_id', productId);
+
+          const existingUrls = (existingMedia||[]).map(m => m.url);
+          const newUrls = _tempGaleria;
+
+          // Eliminar las que ya no están en _tempGaleria
+          const toDelete = (existingMedia||[]).filter(m => !newUrls.includes(m.url));
+          for(const m of toDelete) {
+            await supabaseClient.from('product_media').delete().eq('id', m.id);
+          }
+
+          // Insertar las nuevas (que no existían antes)
+          const toInsert = newUrls.filter(url => !existingUrls.includes(url));
+          for(let i = 0; i < toInsert.length; i++) {
+            const url = toInsert[i];
+            const isCover = newUrls.indexOf(url) === _portadaIndex;
+            await supabaseClient.from('product_media').insert({
+              product_id: productId,
+              url: url,
+              is_cover: isCover
+            });
+          }
+
+          // Actualizar is_cover si cambió la portada
+          if(existingMedia && existingMedia.length > 0) {
+            const coverUrl = newUrls[_portadaIndex];
+            for(const m of existingMedia) {
+              const shouldBeCover = m.url === coverUrl;
+              if(m.is_cover !== shouldBeCover) {
+                await supabaseClient.from('product_media')
+                  .update({ is_cover: shouldBeCover })
+                  .eq('id', m.id);
+              }
+            }
+          }
+        }
+
+        // 3. GUARDAR TALLAS en product_sizes
+        const tallasStr = document.getElementById('m-art-tallas')?.value || '';
+        if(tallasStr.trim()) {
+          // Borrar tallas anteriores
+          await supabaseClient.from('product_sizes').delete().eq('product_id', productId);
+          // Insertar nuevas
+          for(const tallaLabel of tallasStr.split(',').map(t=>t.trim()).filter(Boolean)) {
+            let { data: size } = await supabaseClient.from('sizes').select('id').eq('label', tallaLabel).single();
+            if(!size) {
+              const { data: ns } = await supabaseClient.from('sizes').insert([{label: tallaLabel}]).select().single();
+              size = ns;
+            }
+            if(size) await supabaseClient.from('product_sizes').insert([{product_id: productId, size_id: size.id}]);
+          }
+        }
+
+        // 4. GUARDAR COLORES en product_colors
+        const coloresStr = document.getElementById('m-art-colores')?.value || '';
+        if(coloresStr.trim()) {
+          // Borrar colores anteriores
+          await supabaseClient.from('product_colors').delete().eq('product_id', productId);
+          // Insertar nuevos
+          for(const colorLabel of coloresStr.split(',').map(c=>c.trim()).filter(Boolean)) {
+            let { data: color } = await supabaseClient.from('colors').select('id').eq('label', colorLabel).single();
+            if(!color) {
+              const { data: nc } = await supabaseClient.from('colors').insert([{code: colorLabel.toLowerCase().replace(/\s+/g,'_'), label: colorLabel}]).select().single();
+              color = nc;
+            }
+            if(color) await supabaseClient.from('product_colors').insert([{product_id: productId, color_id: color.id}]);
+          }
+        }
+
+        // 5. Actualizar state local inmediatamente
+        const artIdx = state.articulos.findIndex(a => a.id === productId);
+        const artLocal = {
+          id: productId, codigo: refID, ref: refID, nombre: nombre, name: nombre,
+          categoria: productData.categoria, seccion: productData.seccion,
+          descripcion: productData.description,
+          precioVenta: productData.price, price: productData.price,
+          precioCompra: productData.cost,
+          tallas: tallasStr, sizes: tallasStr,
+          colores: coloresStr, colors: coloresStr.split(',').map(c=>c.trim()).filter(Boolean),
+          images: _tempGaleria, imagen: _tempGaleria[_portadaIndex] || _tempGaleria[0] || '',
+          stock: productData.stock, stockMinimo: 0,
+          activo: true, mostrarEnWeb: productData.visible,
+          tituloMercancia: tituloMercancia,
+          proveedorId: proveedorId||null, proveedorNombre: proveedorObj?.nombre||''
+        };
+        if(artIdx >= 0) state.articulos[artIdx] = artLocal;
+        else state.articulos.push(artLocal);
+
         closeModal();
-        await loadState(); // Recargamos para traer los datos frescos
+        renderArticulos();
         showLoadingOverlay('hide');
-        notify('success', '✅', 'Sincronizado', `${refID} guardado en Supabase.`);
+        notify('success', '✅', 'Guardado', `${refID} guardado con tallas y colores.`);
 
     } catch(e) {
         showLoadingOverlay('hide');
-        alert("Error al guardar en BD: " + e.message);
+        alert("Error al guardar: " + e.message);
     }
 }
   
