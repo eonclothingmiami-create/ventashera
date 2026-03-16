@@ -2363,7 +2363,9 @@ async function eliminarAjuste(id) {
 function openAjusteModal(){
   openModal(`
     <div class="modal-title">Nuevo Ajuste de Inventario<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-aj-art">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+' (Stock: '+getArticuloStock(a.id)+')</option>').join('')}</select></div>
+   <div class="form-group"><label class="form-label">ARTÍCULO</label>
+<input type="text" class="form-control" id="m-aj-art-search" placeholder="Buscar artículo..." oninput="filtrarSelectArticulo('m-aj-art-search','m-aj-art')" autocomplete="off">
+<select class="form-control" id="m-aj-art" size="5" style="margin-top:4px">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+' — Stock: '+getArticuloStock(a.id)+'</option>').join('')}</select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">TIPO</label><select class="form-control" id="m-aj-tipo"><option value="entrada">📥 Entrada</option><option value="salida">📤 Salida</option></select></div>
       <div class="form-group"><label class="form-label">CANTIDAD</label><input type="number" class="form-control" id="m-aj-cant" min="1" value="1"></div>
@@ -2476,7 +2478,9 @@ async function eliminarTraslado(id) {
 function openTrasladoModal(){
   openModal(`
     <div class="modal-title">Nuevo Traslado<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-tr-art">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+'</option>').join('')}</select></div>
+   <div class="form-group"><label class="form-label">ARTÍCULO</label>
+<input type="text" class="form-control" id="m-tr-art-search" placeholder="Buscar artículo..." oninput="filtrarSelectArticulo('m-tr-art-search','m-tr-art')" autocomplete="off">
+<select class="form-control" id="m-tr-art" size="5" style="margin-top:4px">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+'</option>').join('')}</select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">BODEGA ORIGEN</label><select class="form-control" id="m-tr-orig">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
       <div class="form-group"><label class="form-label">BODEGA DESTINO</label><select class="form-control" id="m-tr-dest">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
@@ -2514,6 +2518,17 @@ async function saveTraslado(){
   renderInvTraslados();
   notify('success','✅','Traslado realizado',`${cant} unidades movidas`,{duration:3000});
 }
+
+function filtrarSelectArticulo(inputId, selectId) {
+  const q = document.getElementById(inputId)?.value.toLowerCase() || '';
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  sel.innerHTML = (state.articulos||[])
+    .filter(a => !q || a.nombre.toLowerCase().includes(q) || (a.codigo||'').toLowerCase().includes(q))
+    .map(a => `<option value="${a.id}">${a.nombre} — Stock: ${getArticuloStock(a.id)}</option>`)
+    .join('');
+}
+  
 // ===================================================================
 // ===== GENERIC DOCUMENT RENDERER (Cotizaciones, Órdenes, etc) =====
 // ===================================================================
