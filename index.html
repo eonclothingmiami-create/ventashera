@@ -2013,7 +2013,7 @@ function openArticuloModal(id){
 
             <div class="form-row">
                 <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas || []).map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
-                <div class="form-group"><label class="form-label">${art ? 'AJUSTE DE STOCK' : 'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
+                <div class="form-group"><label class="form-label">${art ? 'AJUSTE → usar Inventario → Ajustes' : 'STOCK INICIAL'}</label><input type="number" class="form-control" id="m-art-stock0" value="0"></div>
             </div>
         </div>
         <button class="btn btn-primary" style="width:100%; margin-top:15px; font-weight:800;" onclick="saveArticulo('${id || ''}')">💾 GUARDAR Y ACTUALIZAR WEB</button>
@@ -2104,7 +2104,11 @@ async function saveArticulo(existingId) {
         description: document.getElementById('m-art-desc').value.trim(),
         price: parseFloat(document.getElementById('m-art-pv').value) || 0,
         cost: parseFloat(document.getElementById('m-art-pc').value) || 0,
-        stock: parseInt(document.getElementById('m-art-stock0').value) || 0,
+        // Nuevo producto: usa el stock inicial del formulario
+        // Producto existente: mantiene el stock actual (no sobreescribir)
+        stock: existingId
+          ? ((state.articulos||[]).find(a=>a.id===existingId)?.stock || 0)
+          : (parseInt(document.getElementById('m-art-stock0').value) || 0),
         active: true,
         visible: document.getElementById('art-mostrar-web').checked,
         titulo_mercancia: tituloMercancia || null,
@@ -2123,6 +2127,16 @@ async function saveArticulo(existingId) {
             .from('products')
             .upsert(productData, { onConflict: 'id' });
         if (error) throw error;
+
+        // 1b. Si es nuevo y tiene stock inicial, registrar en stock_moves
+        const stockInicial = parseInt(document.getElementById('m-art-stock0')?.value)||0;
+        if(!existingId && stockInicial > 0) {
+          await supabaseClient.from('stock_moves').insert({
+            product_id: productId,
+            qty: stockInicial,
+            reason: 'Stock inicial'
+          });
+        }
 
         // 2. MANEJAR IMÁGENES en product_media
         // Solo actualizar si hay cambios en la galería (_tempGaleria fue modificada)
