@@ -2323,19 +2323,41 @@ function renderInvAjustes(){
 }
 
 async function eliminarAjuste(id) {
-  if(!confirm('¿Eliminar este ajuste? El stock de la prenda se recalculará automáticamente.')) return;
+  if(!confirm('¿Eliminar este ajuste? El stock se revertirá automáticamente.')) return;
   const a = state.inv_ajustes.find(x => x.id === id);
   if(!a) return;
 
-  // Buscar el movimiento interno y borrarlo para restaurar el stock
-  const tipoMov = 'ajuste_' + a.tipo;
-  const movIndex = state.inv_movimientos.findIndex(m => m.articuloId === a.articuloId && m.bodegaId === a.bodegaId && m.tipo === tipoMov && m.nota === a.motivo);
-  if(movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
+  try {
+    // 1. Revertir stock en Supabase y localmente
+    const art = state.articulos.find(x => x.id === a.articuloId);
+    if(art) {
+      const revert = a.tipo === 'entrada' ? -a.cantidad : a.cantidad;
+      const newStock = Math.max(0, (art.stock||0) + revert);
+      await supabaseClient.from('products').update({stock: newStock}).eq('id', a.articuloId);
+      art.stock = newStock;
+    }
 
-  // Borrar el registro visual
-  state.inv_ajustes = state.inv_ajustes.filter(x => x.id !== id);
-  renderInvAjustes();
-  notify('success', '🗑️', 'Ajuste eliminado', 'El stock ha vuelto a la normalidad.');
+    // 2. Borrar de inv_ajustes en Supabase
+    await supabaseClient.from('inv_ajustes').delete().eq('id', id);
+
+    // 3. Actualizar estado local
+    state.inv_ajustes = state.inv_ajustes.filter(x => x.id !== id);
+    const movIndex = state.inv_movimientos.findIndex(m =>
+      m.articuloId === a.articuloId && m.tipo === 'ajuste_'+a.tipo && m.nota === a.motivo);
+    if(movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
+
+    renderInvAjustes();
+    // Si el artículo es a crédito, actualizar pagos proveedores
+    if(art?.tituloMercancia === 'credito') {
+      if(document.getElementById('tes_pagos_prov-content')) renderTesPagosProv();
+      updateNavBadges();
+    }
+    notify('success','🗑️','Ajuste eliminado',`Stock de ${art?.nombre||''} revertido.`,{duration:3000});
+
+  } catch(err) {
+    notify('danger','⚠️','Error al eliminar', err.message, {duration:5000});
+    console.error('eliminarAjuste:', err);
+  }
 }
 
 function openAjusteModal(){
@@ -2402,6 +2424,13 @@ async function saveAjusteInv() {
     closeModal();
     renderInvAjustes();
     if(document.getElementById('art-tbody')) renderArticulosList();
+
+    // Si el artículo es a crédito, actualizar pagos proveedores
+    if(product?.tituloMercancia === 'credito') {
+      if(document.getElementById('tes_pagos_prov-content')) renderTesPagosProv();
+      updateNavBadges(); // actualiza alertas de deuda
+    }
+
     showLoadingOverlay('hide');
     notify('success','✅','Ajuste guardado',
       `${tipo==='entrada'?'+':'−'}${cant} unidades · Stock actual: ${product?.stock||0}`,
