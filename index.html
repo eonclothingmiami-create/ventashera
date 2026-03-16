@@ -117,9 +117,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .confetti-piece{position:fixed;width:10px;height:10px;top:-10px;z-index:7000;pointer-events:none;border-radius:2px;animation:confettiFall linear forwards}
 @keyframes confettiFall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
 #screen-flash{position:fixed;inset:0;z-index:4000;pointer-events:none;opacity:0;transition:opacity .1s}
-.modal-overlay{position:fixed;inset:0;z-index:5500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)}
+.modal-overlay{position:fixed;inset:0;z-index:5500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);padding:16px}
 .modal-overlay.active{display:flex;animation:fadeIn .2s ease}
-.modal{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:28px;max-width:600px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:28px;max-width:600px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.6);position:relative}
 .modal-lg{max-width:800px}
 .modal-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
 .modal-close{cursor:pointer;color:var(--text2);font-size:20px;background:none;border:none;padding:4px}
@@ -322,7 +322,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </main>
 </div>
 
-<div class="modal-overlay" id="modal-overlay" onclick="handleModalOverlayClick(event)">
+<div class="modal-overlay" id="modal-overlay">
   <div class="modal" id="modal-content"></div>
 </div>
 
@@ -994,7 +994,13 @@ function openModal(html,isLg){
   }
 }
 function closeModal(){document.getElementById('modal-overlay').classList.remove('active')}
-function handleModalOverlayClick(e){if(e.target.id==='modal-overlay')closeModal();}
+// Click fuera del modal NO cierra (solo ESC o botón ×)
+document.getElementById('modal-overlay').addEventListener('mousedown', function(e){
+  window._modalMousedownTarget = e.target.id === 'modal-overlay' ? 'modal-overlay' : 'inner';
+});
+document.getElementById('modal-overlay').addEventListener('touchstart', function(e){
+  window._modalMousedownTarget = e.target.id === 'modal-overlay' ? 'modal-overlay' : 'inner';
+}, {passive:true});
 
 // ESC key closes any open modal
 document.addEventListener('keydown', function(e){
