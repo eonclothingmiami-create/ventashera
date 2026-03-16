@@ -1708,7 +1708,7 @@ async function procesarVentaPOS() {
   if(_sbConnected){
     try {
       await supabaseClient.from('invoices').insert({id:factura.id,number:numFactura,customer_name:posFormState.cliente||'CLIENTE MOSTRADOR',customer_phone:posFormState.telefono||'',total});
-      await supabaseClient.from('ventas').upsert({id:ventaRecord.id,fecha:fechaActual,canal,valor:total,cliente:posFormState.cliente||'',telefono:posFormState.telefono||'',guia:posFormState.guia||'',empresa:posFormState.empresa||'',transportadora:posFormState.transportadora||'',ciudad:posFormState.ciudad||'',liquidado:liquidadoInicial,fecha_liquidacion:fechaLiq,referencia:numFactura,metodo_pago:posFormState.metodo,tipo_pago:tipoPago,es_contraentrega:esContraEntrega},{onConflict:'id'});
+      await supabaseClient.from('ventas').upsert({id:ventaRecord.id,fecha:fechaActual,canal,valor:total,cliente:posFormState.cliente||'',telefono:posFormState.telefono||'',guia:posFormState.guia||'',empresa:posFormState.empresa||'',transportadora:posFormState.transportadora||'',ciudad:posFormState.ciudad||'',liquidado:liquidadoInicial,fecha_liquidacion:fechaLiq,es_separado:esSeparado,estado_entrega:'Pendiente',referencia:numFactura,metodo_pago:posFormState.metodo,tipo_pago:tipoPago,es_contraentrega:esContraEntrega,archived:false},{onConflict:'id'});
       for(const item of cart){
         const art=state.articulos.find(a=>a.id===item.articuloId);
         if(art){const ns=Math.max(0,(art.stock||0)-item.qty);await supabaseClient.from('products').update({stock:ns}).eq('id',item.articuloId);art.stock=ns;}
@@ -2003,10 +2003,10 @@ function openArticuloModal(id){
                 <div class="form-group">
                     <label class="form-label">SECCIÓN WEB</label>
                     <select class="form-control" id="m-art-seccion" onchange="actualizarCatsERP()">
-                        <option value="Trajes de Baño" ${art?.seccion === 'Trajes de Baño' ? 'selected' : ''}>Trajes de Baño</option>
-                        <option value="Pijamas" ${art?.seccion === 'Pijamas' ? 'selected' : ''}>Resort & Pijamas</option>
-                        <option value="Ropa Deportiva" ${art?.seccion === 'Ropa Deportiva' ? 'selected' : ''}>Activewear</option>
-                        <option value="Casual" ${art?.seccion === 'Casual' ? 'selected' : ''}>Casual</option>
+                        ${(state.cfg_secciones && state.cfg_secciones.length > 0
+                          ? state.cfg_secciones
+                          : [{nombre:'Trajes de Baño'},{nombre:'Resort & Pijamas'},{nombre:'Activewear'},{nombre:'Casual'}]
+                        ).map(s => `<option value="${s.nombre}" ${art?.seccion === s.nombre ? 'selected' : ''}>${s.nombre}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group"><label class="form-label">CATEGORÍA</label><select class="form-control" id="m-art-cat"></select></div>
@@ -2091,12 +2091,20 @@ function renderGaleriaVisual(){
 function actualizarCatsERP(selectedCat){
     const sec = document.getElementById('m-art-seccion').value;
     const cat = document.getElementById('m-art-cat');
+
+    // ★ Usar categorías del ERP (cfg_categorias) si están disponibles
+    const cfgCats = (state.cfg_categorias || []).filter(c => c.seccion === sec);
     let opciones = [];
-    if(sec === 'Trajes de Baño') opciones = ['Enterizos','Bikinis','Tankinis','Asoleadores','Salidas de Baño','3 Piezas'];
-    else if(sec === 'Pijamas') opciones = ['Batas','Pantalones Largos','Shorts','Sets 2 Piezas'];
-    else if(sec === 'Ropa Deportiva') opciones = ['Leggings','Tops','Conjuntos'];
-    else opciones = ['Vestidos','Faldas','Tops','Pantalones'];
-    
+    if(cfgCats.length > 0) {
+      opciones = cfgCats.map(c => c.nombre);
+    } else {
+      // Fallback hardcoded
+      if(sec === 'Trajes de Baño') opciones = ['Enterizos','Bikinis','Tankinis','Asoleadores','Salidas de Baño','3 Piezas'];
+      else if(sec === 'Pijamas' || sec === 'Resort & Pijamas') opciones = ['Batas','Pantalones Largos','Shorts','Sets 2 Piezas'];
+      else if(sec === 'Ropa Deportiva' || sec === 'Activewear') opciones = ['Leggings','Tops','Conjuntos'];
+      else opciones = ['Vestidos','Faldas','Tops','Pantalones'];
+    }
+
     cat.innerHTML = opciones.map(o => `<option value="${o}" ${selectedCat === o ? 'selected' : ''}>${o}</option>`).join('');
 }
 
