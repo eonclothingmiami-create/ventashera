@@ -910,6 +910,11 @@ const COLLECTION_MAP = {
   'cfg_metodos_pago':    { table:'cfg_metodos_pago', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'',activo:d.activo!==false}) },
   'cfg_tarifas':         { table:'cfg_tarifas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,descripcion:d.descripcion||''}) },
   'cfg_impuestos':       { table:'cfg_impuestos', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,tipo:d.tipo||'',activo:d.activo!==false}) },
+  'cfg_transportadoras': { table:'cfg_transportadoras', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',activa:d.activa!==false}) },
+  'cfg_metodos_pago':    { table:'cfg_metodos_pago', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'',activo:d.activo!==false}) },
+  'cfg_tarifas':         { table:'cfg_tarifas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,descripcion:d.descripcion||''}) },
+  'nom_conceptos':       { table:'nom_conceptos_cfg', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'devengo',formula:d.formula||'fijo',valor:parseFloat(d.valor)||0}) },
+  'bodegas_cfg':         { table:'bodegas', mapFn:(d)=>({id:d.id,nombre:d.name||d.nombre||'',ubicacion:d.ubicacion||''}) },
   'bodegas':             { table:'bodegas', mapFn:(d)=>({id:d.id,nombre:d.name||d.nombre||'',ubicacion:d.ubicacion||''}) },
   'nom_ausencias':       { table:'nom_ausencias', mapFn:(d)=>({id:d.id,empleado_nombre:d.empleado||'',tipo:d.tipo||'',desde:d.desde||null,hasta:d.hasta||null,dias:d.dias||0,observaciones:d.observaciones||'',aprobada:d.aprobada||false,fecha:d.fecha||null}) },
   'nom_anticipos':       { table:'nom_anticipos', mapFn:(d)=>({id:d.id,empleado_nombre:d.empleado||'',valor:d.valor||0,motivo:d.motivo||'',fecha:d.fecha||null}) },
@@ -917,7 +922,12 @@ const COLLECTION_MAP = {
   'cfg_transportadoras': { table:'cfg_transportadoras', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',activa:d.activa!==false}) },
   'cfg_metodos_pago':    { table:'cfg_metodos_pago', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'',activo:d.activo!==false}) },
   'cfg_tarifas':         { table:'cfg_tarifas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,descripcion:d.descripcion||''}) },
-  'cfg_impuestos':       { table:'cfg_impuestos', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,tipo:d.tipo||'',activo:d.activo!==false}) }
+  'cfg_impuestos':       { table:'cfg_impuestos', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,tipo:d.tipo||'',activo:d.activo!==false}) },
+  'cfg_transportadoras': { table:'cfg_transportadoras', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',activa:d.activa!==false}) },
+  'cfg_metodos_pago':    { table:'cfg_metodos_pago', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'',activo:d.activo!==false}) },
+  'cfg_tarifas':         { table:'cfg_tarifas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,descripcion:d.descripcion||''}) },
+  'nom_conceptos':       { table:'nom_conceptos_cfg', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'devengo',formula:d.formula||'fijo',valor:parseFloat(d.valor)||0}) },
+  'bodegas_cfg':         { table:'bodegas', mapFn:(d)=>({id:d.id,nombre:d.name||d.nombre||'',ubicacion:d.ubicacion||''}) }
 };
 
 async function saveRecord(collection, id, data) {
@@ -2274,7 +2284,7 @@ function renderInvAjustes(){
     </tbody></table></div></div>`;
 }
 
-function eliminarAjuste(id) {
+async function eliminarAjuste(id) {
   if(!confirm('¿Eliminar este ajuste? El stock de la prenda se recalculará automáticamente.')) return;
   const a = state.inv_ajustes.find(x => x.id === id);
   if(!a) return;
@@ -2377,7 +2387,7 @@ function renderInvTraslados(){
     </tbody></table></div></div>`;
 }
 
-function eliminarTraslado(id) {
+async function eliminarTraslado(id) {
   if(!confirm('¿Eliminar este traslado? Las prendas volverán automáticamente a su bodega de origen.')) return;
   const t = state.inv_traslados.find(x => x.id === id);
   if(!t) return;
@@ -2560,7 +2570,7 @@ function updateDocTotal(){
   const el=document.getElementById('m-doc-total');if(el)el.textContent='Total: '+fmt(total);
 }
 
-function saveDoc(collection,tipo){
+async function saveDoc(collection,tipo){
   const fecha=document.getElementById('m-doc-fecha').value||today();
   const cliente=document.getElementById('m-doc-cliente').value.trim();
   const obs=document.getElementById('m-doc-obs').value.trim();
@@ -2568,23 +2578,35 @@ function saveDoc(collection,tipo){
   const items=_docItems.filter(i=>i.precio>0);
   if(items.length===0){notify('warning','⚠️','Sin ítems','Agrega al menos un ítem.',{duration:3000});return}
   const subtotal=items.reduce((a,i)=>a+(i.cantidad*i.precio),0);
-  const iva=subtotal*0.19;const total=subtotal+iva;
-  const consKeys={cotizaciones:'cotizacion',ordenes_venta:'orden',facturas:'factura',notas_credito:'nc',notas_debito:'nd',remisiones:'remision',devoluciones:'devolucion',anticipos_clientes:'anticipo'};
-  const prefixes={cotizaciones:'COT',ordenes_venta:'OV',facturas:'FAC',notas_credito:'NC',notas_debito:'ND',remisiones:'REM',devoluciones:'DEV',anticipos_clientes:'ANT'};
-  const prefix=prefixes[collection]||'DOC';const consKey=consKeys[collection]||'factura';
+  const iva=subtotal*0.19; const total=subtotal+iva;
+  const prefixes={cotizaciones:'COT',ordenes_venta:'OV',facturas:'FAC',notas_credito:'NC',
+    notas_debito:'ND',remisiones:'REM',devoluciones:'DEV',anticipos_clientes:'ANT'};
+  const consKeys={cotizaciones:'cotizacion',ordenes_venta:'orden',facturas:'factura',
+    notas_credito:'nc',notas_debito:'nd',remisiones:'remision',devoluciones:'devolucion',anticipos_clientes:'anticipo'};
+  const prefix=prefixes[collection]||'DOC';
+  const consKey=consKeys[collection]||'factura';
   const numero=prefix+'-'+getNextConsec(consKey);
-  
-  const doc={id:uid(),numero,fecha,cliente,items:items.map(i=>({...i})),subtotal,iva,total,estado:'borrador',observaciones:obs,facturaRef:refId,tipo};
-  state[collection].push(doc);
+  const docData={id:uid(),numero,fecha,cliente,items:items.map(i=>({...i})),
+    subtotal,iva,total,estado:'borrador',observaciones:obs,facturaRef:refId,tipo};
+
+  // Guardar en state local
+  if(!state[collection]) state[collection]=[];
+  state[collection].push(docData);
   _docItems=[];
-  
-  // --- GUARDADO ATÓMICO ---
-  saveRecord(collection, doc.id, doc);
-  // consecutivos en memoria local
-  
-  closeModal();renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
+
+  // Guardar en Supabase legacy_docs
+  try {
+    await supabaseClient.from('legacy_docs').insert({
+      id:docData.id, tipo, numero:docData.numero, data:docData
+    });
+    await saveConfig('consecutivos', state.consecutivos);
+  } catch(e){ console.warn('saveDoc Supabase error:', e.message); }
+
+  closeModal();
+  renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Documento creado',`${numero} · ${fmt(total)}`,{duration:3000});
 }
+
 
 function viewDoc(collection,id){
   const doc=(state[collection]||[]).find(d=>d.id===id);if(!doc)return;
