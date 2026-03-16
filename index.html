@@ -322,7 +322,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </main>
 </div>
 
-<div class="modal-overlay" id="modal-overlay">
+<div class="modal-overlay" id="modal-overlay" onclick="handleModalOverlayClick(event)">
   <div class="modal" id="modal-content"></div>
 </div>
 
@@ -902,8 +902,27 @@ function openModal(html,isLg){
   document.getElementById('modal-content').innerHTML=html;
   document.getElementById('modal-content').className='modal'+(isLg?' modal-lg':'');
   document.getElementById('modal-overlay').classList.add('active');
+  // Ensure there's always an X button visible
+  const mc = document.getElementById('modal-content');
+  if(mc && !mc.querySelector('.modal-close')) {
+    const x = document.createElement('button');
+    x.className = 'modal-close'; x.textContent = '×'; x.title = 'Cerrar (ESC)';
+    x.onclick = closeModal;
+    mc.insertBefore(x, mc.firstChild);
+  }
 }
 function closeModal(){document.getElementById('modal-overlay').classList.remove('active')}
+function handleModalOverlayClick(e){if(e.target.id==='modal-overlay')closeModal();}
+
+// ESC key closes any open modal
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') {
+    // Close main modal
+    if(document.getElementById('modal-overlay')?.classList.contains('active')) { closeModal(); return; }
+    // Close celebration
+    if(document.getElementById('celebration-overlay')?.classList.contains('active')) { closeCelebration(); return; }
+  }
+});
 
 // ===== NOTIFICATIONS =====
 function notify(type,icon,title,body,opts={}){
