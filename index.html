@@ -1958,7 +1958,20 @@ function renderArticulosList(){
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
     // Cargar imágenes existentes del artículo en la galería temporal
+    // Load images: from state first, then from product_media if empty
     _tempGaleria = art ? [...(art.images || art.galeria || [])] : [];
+    // If existing article has no images in state, try to fetch from product_media
+    if(art && _tempGaleria.length === 0) {
+      supabaseClient.from('product_media').select('url,is_cover').eq('product_id', art.id)
+        .then(({data}) => {
+          if(data && data.length > 0) {
+            _tempGaleria = data.sort((a,b)=>(b.is_cover?1:0)-(a.is_cover?1:0)).map(m=>m.url);
+            const artInState = state.articulos.find(a=>a.id===art.id);
+            if(artInState) { artInState.images = _tempGaleria; artInState.imagen = _tempGaleria[0]||''; }
+            renderGaleriaVisual();
+          }
+        }).catch(()=>{});
+    }
     _portadaIndex = 0;
     window._galeriaModificada = false;
     // Flag para saber si es edición (preservar imágenes si no se tocan)
@@ -2264,7 +2277,8 @@ async function saveArticulo(existingId) {
           precioCompra: productData.cost,
           tallas: tallasStr, sizes: tallasStr,
           colores: coloresStr, colors: coloresStr.split(',').map(c=>c.trim()).filter(Boolean),
-          images: _tempGaleria, imagen: _tempGaleria[_portadaIndex] || _tempGaleria[0] || '',
+          images: window._galeriaModificada ? _tempGaleria : (existingId ? ((state.articulos.find(a=>a.id===productId)||{}).images || _tempGaleria) : _tempGaleria),
+          imagen: window._galeriaModificada ? (_tempGaleria[_portadaIndex]||_tempGaleria[0]||'') : (existingId ? ((state.articulos.find(a=>a.id===productId)||{}).imagen || _tempGaleria[0] || '') : (_tempGaleria[_portadaIndex]||_tempGaleria[0]||'')),
           stock: productData.stock, stockMinimo: 0,
           activo: true, mostrarEnWeb: productData.visible,
           tituloMercancia: tituloMercancia,
