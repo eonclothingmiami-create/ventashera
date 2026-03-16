@@ -1914,7 +1914,8 @@ function renderArticulos(){
 function renderArticulosList(){
   const search=(document.getElementById('art-search')?.value||'').toLowerCase();
   let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
-  document.getElementById('art-tbody').innerHTML=items.map(a=>{
+  const artTbody = document.getElementById('art-tbody'); if(!artTbody) return;
+  artTbody.innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
     const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
    const tituloLabel = {propia:'🏷️ Propia',contado:'💵 Contado',credito:'💳 Crédito'};
@@ -2309,7 +2310,7 @@ function openAjusteModal(){
       <div class="form-group"><label class="form-label">CANTIDAD</label><input type="number" class="form-control" id="m-aj-cant" min="1" value="1"></div>
     </div>
     <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-aj-bod">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-   <div class="form-group"><label class="form-label">MOTIVO</label><select class="form-control" id="m-aj-motivo"><option value="Compra de mercancía">📦 Compra de mercancía (Entrada)</option><option value="Devolución de cliente">↩️ Devolución de cliente (Entrada)</option><option value="Mercancía encontrada">🔍 Mercancía encontrada (Entrada)</option><option value="Corrección de inventario">✏️ Corrección de inventario</option><option value="Venta no registrada">💸 Venta no registrada (Salida)</option><option value="Mercancía dañada">💔 Mercancía dañada (Salida)</option><option value="Mercancía perdida">❓ Mercancía perdida (Salida)</option><option value="Muestra / Regalo">🎁 Muestra / Regalo (Salida)</option><option value="Otro">📝 Otro</option></select></div>
+    <div class="form-group"><label class="form-label">MOTIVO</label><input class="form-control" id="m-aj-motivo" placeholder="Motivo del ajuste"></div>
     <button class="btn btn-primary" style="width:100%" onclick="saveAjusteInv()">Guardar Ajuste</button>
   `);
 }
@@ -2363,7 +2364,7 @@ async function saveAjusteInv() {
 
     closeModal();
     renderInvAjustes();
-    renderArticulosList();
+    if(document.getElementById('art-tbody')) renderArticulosList();
     showLoadingOverlay('hide');
     notify('success','✅','Ajuste guardado',
       `${tipo==='entrada'?'+':'−'}${cant} unidades · Stock actual: ${product?.stock||0}`,
