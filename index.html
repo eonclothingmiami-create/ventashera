@@ -552,7 +552,8 @@ let state = {
   meta: 34000000, 
   diasLocal: 1, 
   diasInter: 5,
-  empleados: [],      
+  empleados: [],
+  usu_empleados: [],      
   nomina_pagos: [],   
   ventas: [], 
   currentMonth: null,
@@ -813,6 +814,8 @@ async function loadState() {
     const customers = await fetchAllRows('customers');
     state.usu_clientes = (customers||[]).map(c=>({...c,tipo:'cliente',tipoId:'CC',celular:c.celular||'',fechaCreacion:c.created_at?c.created_at.split('T')[0]:today()}));
     state.empleados = (employees||[]).map(e=>({...e,salarioBase:parseFloat(e.salario_base)||0,tipoContrato:e.tipo_contrato||'indefinido'}));
+    // usu_empleados es el mismo array — renderUsuEmpleados lo usa
+    state.usu_empleados = state.empleados;
     state.usu_proveedores = (proveedores||[]).map(p=>({...p,tipo:'proveedor'}));
 
     // Ventas
@@ -2363,9 +2366,7 @@ async function eliminarAjuste(id) {
 function openAjusteModal(){
   openModal(`
     <div class="modal-title">Nuevo Ajuste de Inventario<button class="modal-close" onclick="closeModal()">×</button></div>
-   <div class="form-group"><label class="form-label">ARTÍCULO</label>
-<input type="text" class="form-control" id="m-aj-art-search" placeholder="Buscar artículo..." oninput="filtrarSelectArticulo('m-aj-art-search','m-aj-art')" autocomplete="off">
-<select class="form-control" id="m-aj-art" size="5" style="margin-top:4px">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+' — Stock: '+getArticuloStock(a.id)+'</option>').join('')}</select></div>
+    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-aj-art">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+' (Stock: '+getArticuloStock(a.id)+')</option>').join('')}</select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">TIPO</label><select class="form-control" id="m-aj-tipo"><option value="entrada">📥 Entrada</option><option value="salida">📤 Salida</option></select></div>
       <div class="form-group"><label class="form-label">CANTIDAD</label><input type="number" class="form-control" id="m-aj-cant" min="1" value="1"></div>
@@ -2478,9 +2479,7 @@ async function eliminarTraslado(id) {
 function openTrasladoModal(){
   openModal(`
     <div class="modal-title">Nuevo Traslado<button class="modal-close" onclick="closeModal()">×</button></div>
-   <div class="form-group"><label class="form-label">ARTÍCULO</label>
-<input type="text" class="form-control" id="m-tr-art-search" placeholder="Buscar artículo..." oninput="filtrarSelectArticulo('m-tr-art-search','m-tr-art')" autocomplete="off">
-<select class="form-control" id="m-tr-art" size="5" style="margin-top:4px">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+'</option>').join('')}</select></div>
+    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-tr-art">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+'</option>').join('')}</select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">BODEGA ORIGEN</label><select class="form-control" id="m-tr-orig">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
       <div class="form-group"><label class="form-label">BODEGA DESTINO</label><select class="form-control" id="m-tr-dest">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
@@ -2518,17 +2517,6 @@ async function saveTraslado(){
   renderInvTraslados();
   notify('success','✅','Traslado realizado',`${cant} unidades movidas`,{duration:3000});
 }
-
-function filtrarSelectArticulo(inputId, selectId) {
-  const q = document.getElementById(inputId)?.value.toLowerCase() || '';
-  const sel = document.getElementById(selectId);
-  if(!sel) return;
-  sel.innerHTML = (state.articulos||[])
-    .filter(a => !q || a.nombre.toLowerCase().includes(q) || (a.codigo||'').toLowerCase().includes(q))
-    .map(a => `<option value="${a.id}">${a.nombre} — Stock: ${getArticuloStock(a.id)}</option>`)
-    .join('');
-}
-  
 // ===================================================================
 // ===== GENERIC DOCUMENT RENDERER (Cotizaciones, Órdenes, etc) =====
 // ===================================================================
@@ -2987,6 +2975,9 @@ async function guardarUsuario(collection, tipo, pageId, existingId) {
     } else {
       state[collection].push(data);
     }
+    // Mantener sincronía entre state.empleados y state.usu_empleados
+    if(tipo === 'empleado') state.empleados = state.usu_empleados;
+    if(tipo === 'cliente') state.usu_clientes = state.usu_clientes; // ya sincronizado
 
     closeModal();
     renderPage(pageId);
@@ -3014,6 +3005,8 @@ async function eliminarUsuario(collection, id, pageId, titulo, tipo) {
 
     // Remover de la vista local
     state[collection] = (state[collection] || []).filter(x => x.id !== id);
+    // Mantener sincronía
+    if(tipo === 'empleado') state.empleados = state.usu_empleados;
     renderPage(pageId);
     
     showLoadingOverlay('hide');
