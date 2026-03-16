@@ -698,7 +698,17 @@ function getISOWeek(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d
 function getWeekSnack(){const{week,year}=getISOWeek(new Date());const hash=Math.abs((week*31+year*7+week*year)%SNACKS.length);return{snack:SNACKS[hash],week,year}}
 function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday=new Date(now);monday.setDate(now.getDate()-dow+1);monday.setHours(0,0,0,0);const active=(state.ventas||[]).filter(v=>!v.archived);let xp=0;active.forEach(v=>{const vDate=new Date(v.fecha+'T12:00:00');if(vDate>=monday)xp+=calcXP(v.canal,v.valor)});return xp}
 function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
-function getArticuloStock(artId,bodegaId){return(state.inv_movimientos||[]).filter(m=>m.articuloId===artId&&(!bodegaId||m.bodegaId===bodegaId)).reduce((a,m)=>a+m.cantidad,0)}
+function getArticuloStock(artId, bodegaId) {
+  // Lee directamente de products.stock (fuente de verdad en Supabase)
+  // Si se pide por bodega específica, usa inv_movimientos como antes
+  if(bodegaId) {
+    return (state.inv_movimientos||[])
+      .filter(m => m.articuloId===artId && m.bodegaId===bodegaId)
+      .reduce((a,m) => a+m.cantidad, 0);
+  }
+  const art = (state.articulos||[]).find(a => a.id === artId);
+  return art ? (art.stock||0) : 0;
+}
 
 
 // Carga paginada usando REST directo (evita DataCloneError del SDK)
@@ -2145,14 +2155,26 @@ async function saveArticulo(existingId) {
             .upsert(productData, { onConflict: 'id' });
         if (error) throw error;
 
-        // 1b. Si es nuevo y tiene stock inicial, registrar en stock_moves
+        // 1b. Si hay stock, registrar ajuste de entrada en inv_ajustes
         const stockInicial = parseInt(document.getElementById('m-art-stock0')?.value)||0;
-        if(!existingId && stockInicial > 0) {
-          await supabaseClient.from('stock_moves').insert({
-            product_id: productId,
-            qty: stockInicial,
-            reason: 'Stock inicial'
-          });
+        if(stockInicial > 0) {
+          const ajId = uid();
+          try {
+            await supabaseClient.from('inv_ajustes').insert({
+              id: ajId, articulo_id: productId, bodega_id: 'bodega_main',
+              tipo: 'entrada', cantidad: stockInicial,
+              motivo: existingId ? 'Ajuste de stock' : 'Stock inicial al crear artículo',
+              fecha: today()
+            });
+            if(!state.inv_ajustes) state.inv_ajustes = [];
+            state.inv_ajustes.push({id:ajId, articuloId:productId, bodegaId:'bodega_main',
+              tipo:'entrada', cantidad:stockInicial,
+              motivo: existingId ? 'Ajuste de stock' : 'Stock inicial', fecha:today()});
+            if(!state.inv_movimientos) state.inv_movimientos = [];
+            state.inv_movimientos.push({id:'aj_'+ajId, articuloId:productId,
+              bodegaId:'bodega_main', cantidad:stockInicial, tipo:'ajuste_entrada',
+              fecha:today(), referencia:'Ajuste', nota:'Stock inicial'});
+          } catch(e) { console.warn('inv_ajuste stock error:', e.message); }
         }
 
         // 2. MANEJAR IMÁGENES en product_media
