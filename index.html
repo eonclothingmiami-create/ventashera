@@ -2192,36 +2192,55 @@ function renderDocumentList(pageId,title,collection,tipo,fields){
 
   const total=[...(state[collection]||[])].length;
 
+  const tbodyId = pageId+'-doc-tbody';
+  const contId = pageId+'-doc-count';
+  const rowsHtml = items.map(d=>`<tr>
+    <td style="font-weight:700">${d.numero||'—'}</td>
+    <td>${formatDate(d.fecha)}</td>
+    <td>${d.cliente||'—'}</td>
+    <td style="color:var(--accent);font-weight:700">${fmt(d.total||0)}</td>
+    <td><span class="badge badge-${d.estado==='pagada'||d.estado==='aprobada'?'ok':d.estado==='anulada'?'pend':'warn'}">${d.estado||'borrador'}</span></td>
+    <td><div class="btn-group">
+      <button class="btn btn-xs btn-secondary" onclick="viewDoc('${collection}','${d.id}')">👁</button>
+      <button class="btn btn-xs btn-secondary" onclick="printDoc('${collection}','${d.id}')">🖨</button>
+      <button class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d.id}')">✕</button>
+    </div></td>
+  </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>`;
+
+  // Si ya existe la tabla, solo actualizar filas (mantiene foco del input)
+  if(document.getElementById(tbodyId)) {
+    document.getElementById(tbodyId).innerHTML = rowsHtml;
+    const cnt = document.getElementById(contId);
+    if(cnt) cnt.textContent = `${items.length} de ${total}`;
+    const btnL = document.getElementById(pageId+'-doc-limpiar');
+    if(btnL) btnL.style.display = (q||desde||hasta)?'inline-flex':'none';
+    return;
+  }
+
   el.innerHTML=`
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
       <button class="btn btn-primary" onclick="openDocModal('${collection}','${tipo}')">+ ${title}</button>
       <div class="search-bar" style="flex:1;min-width:180px;max-width:300px;margin:0">
         <span class="search-icon">🔍</span>
-        <input type="text" id="${pageId}-search" placeholder="Buscar # o cliente..." value="${q}" oninput="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">
+        <input type="text" id="${pageId}-search" placeholder="Buscar # o cliente..." value="${q}"
+          oninput="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <input type="date" id="${pageId}-desde" class="form-control" style="width:140px;padding:8px" value="${desde}" onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Desde">
+        <input type="date" id="${pageId}-desde" class="form-control" style="width:140px;padding:8px" value="${desde}"
+          onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Desde">
         <span style="color:var(--text2);font-size:11px;">hasta</span>
-        <input type="date" id="${pageId}-hasta" class="form-control" style="width:140px;padding:8px" value="${hasta}" onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Hasta">
-        ${(desde||hasta||q)?`<button class="btn btn-xs btn-secondary" onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">✕ Limpiar</button>`:''}
+        <input type="date" id="${pageId}-hasta" class="form-control" style="width:140px;padding:8px" value="${hasta}"
+          onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Hasta">
+        <button class="btn btn-xs btn-secondary" id="${pageId}-doc-limpiar" style="display:${(q||desde||hasta)?'inline-flex':'none'}"
+          onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">✕ Limpiar</button>
       </div>
     </div>
     <div class="card">
-      <div class="card-title">${title.toUpperCase()} — ${items.length} de ${total}</div>
-      <div class="table-wrap"><table><thead><tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${items.map(d=>`<tr>
-        <td style="font-weight:700">${d.numero||'—'}</td>
-        <td>${formatDate(d.fecha)}</td>
-        <td>${d.cliente||'—'}</td>
-        <td style="color:var(--accent);font-weight:700">${fmt(d.total||0)}</td>
-        <td><span class="badge badge-${d.estado==='pagada'||d.estado==='aprobada'?'ok':d.estado==='anulada'?'pend':'warn'}">${d.estado||'borrador'}</span></td>
-        <td><div class="btn-group">
-          <button class="btn btn-xs btn-secondary" onclick="viewDoc('${collection}','${d.id}')">👁</button>
-          <button class="btn btn-xs btn-secondary" onclick="printDoc('${collection}','${d.id}')">🖨</button>
-          <button class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d.id}')">✕</button>
-        </div></td>
-      </tr>`).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>`}
-      </tbody></table></div>
+      <div class="card-title">${title.toUpperCase()} — <span id="${contId}">${items.length} de ${total}</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="${tbodyId}">${rowsHtml}</tbody>
+      </table></div>
     </div>`;
 }
 
@@ -2373,8 +2392,8 @@ function renderUsuarios(pageId, titulo, collection, tipo){
   const desde = document.getElementById(pageId+'-desde')?.value||'';
   const hasta = document.getElementById(pageId+'-hasta')?.value||'';
 
- if(!state[collection]) state[collection]=[];
-let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() : [];
+  if(!state[collection]) state[collection]=[];
+  let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() : [];
   if(q) items = items.filter(u =>
     (u.nombre||'').toLowerCase().includes(q) ||
     (u.cedula||'').toLowerCase().includes(q) ||
@@ -2387,6 +2406,20 @@ let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() 
 
   const total = (state[collection]||[]).length;
 
+  // Si ya existe el contenedor, solo actualizar la tabla (evita perder foco del input)
+  const tbodyId = pageId+'-tbody';
+  const contadorId = pageId+'-contador';
+  const existing = document.getElementById(tbodyId);
+
+  if(existing) {
+    // Solo repintar tabla y contador
+    existing.innerHTML = renderUsuariosRows(items, collection, tipo, pageId);
+    const contador = document.getElementById(contadorId);
+    if(contador) contador.textContent = `${items.length} de ${total}`;
+    return;
+  }
+
+  // Primera carga: pintar todo
   el.innerHTML = `
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
       <button class="btn btn-primary" onclick="openUsuarioModal('${collection}','${tipo}')">+ Nuevo ${titulo}</button>
@@ -2395,42 +2428,85 @@ let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() 
       <button class="btn btn-secondary" onclick="descargarPlantilla('${tipo}')" title="Descargar plantilla">⬇ Plantilla</button>
       <div class="search-bar" style="flex:1;min-width:180px;max-width:300px;margin:0">
         <span class="search-icon">🔍</span>
-        <input type="text" id="${pageId}-search" placeholder="Nombre, cédula, ciudad..." value="${q}" oninput="renderUsuarios('${pageId}','${titulo}','${collection}','${tipo}')">
+        <input type="text" id="${pageId}-search" placeholder="Nombre, cédula, ciudad..."
+          value="${q}"
+          oninput="renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">
       </div>
-      <input type="date" class="form-control" id="${pageId}-desde" style="width:140px" value="${desde}" onchange="renderUsuarios('${pageId}','${titulo}','${collection}','${tipo}')">
+      <input type="date" class="form-control" id="${pageId}-desde" style="width:140px" value="${desde}"
+        onchange="renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">
       <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
-      <input type="date" class="form-control" id="${pageId}-hasta" style="width:140px" value="${hasta}" onchange="renderUsuarios('${pageId}','${titulo}','${collection}','${tipo}')">
-      ${(q||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderUsuarios('${pageId}','${titulo}','${collection}','${tipo}')">✕ Limpiar</button>`:''}
+      <input type="date" class="form-control" id="${pageId}-hasta" style="width:140px" value="${hasta}"
+        onchange="renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">
+      <button class="btn btn-xs btn-secondary" id="${pageId}-limpiar" style="display:${(q||desde||hasta)?'inline-flex':'none'}"
+        onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">✕ Limpiar</button>
     </div>
 
     <div class="card">
-      <div class="card-title">👥 ${titulo.toUpperCase()}S — ${items.length} de ${total}</div>
+      <div class="card-title">👥 ${titulo.toUpperCase()}S — <span id="${contadorId}">${items.length} de ${total}</span></div>
       <div class="table-wrap">
         <table>
           <thead><tr>
             <th>Nombre</th><th>Identificación</th><th>Celular</th><th>WhatsApp</th>
             <th>Email</th><th>Ciudad</th><th>Tipo</th><th></th>
           </tr></thead>
-          <tbody>
-            ${items.map(u=>`<tr>
-              <td style="font-weight:700">${u.nombre||'—'}</td>
-              <td>${u.tipoId||''} ${u.cedula||'—'}</td>
-              <td>${u.celular||'—'}</td>
-              <td>${u.whatsapp||'—'}</td>
-              <td>${u.email||'—'}</td>
-              <td>${u.ciudad||'—'}</td>
-              <td><span class="badge badge-warn">${u.tipoPersona||tipo}</span></td>
-              <td><div class="btn-group">
-                <button class="btn btn-xs btn-secondary" onclick="openUsuarioModal('${collection}','${tipo}','${pageId}','${items.indexOf(u)}',true)">✏️</button>
-                <button class="btn btn-xs btn-danger" onclick="eliminarUsuario('${collection}','${u.id}','${pageId}','${titulo}','${tipo}')">✕</button>
-              </div></td>
-            </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>'}
+          <tbody id="${tbodyId}">
+            ${renderUsuariosRows(items, collection, tipo, pageId)}
           </tbody>
         </table>
       </div>
     </div>
-    <input type="file" id="${pageId}-file-input" accept=".csv,.xls,.xlsx" style="display:none" onchange="procesarArchivoUsuarios(this,'${collection}','${tipo}','${pageId}')">`;
+    <input type="file" id="${pageId}-file-input" accept=".csv,.xls,.xlsx" style="display:none"
+      onchange="procesarArchivoUsuarios(this,'${collection}','${tipo}','${pageId}')">`;
 }
+
+function renderUsuariosTabla(pageId, titulo, collection, tipo) {
+  // Actualiza solo la tabla sin repintar los filtros (mantiene foco)
+  const q = (document.getElementById(pageId+'-search')?.value||'').toLowerCase();
+  const desde = document.getElementById(pageId+'-desde')?.value||'';
+  const hasta = document.getElementById(pageId+'-hasta')?.value||'';
+
+  if(!state[collection]) state[collection]=[];
+  let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() : [];
+  if(q) items = items.filter(u =>
+    (u.nombre||'').toLowerCase().includes(q) ||
+    (u.cedula||'').toLowerCase().includes(q) ||
+    (u.celular||'').toLowerCase().includes(q) ||
+    (u.email||'').toLowerCase().includes(q) ||
+    (u.ciudad||'').toLowerCase().includes(q)
+  );
+  if(desde) items = items.filter(u => (u.fechaCreacion||'') >= desde);
+  if(hasta) items = items.filter(u => (u.fechaCreacion||'') <= hasta);
+
+  const total = (state[collection]||[]).length;
+  const tbody = document.getElementById(pageId+'-tbody');
+  if(tbody) tbody.innerHTML = renderUsuariosRows(items, collection, tipo, pageId);
+  const contador = document.getElementById(pageId+'-contador');
+  if(contador) contador.textContent = `${items.length} de ${total}`;
+  // Mostrar/ocultar botón limpiar
+  const btnLimpiar = document.getElementById(pageId+'-limpiar');
+  if(btnLimpiar) btnLimpiar.style.display = (q||desde||hasta) ? 'inline-flex' : 'none';
+}
+
+function renderUsuariosRows(items, collection, tipo, pageId) {
+  if(!items.length) return '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>';
+  // Show max 200 rows for performance with 8000+ records
+  const visible = items.slice(0, 200);
+  const more = items.length > 200 ? `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:12px;font-size:11px">... y ${items.length-200} más. Usa el buscador para filtrar.</td></tr>` : '';
+  return visible.map((u,idx) => `<tr>
+    <td style="font-weight:700">${u.nombre||'—'}</td>
+    <td>${u.tipoId||''} ${u.cedula||'—'}</td>
+    <td>${u.celular||'—'}</td>
+    <td>${u.whatsapp||'—'}</td>
+    <td>${u.email||'—'}</td>
+    <td>${u.ciudad||'—'}</td>
+    <td><span class="badge badge-warn">${u.tipoPersona||tipo}</span></td>
+    <td><div class="btn-group">
+      <button class="btn btn-xs btn-secondary" onclick="openUsuarioModal('${collection}','${tipo}','${pageId}','${idx}',true)">✏️</button>
+      <button class="btn btn-xs btn-danger" onclick="eliminarUsuario('${collection}','${u.id}','${pageId}','${tipo}','${tipo}')">✕</button>
+    </div></td>
+  </tr>`).join('') + more;
+}
+
 
 function renderUsuClientes(){ renderUsuarios('usu_clientes','Cliente','usu_clientes','cliente'); }
 function renderUsuEmpleados(){ renderUsuarios('usu_empleados','Empleado','usu_empleados','empleado'); }
@@ -2850,6 +2926,29 @@ function renderLogistica(){
   if(hasta)guias=guias.filter(v=>v.fecha<=hasta);
   if(q)guias=guias.filter(v=>(v.cliente||'').toLowerCase().includes(q)||(v.guia||'').toLowerCase().includes(q)||(v.telefono||'').toLowerCase().includes(q)||(v.ciudad||'').toLowerCase().includes(q));
   const total=(state.ventas||[]).filter(v=>v.canal==='local'||v.canal==='inter').length;
+
+  const rowsHtml = guias.map(v=>`<tr>
+    <td>${formatDate(v.fecha)}</td>
+    <td><span class="badge ${v.canal==='local'?'badge-warn':'badge-inter'}">${v.canal==='local'?'🛵':'📦'} ${v.canal}</span></td>
+    <td style="font-weight:700">${v.cliente||'—'}</td>
+    <td>${v.telefono||'—'}</td>
+    <td>${v.ciudad||'—'}</td>
+    <td>${v.transportadora||v.empresa||'—'}</td>
+    <td style="color:var(--accent);font-weight:700">${v.guia||'—'}</td>
+    <td style="font-weight:700">${fmt(v.valor||0)}</td>
+    <td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'✓ Liq':'⏳ Pend'}</span></td>
+    <td><span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}">${v.esContraEntrega?'📦 C/E':'💵 Ctdo'}</span></td>
+  </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:24px">Sin guías</td></tr>';
+
+  if(document.getElementById('log-tbody')) {
+    document.getElementById('log-tbody').innerHTML = rowsHtml;
+    const cnt = document.getElementById('log-count');
+    if(cnt) cnt.textContent = `${guias.length} de ${total}`;
+    const btnL = document.getElementById('log-limpiar');
+    if(btnL) btnL.style.display=(q||canal||trans||desde||hasta)?'inline-flex':'none';
+    return;
+  }
+
   el.innerHTML=`
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
       <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0"><span class="search-icon">🔍</span>
@@ -2861,13 +2960,16 @@ function renderLogistica(){
       <input type="date" class="form-control" id="log-desde" style="width:130px" value="${desde}" onchange="renderLogistica()">
       <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
       <input type="date" class="form-control" id="log-hasta" style="width:130px" value="${hasta}" onchange="renderLogistica()">
-      ${(q||canal||trans||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="['log-search','log-trans'].forEach(id=>{document.getElementById(id).value=''});['log-canal','log-desde','log-hasta'].forEach(id=>{document.getElementById(id).value=''});renderLogistica()">✕</button>`:''}
+      <button class="btn btn-xs btn-secondary" id="log-limpiar" style="display:${(q||canal||trans||desde||hasta)?'inline-flex':'none'}"
+        onclick="['log-search','log-trans'].forEach(id=>{document.getElementById(id).value=''});['log-canal','log-desde','log-hasta'].forEach(id=>{document.getElementById(id).value=''});renderLogistica()">✕</button>
     </div>
-    <div class="card"><div class="card-title">🚚 GUÍAS — ${guias.length} de ${total}</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Canal</th><th>Cliente</th><th>Teléfono</th><th>Ciudad</th><th>Transportadora</th><th>N° Guía</th><th>Total</th><th>Estado</th></tr></thead><tbody>
-    ${guias.map(v=>`<tr><td>${formatDate(v.fecha)}</td><td><span class="badge ${v.canal==='local'?'badge-warn':'badge-inter'}">${v.canal==='local'?'🛵':'📦'} ${v.canal}</span></td><td style="font-weight:700">${v.cliente||'—'}</td><td>${v.telefono||'—'}</td><td>${v.ciudad||'—'}</td><td>${v.transportadora||v.empresa||'—'}</td><td style="color:var(--accent);font-weight:700">${v.guia||'—'}</td><td style="font-weight:700">${fmt(v.valor||0)}</td><td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'✓ Liq':'⏳ Pend'}</span></td></tr>`).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin guías</td></tr>'}
-    </tbody></table></div></div>`;
+    <div class="card"><div class="card-title">🚚 GUÍAS — <span id="log-count">${guias.length} de ${total}</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Fecha</th><th>Canal</th><th>Cliente</th><th>Teléfono</th><th>Ciudad</th><th>Transportadora</th><th>N° Guía</th><th>Total</th><th>Estado</th><th>Tipo Cobro</th></tr></thead>
+      <tbody id="log-tbody">${rowsHtml}</tbody>
+    </table></div></div>`;
 }
+
 
 function renderPendientes(){
   // Solo contra entrega pendiente va a cobros (contado ya está liquidado al vender)
@@ -4158,46 +4260,42 @@ function renderAlertas(){
 function renderHistorial(){
   const q = (document.getElementById('hist-search')?.value || '').toLowerCase();
   let ventas = (state.ventas || []).slice().reverse();
-  
   if(q) ventas = ventas.filter(v => (v.desc||'').toLowerCase().includes(q) || (v.cliente||'').toLowerCase().includes(q) || (v.guia||'').toLowerCase().includes(q));
 
+  const rowsHtml = ventas.map(v => `
+    <tr style="${v.archived ? 'opacity:0.6;' : ''}">
+      <td>${formatDate(v.fecha)}</td>
+      <td><span class="badge badge-${v.canal}">${v.canal}</span>${v.canal!=='vitrina'?`<span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega?'📦CE':'💵CD'}</span>`:''}</td>
+      <td style="font-weight:bold;">${v.desc||'—'}</td>
+      <td>${v.cliente||'—'}</td>
+      <td style="color:var(--accent);font-weight:700;">${fmt(v.valor)}</td>
+      <td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'Liquidado':'Pendiente'}</span></td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">Sin historial</td></tr>';
+
+  if(document.getElementById('hist-tbody')) {
+    document.getElementById('hist-tbody').innerHTML = rowsHtml;
+    const cnt = document.getElementById('hist-count');
+    if(cnt) cnt.textContent = ventas.length;
+    return;
+  }
+
   document.getElementById('historial-content').innerHTML = `
-    <div style="display:flex; margin-bottom: 16px;">
-      <div class="search-bar" style="flex:1; max-width: 400px; margin:0;">
+    <div style="display:flex;margin-bottom:16px;">
+      <div class="search-bar" style="flex:1;max-width:400px;margin:0;">
         <span class="search-icon">🔍</span>
-        <input type="text" id="hist-search" placeholder="Buscar por # factura, cliente o guía..." value="${q}" oninput="renderHistorial()">
+        <input type="text" id="hist-search" placeholder="Buscar por # factura, cliente o guía..."
+          value="${q}" oninput="renderHistorial()">
       </div>
     </div>
     <div class="card">
-      <div class="card-title">HISTORIAL GLOBAL DE VENTAS (${ventas.length})</div>
+      <div class="card-title">HISTORIAL GLOBAL DE VENTAS (<span id="hist-count">${ventas.length}</span>)</div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Canal</th>
-              <th>Referencia</th>
-              <th>Cliente</th>
-              <th>Total</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${ventas.map(v => `
-              <tr style="${v.archived ? 'opacity: 0.6;' : ''}">
-                <td>${formatDate(v.fecha)}</td>
-                <td><span class="badge badge-${v.canal}">${v.canal}</span>${v.canal!=='vitrina'?`<span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega?'📦CE':'💵CD'}</span>`:''}</td>
-                <td style="font-weight:bold;">${v.desc || '—'}</td>
-                <td>${v.cliente || '—'}</td>
-                <td style="color:var(--accent); font-weight:700;">${fmt(v.valor)}</td>
-                <td><span class="badge ${v.liquidado ? 'badge-ok' : 'badge-pend'}">${v.liquidado ? 'Liquidado' : 'Pendiente'}</span></td>
-              </tr>
-            `).join('') || '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text2)">Sin historial de ventas</td></tr>'}
-          </tbody>
+          <thead><tr><th>Fecha</th><th>Canal</th><th>Referencia</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody id="hist-tbody">${rowsHtml}</tbody>
         </table>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
 function renderConfig(){
@@ -4403,6 +4501,29 @@ function renderSeparados(){
   const pendientes = separados.filter(v => v.estadoEntrega !== 'Entregado');
   const entregados = separados.filter(v => v.estadoEntrega === 'Entregado');
 
+  const rowsHtml = separados.map(v => `<tr style="${v.estadoEntrega==='Entregado'?'opacity:0.5':''}">
+    <td>${formatDate(v.fecha)}</td>
+    <td style="font-weight:700;color:var(--text2)">${v.desc||'—'}</td>
+    <td style="font-weight:700">${v.cliente||'MOSTRADOR'}</td>
+    <td>${v.telefono||'—'}</td>
+    <td style="font-size:11px;color:var(--text2)">${(v.items||[]).map(i=>(i.nombre||i.name||'')+(i.talla?' T:'+i.talla:'')).join(', ')||'—'}</td>
+    <td style="color:var(--accent);font-weight:700">${fmt(v.valor)}</td>
+    <td><span class="badge ${v.estadoEntrega==='Entregado'?'badge-ok':'badge-warn'}">${v.estadoEntrega||'Pendiente'}</span></td>
+    <td>${v.estadoEntrega!=='Entregado'
+      ?`<button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">✓ Entregar</button>`
+      :`<button class="btn btn-xs btn-danger" onclick="eliminarSeparado('${v.id}')">🗑</button>`}
+    </td>
+  </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin separados</td></tr>';
+
+  if(document.getElementById('sep-tbody')) {
+    document.getElementById('sep-tbody').innerHTML = rowsHtml;
+    const p = document.getElementById('sep-pend'); if(p) p.textContent = pendientes.length;
+    const e = document.getElementById('sep-entr'); if(e) e.textContent = entregados.length;
+    const btnL = document.getElementById('sep-limpiar');
+    if(btnL) btnL.style.display=(q||desde||hasta)?'inline-flex':'none';
+    return;
+  }
+
   document.getElementById('separados-content').innerHTML = `
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
       <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0">
@@ -4412,48 +4533,28 @@ function renderSeparados(){
       <input type="date" class="form-control" id="sep-desde" style="width:140px" value="${desde}" onchange="renderSeparados()">
       <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
       <input type="date" class="form-control" id="sep-hasta" style="width:140px" value="${hasta}" onchange="renderSeparados()">
-      ${(q||desde||hasta)?`<button class="btn btn-xs btn-secondary" onclick="document.getElementById('sep-search').value='';document.getElementById('sep-desde').value='';document.getElementById('sep-hasta').value='';renderSeparados()">✕ Limpiar</button>`:''}
+      <button class="btn btn-xs btn-secondary" id="sep-limpiar" style="display:${(q||desde||hasta)?'inline-flex':'none'}"
+        onclick="document.getElementById('sep-search').value='';document.getElementById('sep-desde').value='';document.getElementById('sep-hasta').value='';renderSeparados()">✕ Limpiar</button>
     </div>
-
     <div class="grid-2" style="margin-bottom:16px">
       <div class="card" style="margin:0;text-align:center">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--yellow)">${pendientes.length}</div>
+        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--yellow)" id="sep-pend">${pendientes.length}</div>
         <div style="font-size:11px;color:var(--text2)">⏳ Pendientes de entrega</div>
       </div>
       <div class="card" style="margin:0;text-align:center">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--green)">${entregados.length}</div>
+        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--green)" id="sep-entr">${entregados.length}</div>
         <div style="font-size:11px;color:var(--text2)">✅ Entregados hoy</div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title">🛍️ SEPARADOS (${separados.length})</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>Fecha</th><th>Ref</th><th>Cliente</th><th>Teléfono</th>
-            <th>Artículos</th><th>Total</th><th>Estado</th><th>Acción</th>
-          </tr></thead>
-          <tbody>
-            ${separados.map(v => `<tr style="${v.estadoEntrega==='Entregado'?'opacity:0.5':''}">
-              <td>${formatDate(v.fecha)}</td>
-              <td style="font-weight:700;color:var(--text2)">${v.desc||'—'}</td>
-              <td style="font-weight:700">${v.cliente||'MOSTRADOR'}</td>
-              <td>${v.telefono||'—'}</td>
-              <td style="font-size:11px;color:var(--text2)">${(v.items||[]).map(i=>(i.nombre||i.name||'')+(i.talla?' T:'+i.talla:'')).join(', ')||'—'}</td>
-              <td style="color:var(--accent);font-weight:700">${fmt(v.valor)}</td>
-              <td><span class="badge ${v.estadoEntrega==='Entregado'?'badge-ok':'badge-warn'}">${v.estadoEntrega||'Pendiente'}</span></td>
-              <td>
-                ${v.estadoEntrega!=='Entregado'
-                  ? `<button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">✓ Entregar</button>`
-                  : `<button class="btn btn-xs btn-danger" onclick="eliminarSeparado('${v.id}')">🗑</button>`}
-              </td>
-            </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin separados</td></tr>'}
-          </tbody>
-        </table>
-      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Ref</th><th>Cliente</th><th>Teléfono</th><th>Artículos</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead>
+        <tbody id="sep-tbody">${rowsHtml}</tbody>
+      </table></div>
     </div>`;
 }
+
 
 function entregarSeparado(id) {
   if(!confirm('¿El cliente ya recogió? Se marcará como entregado.')) return;
