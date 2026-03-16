@@ -909,6 +909,14 @@ const COLLECTION_MAP = {
   'cfg_transportadoras': { table:'cfg_transportadoras', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',activa:d.activa!==false}) },
   'cfg_metodos_pago':    { table:'cfg_metodos_pago', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'',activo:d.activo!==false}) },
   'cfg_tarifas':         { table:'cfg_tarifas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,descripcion:d.descripcion||''}) },
+  'cfg_impuestos':       { table:'cfg_impuestos', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,tipo:d.tipo||'',activo:d.activo!==false}) },
+  'bodegas':             { table:'bodegas', mapFn:(d)=>({id:d.id,nombre:d.name||d.nombre||'',ubicacion:d.ubicacion||''}) },
+  'nom_ausencias':       { table:'nom_ausencias', mapFn:(d)=>({id:d.id,empleado_nombre:d.empleado||'',tipo:d.tipo||'',desde:d.desde||null,hasta:d.hasta||null,dias:d.dias||0,observaciones:d.observaciones||'',aprobada:d.aprobada||false,fecha:d.fecha||null}) },
+  'nom_anticipos':       { table:'nom_anticipos', mapFn:(d)=>({id:d.id,empleado_nombre:d.empleado||'',valor:d.valor||0,motivo:d.motivo||'',fecha:d.fecha||null}) },
+  'nom_conceptos_cfg':   { table:'nom_conceptos_cfg', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'devengo',formula:d.formula||'fijo',valor:d.valor||0}) },
+  'cfg_transportadoras': { table:'cfg_transportadoras', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',activa:d.activa!==false}) },
+  'cfg_metodos_pago':    { table:'cfg_metodos_pago', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo:d.tipo||'',activo:d.activo!==false}) },
+  'cfg_tarifas':         { table:'cfg_tarifas', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,descripcion:d.descripcion||''}) },
   'cfg_impuestos':       { table:'cfg_impuestos', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',porcentaje:d.porcentaje||0,tipo:d.tipo||'',activo:d.activo!==false}) }
 };
 
@@ -949,8 +957,8 @@ function renderAll(){
 // ===== LOADING =====
 function showLoadingOverlay(st){
   if(!document.getElementById('fb-spin-style')){const s=document.createElement('style');s.id='fb-spin-style';s.textContent='@keyframes fbspin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes fbslide{0%{margin-left:-40%}100%{margin-left:100%}}';document.head.appendChild(s)}
-  let ov=document.getElementById('firebase-loading');
-  if(!ov){ov=document.createElement('div');ov.id='firebase-loading';ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(6px);transition:opacity .35s;padding:32px;text-align:center';document.body.appendChild(ov)}
+  let ov=document.getElementById('supabase-loading');
+  if(!ov){ov=document.createElement('div');ov.id='supabase-loading';ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(6px);transition:opacity .35s;padding:32px;text-align:center';document.body.appendChild(ov)}
   if(st==='hide'){ov.style.opacity='0';setTimeout(()=>{ov.style.display='none'},380);return}
   ov.style.display='flex';setTimeout(()=>ov.style.opacity='1',10);
   if(st==='connecting')ov.innerHTML='<div style="font-size:52px;animation:fbspin 1.2s linear infinite">☁️</div><div style="font-family:Syne;font-size:18px;font-weight:800;color:#00e5b4;margin-top:18px">Conectando...</div><div style="margin-top:20px;width:200px;height:4px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden"><div style="height:100%;width:40%;background:#00e5b4;border-radius:99px;animation:fbslide 1.4s ease-in-out infinite"></div></div>';
@@ -2258,7 +2266,7 @@ function eliminarAjuste(id) {
 
   // Borrar el registro visual
   state.inv_ajustes = state.inv_ajustes.filter(x => x.id !== id);
-  saveState(); renderInvAjustes();
+  renderInvAjustes();
   notify('success', '🗑️', 'Ajuste eliminado', 'El stock ha vuelto a la normalidad.');
 }
 
@@ -2357,7 +2365,7 @@ function eliminarTraslado(id) {
 
   // Borrar registro visual
   state.inv_traslados = state.inv_traslados.filter(x => x.id !== id);
-  saveState(); renderInvTraslados();
+  renderInvTraslados();
   notify('success', '🗑️', 'Traslado revertido', 'Inventario actualizado.');
 }
 
@@ -2375,7 +2383,7 @@ function openTrasladoModal(){
   `);
 }
 
-function saveTraslado(){
+async function saveTraslado(){
   const artId = document.getElementById('m-tr-art').value;
   const origId = document.getElementById('m-tr-orig').value;
   const destId = document.getElementById('m-tr-dest').value;
@@ -2387,19 +2395,16 @@ function saveTraslado(){
   if(stockOrig < cant) { notify('warning','⚠️','Sin stock','No hay suficiente stock en la bodega origen.',{duration:3000}); return; }
   
   const nota = document.getElementById('m-tr-nota').value.trim();
-  
   const traslado = {id: uid(), articuloId: artId, origenId: origId, destinoId: destId, cantidad: cant, nota, fecha: today()};
   const movSalida = {id: uid(), articuloId: artId, bodegaId: origId, cantidad: -cant, tipo: 'traslado_salida', fecha: today(), referencia: 'Traslado', nota};
   const movEntrada = {id: uid(), articuloId: artId, bodegaId: destId, cantidad: cant, tipo: 'traslado_entrada', fecha: today(), referencia: 'Traslado', nota};
   
-  // Guardado Atómico
   state.inv_traslados.push(traslado);
   state.inv_movimientos.push(movSalida);
   state.inv_movimientos.push(movEntrada);
   
-  saveRecord('inv_traslados', traslado.id, traslado);
-  saveRecord('inv_movimientos', movSalida.id, movSalida);
-  saveRecord('inv_movimientos', movEntrada.id, movEntrada);
+  await saveRecord('inv_traslados', traslado.id, traslado);
+  // inv_movimientos no tiene tabla propia en Supabase, se reconstruye de ajustes/traslados
   
   closeModal();
   renderInvTraslados();
@@ -2581,9 +2586,7 @@ function changeDocStatus(collection,id,newStatus){
   const doc=(state[collection]||[]).find(d=>d.id===id);if(!doc)return;
   doc.estado=newStatus;
   
-  // --- GUARDADO ATÓMICO ---
   saveRecord(collection, doc.id, doc);
-  
   closeModal();
   renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Estado actualizado',doc.numero+' → '+newStatus,{duration:3000});
@@ -2599,7 +2602,6 @@ function deleteDoc(collection, id) {
 
   if (!confirm('¿Eliminar este documento?')) return;
   state[collection] = (state[collection] || []).filter(d => d.id !== id);
-  saveState();
   renderPage(document.querySelector('.page.active')?.id.replace('page-', ''));
 }
 
@@ -3124,15 +3126,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
   try {
     showLoadingOverlay('connecting');
 
-    // Insertar en tu tabla maestra JSONB de Supabase
-    const { error } = await supabaseClient
-      .from('legacy_docs')
-      .insert({
-        id: docData.id,
-        tipo: tipo,
-        numero: docData.numero,
-        data: docData // Aquí Supabase guarda todo el JSON maravillosamente
-      });
+    const { error } = await supabaseClient.from('legacy_docs').insert({id:docData.id,tipo,numero:docData.numero,data:docData});
 
     if (error) throw error;
 
@@ -3141,10 +3135,7 @@ function procesarArchivoUsuarios(input, collection, tipo, pageId) {
     state[collection].push(docData);
     _docItems = [];
     
-    // Guardar los consecutivos (esto lo puedes dejar en Firebase temporalmente o pasarlo a otra tabla de config)
-    // consecutivos en memoria local
-    
-    
+    saveConfig('consecutivos', state.consecutivos);
     closeModal();
     renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
     showLoadingOverlay('hide');
@@ -3289,8 +3280,10 @@ function saveNomAusencia(){
   const emp=document.getElementById('m-na-emp').value.trim();if(!emp)return;
   const desde=document.getElementById('m-na-desde').value;const hasta=document.getElementById('m-na-hasta').value;
   const dias=Math.max(1,Math.round((new Date(hasta)-new Date(desde))/86400000)+1);
-  state.nom_ausencias.push({id:uid(),empleado:emp,tipo:document.getElementById('m-na-tipo').value,desde,hasta,dias,observaciones:document.getElementById('m-na-obs').value.trim(),aprobada:false});
-  saveState();closeModal();renderNomAusencias();notify('success','✅','Ausencia registrada',emp+' · '+dias+' días',{duration:3000});
+  const aus={id:uid(),empleado:emp,tipo:document.getElementById('m-na-tipo').value,desde,hasta,dias,observaciones:document.getElementById('m-na-obs').value.trim(),aprobada:false};
+  state.nom_ausencias.push(aus);
+  saveRecord('nom_ausencias',aus.id,aus);
+  closeModal();renderNomAusencias();notify('success','✅','Ausencia registrada',emp+' · '+dias+' días',{duration:3000});
 }
 
 function renderNomAnticipos(){
@@ -3328,8 +3321,10 @@ function openConceptoModal(){
 
 function saveConcepto(){
   const nombre=document.getElementById('m-nc-nombre').value.trim();if(!nombre)return;
-  state.nom_conceptos.push({id:uid(),nombre,tipo:document.getElementById('m-nc-tipo').value,formula:document.getElementById('m-nc-formula').value,valor:parseFloat(document.getElementById('m-nc-valor').value)||0});
-  saveState();closeModal();renderNomConceptos();
+  const conc={id:uid(),nombre,tipo:document.getElementById('m-nc-tipo').value,formula:document.getElementById('m-nc-formula').value,valor:parseFloat(document.getElementById('m-nc-valor').value)||0};
+  state.nom_conceptos.push(conc);
+  saveRecord('nom_conceptos',conc.id,conc);
+  closeModal();renderNomConceptos();
 }
 
 // ===================================================================
@@ -4253,14 +4248,14 @@ function saveCaja(){
   const nombre=document.getElementById('m-caja-nombre').value.trim();if(!nombre)return;
   const caja = {id:uid(),nombre,saldo:parseFloat(document.getElementById('m-caja-saldo').value)||0,estado:'abierta',apertura:today()};
   state.cajas.push(caja);
-  saveRecord('cajas', caja.id, caja); // Atómico
+  saveRecord('cajas', caja.id, caja);
   closeModal();renderTesCajas();
 }
 function cerrarCaja(id){
   const c=(state.cajas||[]).find(x=>x.id===id);
   if(c){
     c.estado='cerrada'; 
-    saveRecord('cajas', c.id, c); // Atómico
+    saveRecord('cajas', c.id, c);
     renderTesCajas();notify('success','🔒','Caja cerrada',c.nombre+' · Saldo: '+fmt(c.saldo),{duration:3000});
   }
 }
@@ -4268,7 +4263,7 @@ function abrirCaja(id){
   const c=(state.cajas||[]).find(x=>x.id===id);
   if(c){
     c.estado='abierta'; c.apertura=today(); 
-    saveRecord('cajas', c.id, c); // Atómico
+    saveRecord('cajas', c.id, c);
     renderTesCajas();
   }
 }
@@ -4285,7 +4280,6 @@ function saveMovCaja(cajaId, tipo) {
   const mov = { id: uid(), cajaId, tipo, valor, concepto, fecha: today(), metodo };
   state.tes_movimientos.push(mov);
   
-  // --- GUARDADO ATÓMICO DOBLE ---
   saveRecord('cajas', caja.id, caja);
   saveRecord('tes_movimientos', mov.id, mov);
   
@@ -4337,7 +4331,6 @@ function saveSimpleForm(collection, columns) {
   if (!state[collection]) state[collection] = [];
   state[collection].push(item);
   
-  // --- GUARDADO ATÓMICO ---
   saveRecord(collection, item.id, item);
   
   closeModal();
@@ -4351,7 +4344,6 @@ function deleteFromCollection(collection, id, pageId) {
   // 1. Borrar de la memoria local
   state[collection] = (state[collection] || []).filter(x => x.id !== id);
   
-  // 2. GUARDADO ATÓMICO: Borrar solo ese registro exacto en Firebase
   deleteRecord(collection, id);
   
   renderPage(pageId);
@@ -5046,9 +5038,9 @@ function saveConfigLegacy() { guardarConfigCompleta(); }
 
 function forceMonthReset(){
   if(confirm('⚠️ ¿Estás seguro? Esto archivará todas las ventas actuales y reiniciará el progreso de la meta mensual. Esta acción no se puede deshacer fácilmente.')) {
-    state.currentMonth = null; 
-    checkMonthReset(); 
-    saveState(); 
+    state.currentMonth = null;
+    checkMonthReset();
+    saveConfig('consecutivos', state.consecutivos);
     renderAll();
     notify('success', '🔄', 'Mes Reseteado', 'Las ventas han sido archivadas correctamente.', {duration: 4000});
   }
@@ -5150,7 +5142,7 @@ function eliminarSeparado(id) {
 // ===================================================================
 
 window.onload = () => {
-  // Conectar con Firebase y cargar estado
+  // Conectar con Supabase y cargar estado
   loadState();
 };
   
