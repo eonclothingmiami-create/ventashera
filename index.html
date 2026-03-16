@@ -1425,7 +1425,7 @@ ${posFormState.metodo === 'efectivo' ? (() => {
             </select>
             ${posFormState.metodo === 'transferencia' ? `
             <select class="form-control" id="pos-cuenta" style="padding:8px 12px">
-              ${(window.CUENTAS_BANCARIAS||[]).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
+             ${(['Nequi','Bancolombia','Daviplata','Bancolombia 2']).map(c => `<option value="${c}" ${posFormState.cuenta === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>` : ''}
           </div>
 
