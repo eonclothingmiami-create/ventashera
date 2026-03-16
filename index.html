@@ -1960,6 +1960,7 @@ function openArticuloModal(id){
     // Cargar imágenes existentes del artículo en la galería temporal
     _tempGaleria = art ? [...(art.images || art.galeria || [])] : [];
     _portadaIndex = 0;
+    window._galeriaModificada = false;
     // Flag para saber si es edición (preservar imágenes si no se tocan)
     window._editingArticuloId = id || null; 
     
@@ -2063,9 +2064,9 @@ function renderGaleriaVisual(){
             ? `<video src="${url}" style="width:100%; height:100%; object-fit:cover;"></video>`
             : `<img src="${url}" style="width:100%; height:100%; object-fit:cover;">`;
         return `
-            <div style="position:relative; width:72px; height:96px; border-radius:6px; overflow:hidden; border:2px solid ${idx === _portadaIndex ? 'var(--accent)' : 'transparent'}; cursor:pointer;" onclick="_portadaIndex=${idx}; renderGaleriaVisual();">
+            <div style="position:relative; width:72px; height:96px; border-radius:6px; overflow:hidden; border:2px solid ${idx === _portadaIndex ? 'var(--accent)' : 'transparent'}; cursor:pointer;" onclick="_portadaIndex=${idx}; window._galeriaModificada=true; renderGaleriaVisual();">
                 ${media}
-                <button class="btn-danger" style="position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%; border:none; font-size:9px;" onclick="event.stopPropagation(); _tempGaleria.splice(${idx},1); if(_portadaIndex>=${idx})_portadaIndex=0; renderGaleriaVisual();">✕</button>
+                <button class="btn-danger" style="position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%; border:none; font-size:9px;" onclick="event.stopPropagation(); _tempGaleria.splice(${idx},1); window._galeriaModificada=true; if(_portadaIndex>=${idx})_portadaIndex=0; renderGaleriaVisual();">✕</button>
                 <div style="position:absolute; bottom:2px; left:2px; background:${idx === _portadaIndex ? 'var(--accent)' : 'rgba(0,0,0,0.5)'}; color:#000; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px;">⭐</div>
             </div>`;
     }).join('');
@@ -2099,6 +2100,7 @@ async function uploadGalleryImages(input) {
             if(upErr) throw upErr;
             const { data: { publicUrl } } = supabaseClient.storage.from('Catalog-media').getPublicUrl(fileName);
             _tempGaleria.push(publicUrl);
+            window._galeriaModificada = true;
             added++;
         }
         renderGaleriaVisual();
@@ -2177,9 +2179,8 @@ async function saveArticulo(existingId) {
           } catch(e) { console.warn('inv_ajuste stock error:', e.message); }
         }
 
-        // 2. MANEJAR IMÁGENES en product_media
-        // Solo actualizar si hay cambios en la galería (_tempGaleria fue modificada)
-        if(_tempGaleria !== null) {
+        // 2. MANEJAR IMÁGENES en product_media - solo si hubo cambios reales
+        if(window._galeriaModificada || !existingId) {
           // Obtener imágenes actuales en BD
           const { data: existingMedia } = await supabaseClient
             .from('product_media')
