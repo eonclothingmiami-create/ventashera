@@ -2142,48 +2142,83 @@ async function compressToWebP(file, maxWidth = 1080, quality = 0.8) {
   });
 }
   
-async function uploadGalleryImages(input) {
-    const files = input.files;
-    if(!files.length) return;
-    showLoadingOverlay('connecting');
-    try {
-        let added = 0;
-        for(let i = 0; i < files.length; i++) {
-            if(_tempGaleria.length >= 15) break;
-            let file = files[i];
+async function compressToWebP(file, maxWidth = 1080, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
 
-            // --- NUEVO: Convertir a WebP si es una imagen ---
-            if (file.type.startsWith('image/')) {
-                file = await compressToWebP(file);
-            }
-            // -----------------------------------------------
-
-            const safeName = file.name.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._-]/g,'').toLowerCase();
-            const fileName = `products/temp/${Date.now()}_${safeName}`;
-            
-            const { error: upErr } = await supabaseClient.storage
-                .from('Catalog-media')
-                .upload(fileName, file, {upsert:true});
-            
-            if(upErr) throw upErr;
-            
-            const { data: { publicUrl } } = supabaseClient.storage
-                .from('Catalog-media')
-                .getPublicUrl(fileName);
-            
-            _tempGaleria.push(publicUrl);
-            window._galeriaModificada = true;
-            added++;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
         }
-        renderGaleriaVisual();
-        showLoadingOverlay('hide');
-        notify('success', '📸', 'Galería optimizada', `+${added} imágenes convertidas a WebP.`);
-    } catch(e) {
-        showLoadingOverlay('hide');
-        notify('danger', '⚠️', 'Error subiendo fotos', e.message, {duration:5000});
-    }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+          const webpFile = new File([blob], newName, { type: "image/webp" });
+          resolve(webpFile);
+        }, 'image/webp', quality);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
 }
 
+async function uploadGalleryImages(input) {
+  const files = input.files;
+  if (!files.length) return;
+
+  showLoadingOverlay('connecting');
+
+  try {
+    let added = 0;
+    for (let i = 0; i < files.length; i++) {
+      if (_tempGaleria.length >= 15) break;
+      let file = files[i];
+
+      if (file.type.startsWith('image/')) {
+        file = await compressToWebP(file, 1080, 0.8);
+      }
+
+      const safeName = file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
+      const fileName = `products/temp/${Date.now()}_${safeName}`;
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from('Catalog-media')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabaseClient.storage
+        .from('Catalog-media')
+        .getPublicUrl(fileName);
+
+      _tempGaleria.push(publicUrl);
+      window._galeriaModificada = true;
+      added++;
+    }
+
+    renderGaleriaVisual();
+    showLoadingOverlay('hide');
+    notify('success', '📸', 'Completado', `Subidos ${added} archivos.`);
+
+  } catch (e) {
+    showLoadingOverlay('hide');
+    notify('danger', '⚠️', 'Error', e.message);
+  }
+}
 async function saveArticulo(existingId) {
     const nombre = document.getElementById('m-art-nombre').value.trim();
     const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
