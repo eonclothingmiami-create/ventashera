@@ -2115,8 +2115,7 @@ function actualizarCatsERP(selectedCat){
 for(let i = 0; i < files.length; i++) {
       if(_tempGaleria.length >= 15) break;
       let file = files[i];
-      
-      // MAGIA AQUÍ: Comprimir imagen a WebP antes de enviarla
+  
       if (file.type.startsWith('image/')) {
         file = await compressToWebP(file, 1080, 0.8);
       }
