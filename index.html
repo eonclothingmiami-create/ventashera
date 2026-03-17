@@ -1953,6 +1953,43 @@ function renderArticulosList(){
     }).join('');
 }
 
+async function deleteArticulo(id){
+  const art = (state.articulos || []).find(a => a.id === id);
+  if(!art) return;
+
+  if(!confirm(`¿Eliminar "${art.nombre}"? Esta acción no se puede deshacer.`)) return;
+
+  try {
+    showLoadingOverlay('connecting');
+
+    if (_sbConnected) {
+      await Promise.allSettled([
+        supabaseClient.from('product_media').delete().eq('product_id', id),
+        supabaseClient.from('product_sizes').delete().eq('product_id', id),
+        supabaseClient.from('product_colors').delete().eq('product_id', id),
+        supabaseClient.from('products').delete().eq('id', id)
+      ]);
+    }
+
+    state.articulos = (state.articulos || []).filter(a => a.id !== id);
+    state.pos_cart = (state.pos_cart || []).filter(i => i.articuloId !== id);
+    state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.articuloId !== id);
+    state.inv_ajustes = (state.inv_ajustes || []).filter(a => a.articuloId !== id);
+    state.inv_traslados = (state.inv_traslados || []).filter(t => t.articuloId !== id);
+
+    renderArticulosList();
+    renderDashboard();
+    updateNavBadges();
+
+    showLoadingOverlay('hide');
+    notify('success', '🗑️', 'Artículo eliminado', art.nombre, { duration: 2500 });
+  } catch (err) {
+    showLoadingOverlay('hide');
+    console.error('deleteArticulo error:', err);
+    notify('danger', '⚠️', 'Error eliminando artículo', err.message || 'Revisa consola', { duration: 5000 });
+  }
+}
+  
 // ===================================================================
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
