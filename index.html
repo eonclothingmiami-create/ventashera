@@ -471,15 +471,12 @@ async function deleteProductFromSupabase(codigo) {
     const existing = await supabaseCall('GET', 'products', null, null, { ref: codigo });
     if (existing && existing.length > 0) {
       const pId = existing[0].id;
-      
-      // 1. Limpiar primero las dependencias (evita el Error 23503)
+      // Limpiamos dependencias antes de borrar el producto
       await supabaseClient.from('product_colors').delete().eq('product_id', pId);
       await supabaseClient.from('product_sizes').delete().eq('product_id', pId);
       await supabaseClient.from('product_media').delete().eq('product_id', pId);
-      
-      // 2. Ahora sí, eliminar el producto principal
+      // Borrado final
       await supabaseCall('DELETE', 'products', null, pId);
-      
       return { success: true };
     }
     return { success: true };
@@ -488,7 +485,6 @@ async function deleteProductFromSupabase(codigo) {
     return { success: false, error: err.message };
   }
 }
-
 async function importProductsFromSupabase() {
   try {
     const products = await supabaseCall('GET', 'products');
