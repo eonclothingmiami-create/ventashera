@@ -1,4 +1,4 @@
-﻿// Recovered from index (1).html as UTF-8 on 2026-03-17T20:36:31
+// Recovered from index (1).html as UTF-8 on 2026-03-17T20:36:31
 
 // ===================================================================
 // ===== CREDENCIALES & CONEXIÓN =====
@@ -1369,11 +1369,12 @@ async function procesarVentaPOS() {
   const total = subtotal+iva+flete;
   const numFactura = 'POS-'+getNextConsec('factura');
   const fechaActual = today();
+  const posDocId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : uid();
   const esSeparado = document.getElementById('pos-es-separado')?document.getElementById('pos-es-separado').checked:false;
 
   // Construir objetos locales
   const factura = {
-    id:uid(), numero:numFactura, fecha:fechaActual,
+    id:posDocId, numero:numFactura, fecha:fechaActual,
     cliente:posFormState.cliente, telefono:posFormState.telefono,
     items:cart.map(c=>({...c})), subtotal, iva, flete, total,
     metodo:posFormState.metodo, estado:'pagada', tipo:'pos',
