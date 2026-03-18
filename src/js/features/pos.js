@@ -437,7 +437,28 @@ async function procesarVentaPOS() {
   // Guardar en Supabase (no bloquea si falla)
   if(_sbConnected){
     try {
-      await supabaseClient.from('invoices').insert({id:factura.id,number:numFactura,customer_name:posFormState.cliente||'CLIENTE MOSTRADOR',customer_phone:posFormState.telefono||'',total});
+      await supabaseClient.from('invoices').insert({
+        id:             factura.id,
+        number:         numFactura,
+        customer_name:  posFormState.cliente||'CLIENTE MOSTRADOR',
+        customer_phone: posFormState.telefono||'',
+        total,
+        subtotal,
+        iva,
+        flete,
+        fecha:          fechaActual,
+        canal,
+        metodo_pago:    posFormState.metodo||'efectivo',
+        estado:         'pagada',
+        tipo:           'pos',
+        guia:           posFormState.guia||'',
+        empresa:        posFormState.empresa||'',
+        transportadora: posFormState.transportadora||'',
+        ciudad:         posFormState.ciudad||'',
+        es_separado:    esSeparado,
+        tipo_pago:      tipoPago,
+        items:          JSON.stringify(cart.map(c=>({id:c.articuloId,nombre:c.nombre,talla:c.talla,qty:c.qty,precio:c.precio})))
+      });
       await supabaseClient.from('ventas').upsert({id:ventaRecord.id,fecha:fechaActual,canal,valor:total,cliente:posFormState.cliente||'',telefono:posFormState.telefono||'',guia:posFormState.guia||'',empresa:posFormState.empresa||'',transportadora:posFormState.transportadora||'',ciudad:posFormState.ciudad||'',liquidado:liquidadoInicial,fecha_liquidacion:fechaLiq,es_separado:esSeparado,estado_entrega:'Pendiente',referencia:numFactura,metodo_pago:posFormState.metodo,tipo_pago:tipoPago,es_contraentrega:esContraEntrega,archived:false},{onConflict:'id'});
       for(const item of cart){
         const art=state.articulos.find(a=>a.id===item.articuloId);
