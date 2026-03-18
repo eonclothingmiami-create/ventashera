@@ -1,4 +1,4 @@
-﻿// ===================================================================
+// ===================================================================
 // ===== COBROS / PENDIENTES =====
 // ===================================================================
 
@@ -31,12 +31,19 @@ function renderLogistica(){
     <td><button class="btn btn-xs btn-secondary" onclick="imprimirDespacho('${v.id}')" title="Relación de despacho">🖨️</button></td>
   </tr>`).join('')||'<tr><td colspan="11" style="text-align:center;color:var(--text2);padding:24px">Sin guías</td></tr>';
 
+  // Actualizar solo el tbody si ya está construida la tabla
   if(document.getElementById('log-tbody')) {
     document.getElementById('log-tbody').innerHTML = rowsHtml;
     const cnt = document.getElementById('log-count');
     if(cnt) cnt.textContent = `${guias.length} de ${total}`;
     const btnL = document.getElementById('log-limpiar');
     if(btnL) btnL.style.display=(q||canal||trans||desde||hasta)?'inline-flex':'none';
+    // Asegurar que la columna de imprimir existe en el thead
+    const thead = document.querySelector('#logistica-content thead tr');
+    if(thead && thead.children.length === 10) {
+      const th = document.createElement('th');
+      thead.appendChild(th);
+    }
     return;
   }
 
