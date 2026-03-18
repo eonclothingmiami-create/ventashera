@@ -28,7 +28,8 @@ function renderLogistica(){
     <td style="font-weight:700">${fmt(v.valor||0)}</td>
     <td><span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'âœ“ Liq':'â³ Pend'}</span></td>
     <td><span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}">${v.esContraEntrega?'ðŸ“¦ C/E':'ðŸ’µ Ctdo'}</span></td>
-  </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:24px">Sin guÃ­as</td></tr>';
+    <td><button class="btn btn-xs btn-secondary" onclick="imprimirDespacho('${v.id}')" title="Relación de despacho">🖨️</button></td>
+  </tr>`).join('')||'<tr><td colspan="11" style="text-align:center;color:var(--text2);padding:24px">Sin guías</td></tr>';
 
   if(document.getElementById('log-tbody')) {
     document.getElementById('log-tbody').innerHTML = rowsHtml;
@@ -55,7 +56,7 @@ function renderLogistica(){
     </div>
     <div class="card"><div class="card-title">ðŸšš GUÃAS â€” <span id="log-count">${guias.length} de ${total}</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Fecha</th><th>Canal</th><th>Cliente</th><th>TelÃ©fono</th><th>Ciudad</th><th>Transportadora</th><th>NÂ° GuÃ­a</th><th>Total</th><th>Estado</th><th>Tipo Cobro</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Canal</th><th>Cliente</th><th>Teléfono</th><th>Ciudad</th><th>Transportadora</th><th>N° Guía</th><th>Total</th><th>Estado</th><th>Tipo Cobro</th><th></th></tr></thead>
       <tbody id="log-tbody">${rowsHtml}</tbody>
     </table></div></div>`;
 }
@@ -100,3 +101,162 @@ function marcarLiquidado(id) {
   screenFlash('green');
 }
 
+
+
+// ===================================================================
+// ===== IMPRESIÓN RELACIÓN DE DESPACHO =====
+// ===================================================================
+async function imprimirDespacho(ventaId) {
+  const v = (state.ventas||[]).find(x => x.id === ventaId);
+  if (!v) return notify('error','❌','Error','Despacho no encontrado',{duration:2500});
+
+  // Buscar la factura asociada para obtener los items
+  const factura = (state.facturas||[]).find(f => f.id === ventaId || f.numero === v.desc);
+  const items = factura?.items || [];
+
+  const emp = state.empresa || {};
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const MARGIN = 18, PAGEW = 210;
+  let y = MARGIN;
+
+  // ── Encabezado empresa ────────────────────────────────
+  doc.setFillColor(26,26,26);
+  doc.rect(0, 0, PAGEW, 28, 'F');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(16);
+  doc.setTextColor(255,255,255);
+  doc.text((emp.nombre || 'HERA SWIMWEAR').toUpperCase(), MARGIN, 12);
+  doc.setFontSize(8);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(200,200,200);
+  doc.text('NIT: ' + (emp.nit||'—') + '   Tel: ' + (emp.telefono||'—') + '   ' + (emp.ciudad||'') + ' / ' + (emp.departamento||''), MARGIN, 18);
+  doc.text(emp.direccion||'', MARGIN, 23);
+  y = 36;
+
+  // ── Título documento ──────────────────────────────────
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(13);
+  doc.setTextColor(26,26,26);
+  doc.text('RELACIÓN DE DESPACHO', PAGEW/2, y, {align:'center'});
+  y += 7;
+  doc.setDrawColor(200,200,200);
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN, y, PAGEW-MARGIN, y);
+  y += 6;
+
+  // ── Datos del despacho (2 columnas) ───────────────────
+  doc.setFontSize(9);
+  doc.setFont('helvetica','bold');
+  doc.setTextColor(26,26,26);
+
+  const col1 = MARGIN, col2 = 115;
+  const field = (label, value, cx, cy) => {
+    doc.setFont('helvetica','bold'); doc.setTextColor(100,100,100);
+    doc.text(label + ':', cx, cy);
+    doc.setFont('helvetica','normal'); doc.setTextColor(26,26,26);
+    doc.text(String(value||'—'), cx + 28, cy);
+  };
+
+  field('Fecha',          formatDate(v.fecha),              col1, y);
+  field('Referencia',     v.desc || '—',                    col2, y); y += 6;
+  field('Cliente',        v.cliente || 'CLIENTE MOSTRADOR', col1, y);
+  field('Teléfono',       v.telefono || '—',                col2, y); y += 6;
+  field('Ciudad',         v.ciudad || '—',                  col1, y);
+  field('Canal',          v.canal === 'local' ? '🛵 Local' : '📦 Inter', col2, y); y += 6;
+  field('Transportadora', v.transportadora || v.empresa || '—', col1, y);
+  field('N° Guía',        v.guia || '—',                    col2, y); y += 6;
+  field('Tipo Cobro',     v.esContraEntrega ? 'Contraentrega' : 'Contado', col1, y);
+  field('Estado',         v.liquidado ? 'Liquidado' : 'Pendiente',         col2, y); y += 8;
+
+  doc.setDrawColor(200,200,200);
+  doc.line(MARGIN, y, PAGEW-MARGIN, y);
+  y += 6;
+
+  // ── Tabla de productos ────────────────────────────────
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.setTextColor(255,255,255);
+  doc.setFillColor(26,26,26);
+  doc.rect(MARGIN, y-4, PAGEW-(MARGIN*2), 7, 'F');
+  doc.text('PRODUCTO',        MARGIN+2,  y);
+  doc.text('TALLA',           MARGIN+78, y);
+  doc.text('CANT.',           MARGIN+102, y);
+  doc.text('P. UNIT.',        MARGIN+118, y);
+  doc.text('SUBTOTAL',        MARGIN+143, y);
+  y += 6;
+
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(26,26,26);
+
+  let subtotal = 0;
+  if (items.length > 0) {
+    items.forEach((item, i) => {
+      if (y > 260) { doc.addPage(); y = MARGIN; }
+      const bg = i % 2 === 0 ? [248,248,248] : [255,255,255];
+      doc.setFillColor(...bg);
+      doc.rect(MARGIN, y-3.5, PAGEW-(MARGIN*2), 6.5, 'F');
+      const sub = (item.precio||0) * (item.qty||1);
+      subtotal += sub;
+      doc.setFontSize(8.5);
+      doc.text(doc.splitTextToSize(item.nombre||'—', 72)[0], MARGIN+2,  y);
+      doc.text(String(item.talla||'—'),                       MARGIN+78, y);
+      doc.text(String(item.qty||1),                           MARGIN+104, y);
+      doc.text(fmt(item.precio||0),                           MARGIN+114, y, {align:'right'});
+      doc.text(fmt(sub),                                      MARGIN+152, y, {align:'right'});
+      y += 6.5;
+    });
+  } else {
+    // Sin items en BD — mostrar solo el total de la venta
+    const bg = [248,248,248];
+    doc.setFillColor(...bg);
+    doc.rect(MARGIN, y-3.5, PAGEW-(MARGIN*2), 6.5, 'F');
+    doc.setFontSize(8.5);
+    doc.text('Venta POS — detalle no disponible', MARGIN+2, y);
+    doc.text(fmt(v.valor||0), MARGIN+152, y, {align:'right'});
+    subtotal = v.valor||0;
+    y += 6.5;
+  }
+
+  y += 3;
+  doc.setDrawColor(200,200,200);
+  doc.line(MARGIN, y, PAGEW-MARGIN, y);
+  y += 6;
+
+  // ── Totales ───────────────────────────────────────────
+  const totRight = PAGEW - MARGIN;
+  const totLabel = PAGEW - MARGIN - 60;
+
+  const totRow = (label, value, bold=false, color=[26,26,26]) => {
+    doc.setFont('helvetica', bold?'bold':'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...color);
+    doc.text(label, totLabel, y);
+    doc.text(value, totRight, y, {align:'right'});
+    y += 5.5;
+  };
+
+  if (factura) {
+    if (factura.subtotal) totRow('Subtotal:', fmt(factura.subtotal));
+    if (factura.iva)      totRow('IVA (19%):', fmt(factura.iva));
+    if (factura.flete)    totRow('Flete:', fmt(factura.flete));
+  }
+  totRow('TOTAL:', fmt(v.valor||0), true, [120,92,56]);
+
+  y += 8;
+
+  // ── Observaciones / firma ─────────────────────────────
+  doc.setDrawColor(200,200,200);
+  doc.line(MARGIN, y, PAGEW-MARGIN, y);
+  y += 8;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.setTextColor(120,120,120);
+  doc.text('Firma recibido: ____________________________', MARGIN, y);
+  doc.text('Fecha entrega: ____________________________', PAGEW/2+10, y);
+  y += 10;
+  doc.text(`Generado: ${today()} — ${emp.nombre||'Hera Swimwear'}`, MARGIN, y);
+
+  doc.save(`Despacho_${v.guia||v.desc||v.id.slice(0,8)}_${v.cliente||'cliente'}.pdf`.replace(/\s+/g,'-'));
+}
