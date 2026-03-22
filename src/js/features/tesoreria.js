@@ -12,9 +12,20 @@ function calcDeudaProveedor(provId) {
     if(esSinEspecificar) return !a.proveedorId || a.proveedorId === '';
     return a.proveedorId === provId;
   });
-  // Deuda bruta: costo × stock
-  const deudaBruta = articulos.reduce((sum, a) => sum + ((a.precioCompra||0) * (a.stock||0)), 0);
-  // Abonos realizados
+  const valorInventarioCosto = articulos.reduce((sum, a) => sum + ((a.precioCompra||0) * (a.stock||0)), 0);
+  let costoVendidoHist = 0;
+  (state.stock_moves_ventas||[]).forEach(m => {
+    const art = (state.articulos||[]).find(x => String(x.id) === String(m.productId));
+    if(!art || art.tituloMercancia !== 'credito') return;
+    if(esSinEspecificar) { if(art.proveedorId) return; }
+    else if(String(art.proveedorId) !== String(provId)) return;
+    const qRaw = parseFloat(m.cantidad)||0;
+    const netOut = -qRaw;
+    const cost = parseFloat(art.precioCompra)||0;
+    costoVendidoHist += netOut * cost;
+  });
+  const costoVN = Math.max(0, costoVendidoHist);
+  const deudaBruta = valorInventarioCosto + costoVN;
   const abonos = (state.tes_abonos_prov||[])
     .filter(ab => ab.proveedorId === provId)
     .reduce((sum, ab) => sum + (ab.valor||0), 0);

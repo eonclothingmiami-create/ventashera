@@ -407,8 +407,14 @@ function cobrosProductosResumenHtml(venta){
   h+=`<div style="font-size:10px;color:var(--text2);margin-top:8px">💰 Ingreso en caja y totales del día: <b>${formatDate(venta.fecha)}</b> (fecha de la venta). «Marcar liquidado» no duplica el movimiento en caja.</div></div>`;
   return h;
 }
+/** Incluida en totales de meta / informes (excluye archivo y factura POS anulada). */
+function ventaCuentaParaTotales(v){
+  if(!v||v.archived)return false;
+  const f=(state.facturas||[]).find(x=>String(x.id)===String(v.id));
+  return!(f&&f.estado==='anulada');
+}
 function ventasMes(s){
-  const active=(s.ventas||[]).filter(v=>!v.archived);
+  const active=(s.ventas||[]).filter(v=>ventaCuentaParaTotales(v));
   const despachos=active.filter(v=>v.canal!=='vitrina');
   const vitrina=active.filter(v=>v.canal==='vitrina');
   const local=active.filter(v=>v.canal==='local');
@@ -421,13 +427,13 @@ function ventasMes(s){
 /** YYYY-MM desde fecha de factura/venta (ISO). */
 function yearMonthFromFecha(fechaStr){if(!fechaStr||typeof fechaStr!=='string')return '';return fechaStr.length>=7?fechaStr.slice(0,7):''}
 /** Ventas activas cuyo campo fecha cae en el mes calendario indicado (ej. mes de hoy). */
-function ventasEnMesCalendario(ventas,ym){return(ventas||[]).filter(v=>!v.archived&&yearMonthFromFecha(v.fecha)===ym)}
+function ventasEnMesCalendario(ventas,ym){return(ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&yearMonthFromFecha(v.fecha)===ym)}
 /** Orden: más reciente primero (fecha desc, luego id desc para empates). Cada venta POS = 1 factura. */
 function sortVentasRecientes(ventas){return [...(ventas||[])].sort((a,b)=>{const c=(b.fecha||'').localeCompare(a.fecha||'');if(c!==0)return c;return String(b.id||'').localeCompare(String(a.id||''))})}
-function hasDiaUnMillon(s){const active=(s.ventas||[]).filter(v=>!v.archived);const byDay={};active.forEach(v=>{byDay[v.fecha]=(byDay[v.fecha]||0)+(parseFloat(v.valor)||0)});return Object.values(byDay).some(t=>t>=1000000)}
+function hasDiaUnMillon(s){const active=(s.ventas||[]).filter(v=>ventaCuentaParaTotales(v));const byDay={};active.forEach(v=>{byDay[v.fecha]=(byDay[v.fecha]||0)+(parseFloat(v.valor)||0)});return Object.values(byDay).some(t=>t>=1000000)}
 function calcLevel(xp){let lv=LEVELS[0];for(const l of LEVELS){if(xp>=l.minXp)lv=l}return lv}
 function calcLevelProgress(xp){const lv=calcLevel(xp);const idx=LEVELS.indexOf(lv);if(idx>=LEVELS.length-1)return{lv,next:null,pct:100,xpToNext:0};const next=LEVELS[idx+1];const pct=Math.min(100,((xp-lv.minXp)/(next.minXp-lv.minXp))*100);return{lv,next,pct,xpToNext:next.minXp-xp}}
-function calcStreak(){const active=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina');const byDay={};active.forEach(v=>{byDay[v.fecha]=(byDay[v.fecha]||0)+1});let streak=0;const d=new Date(today()+'T12:00:00');while(true){const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if((byDay[ds]||0)>=5){streak++;d.setDate(d.getDate()-1)}else break}return streak}
+function calcStreak(){const active=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&v.canal!=='vitrina');const byDay={};active.forEach(v=>{byDay[v.fecha]=(byDay[v.fecha]||0)+1});let streak=0;const d=new Date(today()+'T12:00:00');while(true){const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if((byDay[ds]||0)>=5){streak++;d.setDate(d.getDate()-1)}else break}return streak}
 function calcXP(canal,valor){
   const g=state.cfg_game||{};
   if(canal==='vitrina')return Math.floor(valor/(g.xp_por_venta_vitrina||150000));
@@ -437,7 +443,7 @@ function calcXP(canal,valor){
 }
 function getISOWeek(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()+4-(d.getDay()||7));const yearStart=new Date(d.getFullYear(),0,1);return{week:Math.ceil((((d-yearStart)/86400000)+1)/7),year:d.getFullYear()}}
 function getWeekSnack(){const{week,year}=getISOWeek(new Date());const hash=Math.abs((week*31+year*7+week*year)%SNACKS.length);return{snack:SNACKS[hash],week,year}}
-function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday=new Date(now);monday.setDate(now.getDate()-dow+1);monday.setHours(0,0,0,0);const active=(state.ventas||[]).filter(v=>!v.archived);let xp=0;active.forEach(v=>{const vDate=new Date(v.fecha+'T12:00:00');if(vDate>=monday)xp+=calcXP(v.canal,v.valor)});return xp}
+function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday=new Date(now);monday.setDate(now.getDate()-dow+1);monday.setHours(0,0,0,0);const active=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v));let xp=0;active.forEach(v=>{const vDate=new Date(v.fecha+'T12:00:00');if(vDate>=monday)xp+=calcXP(v.canal,v.valor)});return xp}
 function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
 function getArticuloStock(artId, bodegaId) {
   // Lee directamente de products.stock (fuente de verdad en Supabase)
@@ -906,7 +912,7 @@ function toggleSidebar(){document.getElementById('sidebar').classList.toggle('op
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-overlay').classList.remove('active')}
 
 function updateNavBadges(){
-  const pend=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado);
+  const pend=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&v.canal!=='vitrina'&&!v.liquidado);
   const pb=document.getElementById('badge-pendientes');
   if(pb){pb.textContent=pend.length;pb.style.display=pend.length>0?'inline-block':'none'}
   const alerts=buildAlerts();
@@ -975,7 +981,7 @@ function awardXP(xp){
   if(streak>=3)checkAndAwardBadge('racha3');if(streak>=7)checkAndAwardBadge('racha7');if(streak>=14)checkAndAwardBadge('racha14');
 }
 function checkAndAwardBadge(id){if(!state.game.earnedBadges)state.game.earnedBadges=[];if(state.game.earnedBadges.includes(id))return;const badge=BADGES.find(b=>b.id===id);if(!badge)return;state.game.earnedBadges.push(id);notify('milestone',badge.icon,'¡Insignia: '+badge.name+'!',badge.desc,{duration:5000})}
-function checkBadges(){const active=(state.ventas||[]).filter(v=>!v.archived);const despachos=active.filter(v=>v.canal!=='vitrina');const vm=ventasMes(state);const pct=vm.totalCOP/state.meta;if(active.length>=1)checkAndAwardBadge('primera_venta');if(despachos.length>=20)checkAndAwardBadge('v20');if(despachos.length>=50)checkAndAwardBadge('v50');if(despachos.length>=100)checkAndAwardBadge('v100');if(despachos.length>=150)checkAndAwardBadge('v150');if(pct>=0.25)checkAndAwardBadge('meta25');if(pct>=0.50)checkAndAwardBadge('meta50');if(pct>=0.75)checkAndAwardBadge('meta75');if(pct>=1.00)checkAndAwardBadge('meta100');if(vm.totalCOP>=40000000)checkAndAwardBadge('super');if(active.some(v=>(parseFloat(v.valor)||0)>=500000))checkAndAwardBadge('gran_venta');const hoy=today();const todayCanals=new Set(active.filter(v=>v.fecha===hoy).map(v=>v.canal));if(todayCanals.has('vitrina')&&todayCanals.has('local')&&todayCanals.has('inter'))checkAndAwardBadge('multicanal')}
+function checkBadges(){const active=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v));const despachos=active.filter(v=>v.canal!=='vitrina');const vm=ventasMes(state);const pct=vm.totalCOP/state.meta;if(active.length>=1)checkAndAwardBadge('primera_venta');if(despachos.length>=20)checkAndAwardBadge('v20');if(despachos.length>=50)checkAndAwardBadge('v50');if(despachos.length>=100)checkAndAwardBadge('v100');if(despachos.length>=150)checkAndAwardBadge('v150');if(pct>=0.25)checkAndAwardBadge('meta25');if(pct>=0.50)checkAndAwardBadge('meta50');if(pct>=0.75)checkAndAwardBadge('meta75');if(pct>=1.00)checkAndAwardBadge('meta100');if(vm.totalCOP>=40000000)checkAndAwardBadge('super');if(active.some(v=>(parseFloat(v.valor)||0)>=500000))checkAndAwardBadge('gran_venta');const hoy=today();const todayCanals=new Set(active.filter(v=>v.fecha===hoy).map(v=>v.canal));if(todayCanals.has('vitrina')&&todayCanals.has('local')&&todayCanals.has('inter'))checkAndAwardBadge('multicanal')}
 
 // ===================================================================
 // ===== DASHBOARD =====
@@ -988,14 +994,14 @@ function renderDashboard(){
   const{lv:lvp,next:nextLv,pct:xpPct,xpToNext}=calcLevelProgress(g.xp||0);
   const streak=calcStreak();
   const hoy=today();
-  const ventasHoy=(state.ventas||[]).filter(v=>!v.archived&&v.fecha===hoy&&v.canal!=='vitrina');
-  const pendientes=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado).length;
+  const ventasHoy=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&v.fecha===hoy&&v.canal!=='vitrina');
+  const pendientes=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&v.canal!=='vitrina'&&!v.liquidado).length;
   const totalArticulos=(state.articulos||[]).length;
   const lowStockItems=(state.articulos||[]).filter(a=>{const stock=getArticuloStock(a.id);return stock<=a.stockMinimo}).length;
   const cajaSaldo=(state.cajas||[]).reduce((a,c)=>a+c.saldo,0);
   const earnedBadges=(g.earnedBadges||[]);
   const ymActual=yearMonthFromFecha(hoy);
-  const ventasActivasNoArch=(state.ventas||[]).filter(v=>!v.archived);
+  const ventasActivasNoArch=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v));
   const facturasHoyLista=sortVentasRecientes(ventasActivasNoArch.filter(v=>v.fecha===hoy));
   const facturasMesOtrasFechas=sortVentasRecientes(ventasActivasNoArch.filter(v=>yearMonthFromFecha(v.fecha)===ymActual&&v.fecha!==hoy)).slice(0,8);
   const resumenMesCal=ventasEnMesCalendario(state.ventas,ymActual);
@@ -1014,7 +1020,7 @@ function renderDashboard(){
     {id:'m1',icon:'⚔️',label:'5 despachos hoy (sin vitrina)',cur:Math.min(5,despachoHoy),max:5,xp:50},
     {id:'m2',icon:'🛡️',label:'Meta 25% mes',cur:Math.min(100,Math.round(pct)),max:100,xp:100,pctTarget:25,done:pct>=25},
     {id:'m3',icon:'🔥',label:'Racha '+streak+' días',cur:Math.min(7,streak),max:7,xp:75},
-    {id:'m4',icon:'💰',label:'Venta > $300k',cur:(state.ventas||[]).filter(v=>!v.archived&&v.fecha===hoy&&v.valor>=300000).length>0?1:0,max:1,xp:60},
+    {id:'m4',icon:'💰',label:'Venta > $300k',cur:(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&v.fecha===hoy&&v.valor>=300000).length>0?1:0,max:1,xp:60},
   ];
 
   document.getElementById('dashboard-content').innerHTML=`
@@ -1646,6 +1652,67 @@ async function procesarVentaPOS() {
   renderPOS();
   updateNavBadges();
 }
+
+/** Anula venta POS: stock, stock_moves (neto vendido), factura.estado — no revierte ingreso en caja. */
+async function anularVentaPOS(facturaId){
+  const id = String(facturaId);
+  const factura = (state.facturas||[]).find(f=>String(f.id)===id);
+  if(!factura){
+    notify('warning','⚠️','Factura','No se encontró la factura.',{duration:4000});
+    return;
+  }
+  if(factura.estado==='anulada'){
+    notify('warning','⚠️','Factura','Esta venta ya está anulada.',{duration:3000});
+    return;
+  }
+  const esPos = factura.tipo==='pos' || String(factura.numero||'').startsWith('POS-');
+  if(!esPos){
+    notify('warning','⚠️','Solo POS','Solo se pueden anular ventas POS desde esta acción.',{duration:4000});
+    return;
+  }
+  const rawItems = Array.isArray(factura.items)?factura.items:[];
+  const cart = rawItems.map(i=>({
+    articuloId:i.articuloId||i.id,
+    qty:Math.abs(parseInt(i.qty||i.cantidad,10)||0),
+    nombre:i.nombre||'',
+    talla:i.talla||''
+  })).filter(i=>i.articuloId&&i.qty>0);
+  if(cart.length===0){
+    notify('warning','⚠️','Ítems','La factura no tiene líneas para revertir.',{duration:4000});
+    return;
+  }
+  try{
+    if(window.AppPosRepository?.restoreStockAfterPosAnulacion){
+      await window.AppPosRepository.restoreStockAfterPosAnulacion(state,cart,supabaseClient,_sbConnected);
+    }
+    if(window.AppPosRepository?.registerPosAnulacionStockMoves){
+      await window.AppPosRepository.registerPosAnulacionStockMoves({
+        state,cart,factura,facturaId:factura.id,numFactura:factura.numero||'',fechaActual:today(),dbId,
+        supabaseClient,sbConnected:_sbConnected,
+        posFormState:{bodegaId:posFormState?.bodegaId||window.AppCajaLogic?.getPosBodegaId?.()||'bodega_main'},
+        notify
+      });
+    }
+    factura.estado='anulada';
+    factura.posStockAnulacionAplicada=true;
+    await saveRecord('facturas',factura.id,factura);
+    const venta=(state.ventas||[]).find(v=>String(v.id)===id);
+    if(venta)venta.anulada=true;
+    if(document.getElementById('tes_pagos_prov-content'))renderTesPagosProv();
+    renderHistorial();
+    updateNavBadges();
+    notify('success','✅','Venta anulada',`${factura.numero||id} — stock y vendido POS (referencia) actualizados. Revisa caja si hubo ingreso.`,{duration:7000});
+  }catch(e){
+    console.warn('anularVentaPOS:',e);
+    notify('danger','⚠️','Error',e.message||String(e),{duration:6000});
+  }
+}
+function anularVentaPOSConfirm(facturaId){
+  if(!confirm('¿Anular esta venta POS? Se devolverá stock, se revertirá el vendido POS (referencia) y la factura quedará anulada. El ingreso en caja debe ajustarse manualmente si aplica.'))return;
+  anularVentaPOS(facturaId);
+}
+window.anularVentaPOS=anularVentaPOS;
+window.anularVentaPOSConfirm=anularVentaPOSConfirm;
 
 
 // ===== SCANNER =====
@@ -3825,7 +3892,7 @@ function downloadRelacionDespacho(id){
 
 function renderPendientes(){
   // Ventas local/inter no liquidadas (casi siempre contra entrega): seguimiento de cobro; ingreso ya va en caja con fecha de venta
-  const pend=(state.ventas||[]).filter(v=>!v.archived&&v.canal!=='vitrina'&&!v.liquidado).sort((a,b)=>(a.fechaLiquidacion||'')>(b.fechaLiquidacion||'')?1:-1);
+  const pend=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v)&&v.canal!=='vitrina'&&!v.liquidado).sort((a,b)=>(a.fechaLiquidacion||'')>(b.fechaLiquidacion||'')?1:-1);
   const totalPend=pend.reduce((a,v)=>a+v.valor,0);
   let html=`<div class="card" style="margin-bottom:16px;padding:12px;font-size:12px;color:var(--text2)">💡 <b>Contra entrega:</b> al vender en POS el <b>ingreso en caja</b> y los <b>totales del día</b> usan la <b>fecha de la venta</b>. Esta lista es seguimiento hasta confirmar cobro al cliente/transp. <b>Marcar liquidado</b> solo cierra el pendiente — <b>no crea otro ingreso</b> ni duplica la venta.</div>`;
   html+=`<div class="grid-2" style="margin-bottom:20px"><div class="card" style="margin:0"><div class="stat-val" style="color:var(--red)">${pend.length}</div><div class="stat-label">Pendientes de liquidar</div></div><div class="card" style="margin:0"><div class="stat-val" style="color:var(--yellow)">${fmt(totalPend)}</div><div class="stat-label">Total en lista</div></div></div>`;
@@ -4583,7 +4650,7 @@ function calcDeudaProveedor(provId) {
   const articulos = (state.articulos||[]).filter(a => {
     if(a.tituloMercancia !== 'credito') return false;
     if(esSinEspecificar) return !a.proveedorId || a.proveedorId === '';
-    return a.proveedorId === provId;
+    return String(a.proveedorId) === String(provId);
   });
   const valorInventarioCosto = articulos.reduce((sum, a) => sum + ((a.precioCompra||0) * (a.stock||0)), 0);
   let costoVendidoHist = 0, unidadesVendidasHist = 0;
@@ -4591,17 +4658,21 @@ function calcDeudaProveedor(provId) {
     const art = (state.articulos||[]).find(x=>String(x.id)===String(m.productId));
     if(!art||art.tituloMercancia!=='credito')return;
     if(esSinEspecificar){ if(art.proveedorId)return; }
-    else if(art.proveedorId!==provId)return;
-    const qty = Math.abs(parseFloat(m.cantidad)||0);
+    else if(String(art.proveedorId)!==String(provId))return;
+    const qRaw = parseFloat(m.cantidad)||0;
+    const netOut = -qRaw;
     const cost = parseFloat(art.precioCompra)||0;
-    costoVendidoHist += qty*cost;
-    unidadesVendidasHist += qty;
+    costoVendidoHist += netOut*cost;
+    unidadesVendidasHist += netOut;
   });
-  const refOperativaTotal = valorInventarioCosto + costoVendidoHist;
-  const compromisoReconocido = (state.tes_compromisos_prov||[]).filter(c=>c.proveedorId===provId).reduce((s,c)=>s+(c.valor||0),0);
-  const abonos = (state.tes_abonos_prov||[]).filter(ab => ab.proveedorId === provId).reduce((sum, ab) => sum + (ab.valor||0), 0);
-  const saldo = Math.max(0, compromisoReconocido - abonos);
-  return { valorInventarioCosto, costoVendidoHist, unidadesVendidasHist, refOperativaTotal, compromisoReconocido, compromisoTotal: compromisoReconocido, deudaBruta: compromisoReconocido, abonos, saldo, articulos };
+  const costoVN = Math.max(0, costoVendidoHist);
+  const uVN = Math.max(0, unidadesVendidasHist);
+  const refOperativaTotal = valorInventarioCosto + costoVN;
+  const compromisoReconocido = (state.tes_compromisos_prov||[]).filter(c=>String(c.proveedorId)===String(provId)).reduce((s,c)=>s+(c.valor||0),0);
+  const abonos = (state.tes_abonos_prov||[]).filter(ab => String(ab.proveedorId) === String(provId)).reduce((sum, ab) => sum + (ab.valor||0), 0);
+  const saldoLibro = Math.max(0, compromisoReconocido - abonos);
+  const saldo = Math.max(0, refOperativaTotal - abonos);
+  return { valorInventarioCosto, costoVendidoHist: costoVN, unidadesVendidasHist: uVN, refOperativaTotal, compromisoReconocido, compromisoTotal: compromisoReconocido, deudaBruta: refOperativaTotal, abonos, saldo, saldoLibro, articulos };
 }
 
 function renderTesPagosProv() {
@@ -4612,7 +4683,7 @@ function renderTesPagosProv() {
   if(!el) return;
 
   const provTieneActividad = (d) =>
-    (d.compromisoReconocido||0) > 0 || d.saldo > 0 || (d.abonos||0) > 0 || (d.refOperativaTotal||0) > 0;
+    (d.compromisoReconocido||0) > 0 || d.saldo > 0 || (d.abonos||0) > 0 || (d.valorInventarioCosto||0) > 0 || (d.costoVendidoHist||0) > 0;
 
   const provConDeuda = (state.usu_proveedores||[]).map(p => {
     const d = calcDeudaProveedor(p.id);
@@ -4629,8 +4700,7 @@ function renderTesPagosProv() {
     });
   }
 
-  // Totales generales
-  const totalDeuda = provConDeuda.reduce((s,p) => s + p.deudaBruta, 0);
+  const totalDeuda = provConDeuda.reduce((s,p) => s + (p.refOperativaTotal||0), 0);
   const totalAbonos = provConDeuda.reduce((s,p) => s + p.abonos, 0);
   const totalSaldo = provConDeuda.reduce((s,p) => s + p.saldo, 0);
 
@@ -4641,15 +4711,15 @@ function renderTesPagosProv() {
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-secondary" onclick="openCompromisoProvModal()">📥 Registrar compromiso</button>
       <button class="btn btn-primary" onclick="openAbonoProvModal()">💳 Registrar Abono</button>
-      <div style="margin-left:auto;font-size:11px;color:var(--text2)">
-        Saldo = compromisos en libro − abonos. Inventario/ventas son referencia (activa el módulo tesorería completo para UI alineada).
+      <div style="margin-left:auto;font-size:11px;color:var(--text2);max-width:480px;text-align:right">
+        Deuda = stock + vendido a costo (mercancía a crédito). Solo abonos la bajan. Saldo = deuda − abonos.
       </div>
     </div>
 
     <div class="grid-3" style="margin-bottom:16px">
       <div class="card" style="margin:0;text-align:center;border-color:rgba(248,113,113,.3)">
         <div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--red)">${fmt(totalDeuda)}</div>
-        <div style="font-size:11px;color:var(--text2);margin-top:4px">📒 Compromiso reconocido</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">📌 Deuda total (a costo)</div>
       </div>
       <div class="card" style="margin:0;text-align:center;border-color:rgba(74,222,128,.3)">
         <div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--green)">${fmt(totalAbonos)}</div>
@@ -4665,9 +4735,9 @@ function renderTesPagosProv() {
       <div class="empty-state">
         <div class="es-icon">🏭</div>
         <div class="es-title">Sin actividad a crédito</div>
-        <div class="es-text">Registra compromisos al recibir mercancía a crédito y abonos al pagar. Tabla Supabase: tes_compromisos_prov.</div>
+        <div class="es-text">Mercancía a crédito con costo y cantidades: la deuda se acumula a costo y solo baja con abonos.</div>
       </div>` : provConDeuda.map(p => {
-        const pct = p.deudaBruta > 0 ? Math.min(100, (p.abonos / p.deudaBruta) * 100) : 0;
+        const pct = (p.refOperativaTotal||0) > 0 ? Math.min(100, (p.abonos / p.refOperativaTotal) * 100) : 0;
         const diasDesde = p.articulos.length > 0 ? (() => {
           const fechas = p.articulos.map(a => a.fechaCompra||a.createdAt||'').filter(Boolean).sort();
           if(!fechas.length) return null;
@@ -4690,8 +4760,8 @@ function renderTesPagosProv() {
           </div>
 
           <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
-            <div style="font-size:12px"><span style="color:var(--text2)">Compromiso (libro):</span> <b>${fmt(p.compromisoReconocido||0)}</b></div>
-            <div style="font-size:12px"><span style="color:var(--text2)">Ref. op. (info):</span> <b>${fmt(p.refOperativaTotal||0)}</b></div>
+            <div style="font-size:12px"><span style="color:var(--text2)">Deuda total (a costo):</span> <b>${fmt(p.refOperativaTotal||0)}</b></div>
+            <div style="font-size:12px"><span style="color:var(--text2)">Libro (opc.):</span> <b>${fmt(p.compromisoReconocido||0)}</b></div>
             <div style="font-size:12px"><span style="color:var(--text2)">Abonado:</span> <b style="color:var(--green)">${fmt(p.abonos)}</b></div>
             <div style="font-size:12px"><span style="color:var(--text2)">Artículos:</span> <b>${p.articulos.length}</b></div>
           </div>
@@ -4939,11 +5009,12 @@ function verAbonosProv(provId, provNombre) {
   openModal(`
     <div class="modal-title">📋 Abonos — ${provNombre}<button class="modal-close" onclick="closeModal()">×</button></div>
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;font-size:12px">
-      <div><span style="color:var(--text2)">Compromiso (libro):</span> <b>${fmt(d.compromisoReconocido||0)}</b></div>
+      <div><span style="color:var(--text2)">Deuda total (a costo):</span> <b>${fmt(d.refOperativaTotal||0)}</b></div>
+      <div><span style="color:var(--text2)">Libro (opc.):</span> <b>${fmt(d.compromisoReconocido||0)}</b></div>
       <div><span style="color:var(--text2)">Abonado:</span> <b style="color:var(--green)">${fmt(d.abonos)}</b></div>
       <div><span style="color:var(--text2)">Saldo:</span> <b style="color:var(--yellow)">${fmt(d.saldo)}</b></div>
     </div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:10px"><b>Referencia (info):</b> inv. ${fmt(d.valorInventarioCosto||0)} · vendido POS ${fmt(d.costoVendidoHist||0)} · suma ${fmt(d.refOperativaTotal||0)}</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px"><b>Desglose:</b> en stock ${fmt(d.valorInventarioCosto||0)} · ya vendido (POS a costo) ${fmt(d.costoVendidoHist||0)}</div>
     <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Valor</th><th>Método</th><th>Nota</th></tr></thead><tbody>
     ${abonos.length > 0 ? abonos.reverse().map(ab => `<tr>
       <td>${formatDate(ab.fecha)}</td>
@@ -5260,7 +5331,7 @@ function buildAlerts() {
   const alerts = [];
 
   // --- Cobros / liquidación pendiente (visible para quien gestiona cobros) ---
-  const pend = (state.ventas||[]).filter(v => !v.archived && v.canal !== 'vitrina' && !v.liquidado);
+  const pend = (state.ventas||[]).filter(v => ventaCuentaParaTotales(v) && v.canal !== 'vitrina' && !v.liquidado);
   if(pend.length > 0) alerts.push({
     type: 'warning', icon: '⏳',
     title: `${pend.length} venta${pend.length>1?'s':''} sin liquidar (seguimiento)`,
@@ -5325,7 +5396,7 @@ function buildAlerts() {
 
 function renderAlertas(){
   if (window.AppGameSystemModule?.renderAlertas) {
-    return window.AppGameSystemModule.renderAlertas({ state, fmt, getArticuloStock, today });
+    return window.AppGameSystemModule.renderAlertas({ state, fmt, getArticuloStock, today, ventaCuentaParaTotales });
   }
   const alertas = buildAlerts();
   const urgentes = alertas.filter(a=>a.type==='urgent').length;
@@ -5374,7 +5445,7 @@ function renderAlertas(){
 
 function renderHistorial(){
   if (window.AppGameSystemModule?.renderHistorial) {
-    return window.AppGameSystemModule.renderHistorial({ state, formatDate, fmt, today, yearMonthFromFecha, sortVentasRecientes, ventasEnMesCalendario });
+    return window.AppGameSystemModule.renderHistorial({ state, formatDate, fmt, today, yearMonthFromFecha, sortVentasRecientes, ventasEnMesCalendario, ventaCuentaParaTotales });
   }
   const q = (document.getElementById('hist-search')?.value || '').toLowerCase();
   const scope = document.getElementById('hist-scope')?.value || 'mes';
@@ -5382,14 +5453,19 @@ function renderHistorial(){
   const ym = yearMonthFromFecha(hoy);
   let ventas = state.ventas || [];
   if (scope === 'hoy') ventas = ventas.filter((v) => v.fecha === hoy);
-  else if (scope === 'mes') ventas = ventasEnMesCalendario(state.ventas, ym);
+  else if (scope === 'mes') ventas = (state.ventas || []).filter((v) => !v.archived && yearMonthFromFecha(v.fecha) === ym);
   else ventas = [...ventas];
   if (q) ventas = ventas.filter(v => (v.desc||'').toLowerCase().includes(q) || (v.cliente||'').toLowerCase().includes(q) || (v.guia||'').toLowerCase().includes(q));
   ventas = sortVentasRecientes(ventas);
   const hoyResumen = (state.ventas || []).filter((v) => v.fecha === hoy);
   const mesList = ventasEnMesCalendario(state.ventas, ym);
   const sumArr = (arr) => arr.reduce((a, v) => a + (parseFloat(v.valor) || 0), 0);
-  const row = (v) => `<tr style="${v.archived ? 'opacity:0.6;' : ''}">
+  const sumArrActivas = (arr) => arr.filter(ventaCuentaParaTotales).reduce((a, v) => a + (parseFloat(v.valor) || 0), 0);
+  const row = (v) => {
+    const fac = (state.facturas||[]).find(f=>String(f.id)===String(v.id));
+    const anulada = fac && fac.estado==='anulada';
+    const puedeAnular = fac && fac.tipo==='pos' && !anulada;
+    return `<tr style="${v.archived ? 'opacity:0.6;' : ''}${anulada?'opacity:0.75;':''}">
       <td>${formatDate(v.fecha)}</td>
       <td><span class="badge badge-${v.canal}">${v.canal}</span>${v.canal!=='vitrina'?`<span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega?'📦CE':'💵CD'}</span>`:''}</td>
       <td style="font-weight:bold;">${v.desc||'—'}</td>
@@ -5397,9 +5473,12 @@ function renderHistorial(){
       <td style="color:var(--accent);font-weight:700;">${fmt(v.valor)}</td>
       <td>
         <span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'Liquidado':'Pendiente'}</span>
+        ${anulada?`<span class="badge badge-warn" style="margin-left:4px">Anulada</span>`:''}
         ${v.syncPending ? `<span class="badge badge-warn" style="margin-left:4px">Sync pendiente</span>` : ''}
+        ${puedeAnular?`<button type="button" class="btn btn-xs btn-danger" style="margin-left:6px" onclick="anularVentaPOSConfirm('${String(v.id).replace(/'/g,"\\'")}')">Anular</button>`:''}
       </td>
     </tr>`;
+  };
   let rowsHtml = '';
   if (scope === 'todas' || scope === 'mes') {
     let lastF = null;
@@ -5422,7 +5501,7 @@ function renderHistorial(){
     const cnt = document.getElementById('hist-count');
     if(cnt) cnt.textContent = String(ventas.length);
     const subEl = document.getElementById('hist-sub');
-    if (subEl) subEl.textContent = `${hoyResumen.length} hoy · ${fmt(sumArr(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArr(mesList))} | En vista: ${ventas.length}`;
+    if (subEl) subEl.textContent = `${hoyResumen.filter(ventaCuentaParaTotales).length} hoy · ${fmt(sumArrActivas(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArrActivas(mesList))} | En vista: ${ventas.length}`;
     return;
   }
 
@@ -5474,7 +5553,7 @@ function renderHistorial(){
       </div>
     </div>
     <div class="card" style="margin-bottom:12px;padding:12px;font-size:12px;color:var(--text2)">
-      <b>Venta POS = factura</b> (referencia = # doc). Resumen: <span id="hist-sub">${hoyResumen.length} hoy · ${fmt(sumArr(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArr(mesList))} | En vista: ${ventas.length}</span>
+      <b>Venta POS = factura</b> (referencia = # doc). Resumen: <span id="hist-sub">${hoyResumen.filter(ventaCuentaParaTotales).length} hoy · ${fmt(sumArrActivas(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArrActivas(mesList))} | En vista: ${ventas.length}</span>
     </div>
     <div class="card">
       <div class="card-title">HISTORIAL DE FACTURAS (<span id="hist-count">${ventas.length}</span> en vista)</div>
@@ -6326,7 +6405,7 @@ function renderSeparados(){
   const q = (document.getElementById('sep-search')?.value||'').toLowerCase();
   const estadoVista = document.getElementById('sep-estado')?.value||'';
 
-  let separados = (state.ventas||[]).filter(v => !v.archived && v.esSeparado);
+  let separados = (state.ventas||[]).filter(v => ventaCuentaParaTotales(v) && v.esSeparado);
   if(desde) separados = separados.filter(v => v.fecha >= desde);
   if(hasta) separados = separados.filter(v => v.fecha <= hasta);
   if(q) separados = separados.filter(v => (v.cliente||'').toLowerCase().includes(q) || (v.telefono||'').includes(q) || (v.desc||'').toLowerCase().includes(q) || (v.guia||'').toLowerCase().includes(q));

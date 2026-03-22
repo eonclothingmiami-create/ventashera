@@ -26,9 +26,10 @@
   }
 
   function buildAlerts(ctx) {
-    const { state, fmt, getArticuloStock } = ctx;
+    const { state, fmt, getArticuloStock, ventaCuentaParaTotales } = ctx;
+    const cuentaOk = typeof ventaCuentaParaTotales === 'function' ? ventaCuentaParaTotales : (v) => v && !v.archived;
     const alerts = [];
-    const pend = (state.ventas || []).filter((v) => !v.archived && v.canal !== 'vitrina' && !v.liquidado);
+    const pend = (state.ventas || []).filter((v) => cuentaOk(v) && v.canal !== 'vitrina' && !v.liquidado);
     if (pend.length > 0) alerts.push({ type: 'warning', icon: '⏳', title: `${pend.length} venta${pend.length > 1 ? 's' : ''} sin liquidar (seguimiento)`, desc: `Total lista: ${fmt(pend.reduce((s, v) => s + v.valor, 0))}. El ingreso en caja ya quedó el día de la venta; liquidar solo cierra el pendiente sin duplicar ingreso.`, action: "showPage('pendientes')", actionLabel: 'Ir a Cobros' });
     const lowStock = (state.articulos || []).filter((a) => getArticuloStock(a.id) <= a.stockMinimo);
     if (lowStock.length > 0) alerts.push({ type: 'urgent', icon: '📦', title: `Stock crítico en ${lowStock.length} artículo${lowStock.length > 1 ? 's' : ''}`, desc: lowStock.slice(0, 3).map((a) => `${a.nombre} (${getArticuloStock(a.id)} uds)`).join(' · ') + (lowStock.length > 3 ? ` y ${lowStock.length - 3} más` : ''), action: "showPage('articulos')", actionLabel: 'Ver inventario' });
@@ -48,14 +49,15 @@
   }
 
   function renderHistorial(ctx) {
-    const { state, formatDate, fmt, today, yearMonthFromFecha, sortVentasRecientes, ventasEnMesCalendario } = ctx;
+    const { state, formatDate, fmt, today, yearMonthFromFecha, sortVentasRecientes, ventasEnMesCalendario, ventaCuentaParaTotales } = ctx;
+    const cuentaOk = typeof ventaCuentaParaTotales === 'function' ? ventaCuentaParaTotales : (v) => v && !v.archived;
     const q = (document.getElementById('hist-search')?.value || '').toLowerCase();
     const scope = document.getElementById('hist-scope')?.value || 'mes';
     const hoy = today();
     const ym = yearMonthFromFecha(hoy);
     let ventas = state.ventas || [];
     if (scope === 'hoy') ventas = ventas.filter((v) => v.fecha === hoy);
-    else if (scope === 'mes') ventas = ventasEnMesCalendario(state.ventas, ym);
+    else if (scope === 'mes') ventas = (state.ventas || []).filter((v) => !v.archived && yearMonthFromFecha(v.fecha) === ym);
     else ventas = [...ventas];
     if (q) {
       ventas = ventas.filter(
@@ -69,8 +71,14 @@
     const hoyResumen = (state.ventas || []).filter((v) => v.fecha === hoy);
     const mesList = ventasEnMesCalendario(state.ventas, ym);
     const sumArr = (arr) => arr.reduce((a, v) => a + (parseFloat(v.valor) || 0), 0);
-    const row = (v) =>
-      `<tr style="${v.archived ? 'opacity:0.6;' : ''}"><td>${formatDate(v.fecha)}</td><td><span class="badge badge-${v.canal}">${v.canal}</span>${v.canal !== 'vitrina' ? `<span class="badge ${v.esContraEntrega ? 'badge-warn' : 'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega ? '📦CE' : '💵CD'}</span>` : ''}</td><td style="font-weight:bold;">${v.desc || '—'}</td><td>${v.cliente || '—'}</td><td style="color:var(--accent);font-weight:700;">${fmt(v.valor)}</td><td><span class="badge ${v.liquidado ? 'badge-ok' : 'badge-pend'}">${v.liquidado ? 'Liquidado' : 'Pendiente'}</span></td></tr>`;
+    const sumArrActivas = (arr) => arr.filter(cuentaOk).reduce((a, v) => a + (parseFloat(v.valor) || 0), 0);
+    const row = (v) => {
+      const fac = (state.facturas || []).find((f) => String(f.id) === String(v.id));
+      const anulada = fac && fac.estado === 'anulada';
+      const puedeAnular = fac && fac.tipo === 'pos' && !anulada;
+      const idEsc = String(v.id || '').replace(/'/g, "\\'");
+      return `<tr style="${v.archived ? 'opacity:0.6;' : ''}${anulada ? 'opacity:0.75;' : ''}"><td>${formatDate(v.fecha)}</td><td><span class="badge badge-${v.canal}">${v.canal}</span>${v.canal !== 'vitrina' ? `<span class="badge ${v.esContraEntrega ? 'badge-warn' : 'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega ? '📦CE' : '💵CD'}</span>` : ''}</td><td style="font-weight:bold;">${v.desc || '—'}</td><td>${v.cliente || '—'}</td><td style="color:var(--accent);font-weight:700;">${fmt(v.valor)}</td><td><span class="badge ${v.liquidado ? 'badge-ok' : 'badge-pend'}">${v.liquidado ? 'Liquidado' : 'Pendiente'}</span>${anulada ? `<span class="badge badge-warn" style="margin-left:4px">Anulada</span>` : ''}${puedeAnular ? `<button type="button" class="btn btn-xs btn-danger" style="margin-left:6px" onclick="anularVentaPOSConfirm('${idEsc}')">Anular</button>` : ''}</td></tr>`;
+    };
     let rowsHtml = '';
     if (scope === 'todas' || scope === 'mes') {
       let lastF = null;
@@ -92,10 +100,10 @@
       const cnt = document.getElementById('hist-count');
       if (cnt) cnt.textContent = String(ventas.length);
       const subEl = document.getElementById('hist-sub');
-      if (subEl) subEl.textContent = `${hoyResumen.length} hoy · ${fmt(sumArr(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArr(mesList))} | En vista: ${ventas.length}`;
+      if (subEl) subEl.textContent = `${hoyResumen.filter(cuentaOk).length} hoy · ${fmt(sumArrActivas(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArrActivas(mesList))} | En vista: ${ventas.length}`;
       return;
     }
-    document.getElementById('historial-content').innerHTML = `<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end"><div class="search-bar" style="flex:1;min-width:200px;max-width:360px;margin:0;"><span class="search-icon">🔍</span><input type="text" id="hist-search" placeholder="# factura, cliente, guía..." value="${q}" oninput="renderHistorial()"></div><div><label class="form-label" style="font-size:10px;color:var(--text2);display:block;margin-bottom:4px">Ámbito</label><select class="form-control" id="hist-scope" style="min-width:180px" onchange="renderHistorial()"><option value="hoy" ${scope === 'hoy' ? 'selected' : ''}>Solo hoy</option><option value="mes" ${scope === 'mes' ? 'selected' : ''}>Mes calendario (${ym})</option><option value="todas" ${scope === 'todas' ? 'selected' : ''}>Todas (incl. archivo)</option></select></div></div><div class="card" style="margin-bottom:12px;padding:12px;font-size:12px;color:var(--text2)"><b>Venta POS = factura</b> (referencia = # doc). Resumen: <span id="hist-sub">${hoyResumen.length} hoy · ${fmt(sumArr(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArr(mesList))} | En vista: ${ventas.length}</span></div><div class="card"><div class="card-title">HISTORIAL DE FACTURAS (<span id="hist-count">${ventas.length}</span> en vista)</div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Canal</th><th>Factura</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead><tbody id="hist-tbody">${rowsHtml}</tbody></table></div></div>`;
+    document.getElementById('historial-content').innerHTML = `<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end"><div class="search-bar" style="flex:1;min-width:200px;max-width:360px;margin:0;"><span class="search-icon">🔍</span><input type="text" id="hist-search" placeholder="# factura, cliente, guía..." value="${q}" oninput="renderHistorial()"></div><div><label class="form-label" style="font-size:10px;color:var(--text2);display:block;margin-bottom:4px">Ámbito</label><select class="form-control" id="hist-scope" style="min-width:180px" onchange="renderHistorial()"><option value="hoy" ${scope === 'hoy' ? 'selected' : ''}>Solo hoy</option><option value="mes" ${scope === 'mes' ? 'selected' : ''}>Mes calendario (${ym})</option><option value="todas" ${scope === 'todas' ? 'selected' : ''}>Todas (incl. archivo)</option></select></div></div><div class="card" style="margin-bottom:12px;padding:12px;font-size:12px;color:var(--text2)"><b>Venta POS = factura</b> (referencia = # doc). Resumen: <span id="hist-sub">${hoyResumen.filter(cuentaOk).length} hoy · ${fmt(sumArrActivas(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArrActivas(mesList))} | En vista: ${ventas.length}</span></div><div class="card"><div class="card-title">HISTORIAL DE FACTURAS (<span id="hist-count">${ventas.length}</span> en vista)</div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Canal</th><th>Factura</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead><tbody id="hist-tbody">${rowsHtml}</tbody></table></div></div>`;
   }
 
   global.AppGameSystemModule = {

@@ -49,7 +49,9 @@ function buildAlerts() {
   const alerts = [];
 
   // --- Cobros pendientes ---
-  const pend = (state.ventas||[]).filter(v => !v.archived && v.canal !== 'vitrina' && !v.liquidado && v.esContraEntrega !== false);
+  const pend = (state.ventas||[]).filter(v =>
+    (typeof ventaCuentaParaTotales === 'function' ? ventaCuentaParaTotales(v) : !v.archived) &&
+    v.canal !== 'vitrina' && !v.liquidado && v.esContraEntrega !== false);
   if(pend.length > 0) alerts.push({
     type: 'warning', icon: '⏳',
     title: `${pend.length} cobro${pend.length>1?'s':''} pendiente${pend.length>1?'s':''}`,

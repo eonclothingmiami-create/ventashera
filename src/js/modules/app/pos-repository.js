@@ -183,6 +183,86 @@
     }
   }
 
+  /**
+   * Devuelve stock al anular una venta POS (misma lógica inversa que syncStockToSupabase).
+   */
+  async function restoreStockAfterPosAnulacion(state, cart, supabaseClient, sbConnected) {
+    if (!sbConnected || !supabaseClient || !Array.isArray(cart)) return;
+    for (const item of cart) {
+      const pid = item.articuloId;
+      const qty = Math.abs(parseInt(item.qty, 10) || 0);
+      if (!pid || qty <= 0) continue;
+      const art = (state.articulos || []).find((a) => a.id === pid);
+      if (!art) continue;
+      const ns = (art.stock || 0) + qty;
+      const { error } = await supabaseClient.from('products').update({ stock: ns }).eq('id', pid);
+      if (error) console.warn('[POS] restore stock anulación:', error.message);
+      else art.stock = ns;
+    }
+  }
+
+  /**
+   * Líneas positivas en stock_moves (tipo venta_pos) netean la venta en calcDeudaProveedor (vendido POS).
+   */
+  async function registerPosAnulacionStockMoves(ctx) {
+    const {
+      state,
+      cart,
+      factura,
+      facturaId,
+      numFactura,
+      fechaActual,
+      dbId,
+      supabaseClient,
+      sbConnected,
+      posFormState,
+      notify
+    } = ctx;
+    const docId = (factura && factura.id) || facturaId;
+    const posBodega = (posFormState && posFormState.bodegaId) || global.AppCajaLogic?.getPosBodegaId?.() || 'bodega_main';
+    const nextId = typeof dbId === 'function' ? dbId : () => (global.AppId?.uuid ? global.AppId.uuid() : String(Date.now()));
+
+    if (!sbConnected || !supabaseClient || !Array.isArray(cart) || !docId) return;
+
+    for (const item of cart) {
+      const pid = item.articuloId;
+      const qty = Math.abs(parseInt(item.qty, 10) || 0);
+      if (!pid || qty <= 0) continue;
+      const qtyCol = typeof global.stockMovesQtyColumn === 'function'
+        ? global.stockMovesQtyColumn()
+        : 'cantidad';
+      const row = {
+        id: nextId(),
+        product_id: pid,
+        bodega_id: posBodega,
+        tipo: 'venta_pos',
+        referencia: numFactura || '',
+        documento_id: docId,
+        fecha: fechaActual,
+        nota: `Anulación · ${item.nombre || 'Ítem'} · Talla: ${item.talla || '—'}`
+      };
+      row[qtyCol] = qty;
+      const { error } = await supabaseClient.from('stock_moves').insert(row);
+      if (error) {
+        console.warn('[POS] stock_moves anulación:', error.message, row);
+        if (typeof notify === 'function') {
+          notify('warning', '📦', 'stock_moves', `Anulación no registrada: ${error.message}`, { duration: 5000 });
+        }
+      } else {
+        if (!Array.isArray(state.stock_moves_ventas)) state.stock_moves_ventas = [];
+        state.stock_moves_ventas.push({
+          id: row.id,
+          productId: pid,
+          cantidad: Number(row[qtyCol]),
+          tipo: 'venta_pos',
+          fecha: fechaActual,
+          referencia: numFactura || '',
+          documentoId: docId
+        });
+      }
+    }
+  }
+
   function autoRegisterCustomer(state, posFormState, idGen, fechaActual, supabaseClient, sbConnected) {
     const next = typeof idGen === 'function' ? idGen : () => (global.AppId?.uuid ? global.AppId.uuid() : String(Date.now()));
     if (!posFormState.cliente) return;
@@ -226,6 +306,8 @@
     persistPosSale,
     syncStockToSupabase,
     registerPosSaleSideEffects,
+    restoreStockAfterPosAnulacion,
+    registerPosAnulacionStockMoves,
     autoRegisterCustomer
   };
 })(window);

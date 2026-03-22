@@ -1,17 +1,15 @@
 // Treasury module: pagos proveedores, cajas, movimientos y colecciones simples.
 (function initTreasuryModule(global) {
   /**
-   * Pasivo vs proveedor (mercancía a crédito) — modelo libro:
-   * - compromisoReconocido: Σ tes_compromisos_prov (ingresos a crédito registrados; no se mueve con ventas).
-   * - saldo: max(0, compromisoReconocido − abonos). Solo los abonos bajan el saldo oficial.
-   * - valorInventarioCosto, costoVendidoHist: referencia operativa (inventario + POS en BD), estilo “separados”.
+   * Deuda operativa (a costo) = mercancía a crédito incorporada: stock actual + costo de lo ya vendido por POS (histórico).
+   * Vender no reduce esta deuda; solo baja con abonos. Libro (tes_compromisos_prov) opcional.
    */
   function calcDeudaProveedor(state, provId) {
     const esSinEspecificar = provId === '__sin_proveedor__';
     const articulos = (state.articulos || []).filter((a) => {
       if (a.tituloMercancia !== 'credito') return false;
       if (esSinEspecificar) return !a.proveedorId || a.proveedorId === '';
-      return a.proveedorId === provId;
+      return String(a.proveedorId) === String(provId);
     });
     const valorInventarioCosto = articulos.reduce(
       (sum, a) => sum + ((a.precioCompra || 0) * (a.stock || 0)),
@@ -28,33 +26,38 @@
       if (!art || art.tituloMercancia !== 'credito') continue;
       if (esSinEspecificar) {
         if (art.proveedorId) continue;
-      } else if (art.proveedorId !== provId) continue;
+      } else if (String(art.proveedorId) !== String(provId)) continue;
 
-      const qty = Math.abs(parseFloat(m.cantidad) || 0);
+      const qRaw = parseFloat(m.cantidad) || 0;
+      const netOut = -qRaw;
       const cost = parseFloat(art.precioCompra) || 0;
-      costoVendidoHist += qty * cost;
-      unidadesVendidasHist += qty;
+      costoVendidoHist += netOut * cost;
+      unidadesVendidasHist += netOut;
     }
 
-    const refOperativaTotal = valorInventarioCosto + costoVendidoHist;
+    const costoVendidoNeto = Math.max(0, costoVendidoHist);
+    const unidadesVendidasNetas = Math.max(0, unidadesVendidasHist);
+    const refOperativaTotal = valorInventarioCosto + costoVendidoNeto;
     const compromisoReconocido = (state.tes_compromisos_prov || [])
-      .filter((c) => c.proveedorId === provId)
+      .filter((c) => String(c.proveedorId) === String(provId))
       .reduce((sum, c) => sum + (c.valor || 0), 0);
     const abonos = (state.tes_abonos_prov || [])
-      .filter((ab) => ab.proveedorId === provId)
+      .filter((ab) => String(ab.proveedorId) === String(provId))
       .reduce((sum, ab) => sum + (ab.valor || 0), 0);
-    const saldo = Math.max(0, compromisoReconocido - abonos);
+    const saldoLibro = Math.max(0, compromisoReconocido - abonos);
+    const saldo = Math.max(0, refOperativaTotal - abonos);
 
     return {
       valorInventarioCosto,
-      costoVendidoHist,
-      unidadesVendidasHist,
+      costoVendidoHist: costoVendidoNeto,
+      unidadesVendidasHist: unidadesVendidasNetas,
       refOperativaTotal,
       compromisoReconocido,
       compromisoTotal: compromisoReconocido,
-      deudaBruta: compromisoReconocido,
+      deudaBruta: refOperativaTotal,
       abonos,
       saldo,
+      saldoLibro,
       articulos
     };
   }
@@ -64,7 +67,8 @@
       d.compromisoReconocido > 0 ||
       d.saldo > 0 ||
       d.abonos > 0 ||
-      d.refOperativaTotal > 0
+      d.valorInventarioCosto > 0 ||
+      d.costoVendidoHist > 0
     );
   }
 
@@ -85,7 +89,7 @@
         ...dSinProv
       });
     }
-    const totalCompromiso = provConDeuda.reduce((s, p) => s + p.compromisoReconocido, 0);
+    const totalDeudaOperativa = provConDeuda.reduce((s, p) => s + p.refOperativaTotal, 0);
     const totalAbonos = provConDeuda.reduce((s, p) => s + p.abonos, 0);
     const totalSaldo = provConDeuda.reduce((s, p) => s + p.saldo, 0);
     const abonosRecientes = [...(state.tes_abonos_prov || [])].reverse().slice(0, 20);
@@ -102,41 +106,42 @@
 
     el.innerHTML = `
     <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-primary" onclick="openCompromisoProvModal()">📥 Registrar compromiso (ingreso)</button>
+      <button class="btn btn-primary" onclick="openCompromisoProvModal()">📥 Nota en libro (opcional)</button>
       <button class="btn btn-secondary" onclick="openAbonoProvModal()">💳 Registrar abono</button>
       ${
         puedeImportar
-          ? `<button class="btn btn-sm btn-secondary" onclick="importarEstimacionCompromisosProv()" title="Crea líneas de compromiso = inventario+vendido POS actual por proveedor">📎 Usar estimación como compromiso</button>`
+          ? `<button class="btn btn-sm btn-secondary" onclick="importarEstimacionCompromisosProv()" title="Copia la deuda operativa actual al libro (contabilidad opcional)">📎 Copiar deuda al libro</button>`
           : ''
       }
-      <div style="margin-left:auto;font-size:11px;color:var(--text2);max-width:460px;text-align:right">
-        <b>Saldo oficial</b> = compromisos registrados − abonos. Las ventas y el stock <b>no</b> lo bajan; sirven solo como referencia (como Separados con inventario/caja).
+      <div style="margin-left:auto;font-size:11px;color:var(--text2);max-width:520px;text-align:right">
+        <b>Deuda</b> = mercancía a crédito a costo (en stock + ya vendido). <b>Vender no la baja</b>; solo <b>abonos</b>. <b>Saldo</b> = deuda − abonos.
       </div>
     </div>
     <div class="card" style="margin-bottom:14px;padding:10px 12px;font-size:11px;color:var(--text2);line-height:1.5">
-      📌 <b>Referencia operativa</b>: inventario a costo + vendido POS vía <code>stock_moves</code> (<code>tipo = venta_pos</code>). No altera el saldo. Si aún no tienes tabla <code>tes_compromisos_prov</code>, créala en Supabase (archivo <code>sql/tes_compromisos_prov.sql</code>).
+      📌 La <b>deuda</b> es el registro a costo de la mercancía a crédito: <b>sigue vigente aunque ya la vendiste</b>. El total es <b>stock + vendido POS a costo</b> (una sola cifra). <b>Solo los abonos</b> la disminuyen. El desglose stock / vendido sirve para ver de dónde sale el número.
     </div>
     <div class="grid-3" style="margin-bottom:16px">
-      <div class="card" style="margin:0;text-align:center;border-color:rgba(248,113,113,.3)"><div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--red)">${fmt(totalCompromiso)}</div><div style="font-size:11px;color:var(--text2);margin-top:4px">📒 Compromiso reconocido (libro)</div></div>
+      <div class="card" style="margin:0;text-align:center;border-color:rgba(248,113,113,.3)"><div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--red)">${fmt(totalDeudaOperativa)}</div><div style="font-size:11px;color:var(--text2);margin-top:4px">📌 Deuda total (a costo)</div></div>
       <div class="card" style="margin:0;text-align:center;border-color:rgba(74,222,128,.3)"><div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--green)">${fmt(totalAbonos)}</div><div style="font-size:11px;color:var(--text2);margin-top:4px">✅ Total abonado</div></div>
       <div class="card" style="margin:0;text-align:center;border-color:rgba(251,191,36,.3)"><div style="font-family:Syne;font-size:22px;font-weight:800;color:var(--yellow)">${fmt(totalSaldo)}</div><div style="font-size:11px;color:var(--text2);margin-top:4px">⚠️ Saldo por pagar</div></div>
     </div>
     ${
       provConDeuda.length === 0
-        ? `<div class="empty-state"><div class="es-icon">🏭</div><div class="es-title">Sin actividad a crédito</div><div class="es-text">Crea artículos “Mercancía a Crédito”, registra <b>compromisos</b> al recibir factura/remisión del proveedor, y abona cuando pagues.</div></div>`
+        ? `<div class="empty-state"><div class="es-icon">🏭</div><div class="es-title">Sin actividad a crédito</div><div class="es-text">Marca artículos como <b>mercancía a crédito</b>, costo &gt; 0 y cantidades; la deuda se acumula a costo y <b>solo baja con abonos</b>. “Nota en libro” es opcional.</div></div>`
         : provConDeuda
             .map((p) => {
-              const pct =
-                p.compromisoReconocido > 0
-                  ? Math.min(100, (p.abonos / p.compromisoReconocido) * 100)
-                  : 0;
+              const basePct = p.refOperativaTotal;
+              const pct = basePct > 0 ? Math.min(100, (p.abonos / basePct) * 100) : 0;
+              const libroExtra = p.compromisoReconocido > 0
+                ? `<div style="font-size:10px;color:var(--text2);margin-top:4px">Libro opcional (factura/nota): ${fmt(p.compromisoReconocido)}</div>`
+                : '';
               return `<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px"><div><div style="font-family:Syne;font-size:16px;font-weight:800">${p.nombre}</div><div style="font-size:11px;color:var(--text2)">${p.cedula || ''} · ${p.ciudad || ''}</div></div><div style="text-align:right"><div style="font-family:Syne;font-size:20px;font-weight:800;color:${p.saldo > 0 ? 'var(--yellow)' : 'var(--green)'}">${fmt(p.saldo)}</div><div style="font-size:10px;color:var(--text2)">saldo pendiente</div></div></div>
               <div style="display:flex;gap:14px;margin-bottom:8px;flex-wrap:wrap;font-size:12px;line-height:1.45;border-left:3px solid var(--accent);padding-left:10px;background:rgba(0,229,180,.06);border-radius:6px;padding:8px 10px">
-              <div><span style="color:var(--text2)">Compromiso (libro):</span> <b>${fmt(p.compromisoReconocido)}</b></div>
+              <div><span style="color:var(--text2)">Deuda total (a costo):</span> <b>${fmt(p.refOperativaTotal)}</b></div>
               <div><span style="color:var(--text2)">Abonado:</span> <b style="color:var(--green)">${fmt(p.abonos)}</b></div>
-              </div>
-              <div style="font-size:10px;color:var(--text2);margin:6px 0 8px"><b>Referencia</b> (informativa): inventario ${fmt(p.valorInventarioCosto)} · vendido POS ${fmt(p.costoVendidoHist)} (${p.unidadesVendidasHist} uds) · suma ${fmt(p.refOperativaTotal)} · refs. ${p.articulos.length}</div>
-              <div style="background:rgba(255,255,255,.05);border-radius:8px;height:8px;overflow:hidden;margin-bottom:10px"><div style="height:100%;border-radius:8px;background:linear-gradient(90deg,var(--green),var(--accent));width:${pct}%;transition:width 1s ease"></div></div><div style="font-size:10px;color:var(--text2);margin-bottom:12px">${pct.toFixed(1)}% del compromiso cubierto por abonos</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" onclick="openCompromisoProvModal('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">📥 Compromiso</button><button class="btn btn-sm btn-primary" onclick="openAbonoProvModal('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">💳 Abonar</button><button class="btn btn-sm btn-secondary" onclick="verCompromisosProv('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">📋 Compromisos</button><button class="btn btn-sm btn-secondary" onclick="verAbonosProv('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">📋 Abonos</button></div></div>`;
+              </div>${libroExtra}
+              <div style="font-size:10px;color:var(--text2);margin:6px 0 8px">Desglose: en stock ${fmt(p.valorInventarioCosto)} · ya vendido (POS a costo) ${fmt(p.costoVendidoHist)} (${p.unidadesVendidasHist} uds). Refs. artículos: ${p.articulos.length}</div>
+              <div style="background:rgba(255,255,255,.05);border-radius:8px;height:8px;overflow:hidden;margin-bottom:10px"><div style="height:100%;border-radius:8px;background:linear-gradient(90deg,var(--green),var(--accent));width:${pct}%;transition:width 1s ease"></div></div><div style="font-size:10px;color:var(--text2);margin-bottom:12px">${pct.toFixed(1)}% de la deuda total cubierto por abonos</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" onclick="openCompromisoProvModal('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">📥 Nota en libro (opc.)</button><button class="btn btn-sm btn-primary" onclick="openAbonoProvModal('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">💳 Abonar</button><button class="btn btn-sm btn-secondary" onclick="verCompromisosProv('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">📋 Libro</button><button class="btn btn-sm btn-secondary" onclick="verAbonosProv('${p.id}','${String(p.nombre).replace(/'/g, "\\'")}')">📋 Abonos</button></div></div>`;
             })
             .join('')
     }
@@ -152,7 +157,7 @@
     }
     ${
       compromisosRecientes.length > 0
-        ? `<div class="card"><div class="card-title">📒 ÚLTIMOS COMPROMISOS (INGRESO A CRÉDITO)</div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>Valor</th><th>Ref.</th><th>Nota</th><th></th></tr></thead><tbody>${compromisosRecientes
+        ? `<div class="card"><div class="card-title">📒 ÚLTIMAS NOTAS EN LIBRO (OPCIONAL)</div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>Valor</th><th>Ref.</th><th>Nota</th><th></th></tr></thead><tbody>${compromisosRecientes
             .map(
               (c) =>
                 `<tr><td>${formatDate(c.fecha)}</td><td style="font-weight:700">${c.proveedorNombre || '—'}</td><td style="color:var(--accent);font-weight:700">${fmt(c.valor || 0)}</td><td style="color:var(--text2);font-size:11px">${c.referencia || '—'}</td><td style="color:var(--text2);font-size:11px">${c.nota || '—'}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarCompromisoProv('${c.id}')">✕</button></td></tr>`
@@ -183,12 +188,12 @@
         const sel = o.id === provId ? 'selected' : '';
         const nm = String(o.nombre).replace(/"/g, '&quot;');
         const d = calcDeudaProveedor(state, o.id);
-        return `<option value="${o.id}" data-nombre="${nm}" ${sel}>${o.nombre} · Ref. operativa ${fmt(d.refOperativaTotal)} · Compromiso libro ${fmt(d.compromisoReconocido)}</option>`;
+        return `<option value="${o.id}" data-nombre="${nm}" ${sel}>${o.nombre} · Deuda op. ${fmt(d.refOperativaTotal)} · Libro ${fmt(d.compromisoReconocido)}</option>`;
       })
       .join('');
     openModal(`
-    <div class="modal-title">📥 Registrar compromiso (ingreso a crédito)<button class="modal-close" onclick="closeModal()">×</button></div>
-    <p style="font-size:11px;color:var(--text2);line-height:1.45;margin:0 0 12px">Aumenta el pasivo reconocido con el proveedor (factura, remisión, etc.). <b>No</b> mueve caja. El saldo oficial solo baja con <b>abonos</b>.</p>
+    <div class="modal-title">📥 Nota en libro (opcional)<button class="modal-close" onclick="closeModal()">×</button></div>
+    <p style="font-size:11px;color:var(--text2);line-height:1.45;margin:0 0 12px">Registra aquí una <b>factura o remisión</b> si quieres llevar ese control aparte. La <b>deuda operativa</b> arriba es <b>stock + vendido a costo</b>; <b>No</b> mueve caja; el saldo por pagar baja con <b>abonos</b>.</p>
     <div class="form-group"><label class="form-label">PROVEEDOR *</label><select class="form-control" id="cp-prov-sel">${optHtml}</select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">VALOR (COSTO) *</label><input type="number" class="form-control" id="cp-valor" min="0" step="any" placeholder="0"></div>
@@ -198,7 +203,7 @@
       <div class="form-group"><label class="form-label">REFERENCIA</label><input class="form-control" id="cp-ref" placeholder="N° factura / remisión"></div>
       <div class="form-group"><label class="form-label">NOTA</label><input class="form-control" id="cp-nota" placeholder="Observación"></div>
     </div>
-    <button class="btn btn-primary" style="width:100%" onclick="guardarCompromisoProv()">📥 Guardar compromiso</button>`);
+    <button class="btn btn-primary" style="width:100%" onclick="guardarCompromisoProv()">📥 Guardar nota en libro</button>`);
     if (provId) {
       setTimeout(() => {
         const selEl = document.getElementById('cp-prov-sel');
@@ -255,7 +260,7 @@
       showLoadingOverlay('hide');
       closeModal();
       renderTesPagosProv();
-      notify('success', '📒', 'Compromiso registrado', `${fmt(valor)} · ${provNombre}`, { duration: 3000 });
+      notify('success', '📒', 'Nota en libro guardada', `${fmt(valor)} · ${provNombre}`, { duration: 3000 });
     } catch (err) {
       showLoadingOverlay('hide');
       notify('danger', '⚠️', 'Error', err.message || String(err), { duration: 6000 });
@@ -282,12 +287,12 @@
     const { state, provId, provNombre, fmt, formatDate, openModal } = ctx;
     const lines = (state.tes_compromisos_prov || []).filter((c) => c.proveedorId === provId);
     const d = calcDeudaProveedor(state, provId);
-    openModal(`<div class="modal-title">📒 Compromisos — ${provNombre}<button class="modal-close" onclick="closeModal()">×</button></div>
+    openModal(`<div class="modal-title">📒 Notas en libro — ${provNombre}<button class="modal-close" onclick="closeModal()">×</button></div>
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;font-size:12px;line-height:1.45">
-    <div><span style="color:var(--text2)">Compromiso (libro):</span> <b>${fmt(d.compromisoReconocido)}</b></div>
+    <div><span style="color:var(--text2)">Deuda total (a costo):</span> <b>${fmt(d.refOperativaTotal)}</b></div>
+    <div><span style="color:var(--text2)">Suma libro (opc.):</span> <b>${fmt(d.compromisoReconocido)}</b></div>
     <div><span style="color:var(--text2)">Abonado:</span> <b style="color:var(--green)">${fmt(d.abonos)}</b></div>
-    <div><span style="color:var(--text2)">Saldo:</span> <b style="color:var(--yellow)">${fmt(d.saldo)}</b></div>
-    <div><span style="color:var(--text2)">Ref. operativa:</span> <b style="color:var(--text2)">${fmt(d.refOperativaTotal)}</b> <span style="font-size:10px">(info)</span></div></div>
+    <div><span style="color:var(--text2)">Saldo por pagar:</span> <b style="color:var(--yellow)">${fmt(d.saldo)}</b></div></div>
     <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Valor</th><th>Ref.</th><th>Nota</th><th></th></tr></thead><tbody>${lines.length > 0 ? lines
       .slice()
       .reverse()
@@ -295,15 +300,15 @@
         (c) =>
           `<tr><td>${formatDate(c.fecha)}</td><td style="color:var(--accent);font-weight:700">${fmt(c.valor)}</td><td style="font-size:11px;color:var(--text2)">${c.referencia || '—'}</td><td style="font-size:11px;color:var(--text2)">${c.nota || '—'}</td><td><button class="btn btn-xs btn-danger" onclick="closeModal();eliminarCompromisoProv('${c.id}')">✕</button></td></tr>`
       )
-      .join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:20px">Sin líneas de compromiso</td></tr>'}</tbody></table></div>
-    <button class="btn btn-primary btn-sm" style="margin-top:12px;width:100%" onclick="closeModal();openCompromisoProvModal('${provId}','${String(provNombre).replace(/'/g, "\\'")}')">+ Nuevo compromiso</button>`);
+      .join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:20px">Sin notas en libro</td></tr>'}</tbody></table></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:12px;width:100%" onclick="closeModal();openCompromisoProvModal('${provId}','${String(provNombre).replace(/'/g, "\\'")}')">+ Nueva nota en libro</button>`);
   }
 
   async function importarEstimacionCompromisosProv(ctx) {
     const { state, uid, dbId, today, showLoadingOverlay, supabaseClient, renderTesPagosProv, notify, fmt, confirm } = ctx;
     if (
       !confirm(
-        'Se creará una línea de compromiso por cada proveedor con estimación > 0 y sin compromisos en libro. Valor = inventario a costo + vendido POS (referencia actual). ¿Continuar?'
+        'Se creará una línea de compromiso por cada proveedor con estimación > 0 y sin compromisos en libro. Valor = misma base que la deuda operativa (stock + vendido a costo). ¿Continuar?'
       )
     )
       return;
@@ -332,7 +337,7 @@
           valor: t.valor,
           fecha: today(),
           referencia: '',
-          nota: 'Importación estimación (inv.+vendido POS)'
+          nota: 'Importación estimación (deuda a costo: stock+vendido)'
         };
         const { error } = await supabaseClient.from('tes_compromisos_prov').upsert(
           {
@@ -384,7 +389,7 @@
       });
     }
     if (opts.length === 0 && !provId) {
-      notify('warning', '⚠️', 'Sin saldo pendiente', 'No hay proveedores con saldo por pagar según compromiso − abonos.', {
+      notify('warning', '⚠️', 'Sin saldo pendiente', 'No hay proveedores con saldo por pagar (deuda operativa − abonos).', {
         duration: 4000
       });
       return;
@@ -399,7 +404,7 @@
     openModal(`
     <div class="modal-title">💳 Registrar Abono a Proveedor<button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="form-group"><label class="form-label">PROVEEDOR *</label><select class="form-control" id="ab-prov-sel" onchange="updateSaldoPendiente()"><option value="">— Seleccionar —</option>${optHtml}</select></div>
-    <div id="ab-saldo-info" style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;display:none"><span style="color:var(--text2)">Saldo pendiente (compromiso − abonos):</span> <span id="ab-saldo-val" style="font-weight:700;color:var(--yellow)"></span></div>
+    <div id="ab-saldo-info" style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;display:none"><span style="color:var(--text2)">Saldo pendiente (deuda operativa − abonos):</span> <span id="ab-saldo-val" style="font-weight:700;color:var(--yellow)"></span></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">VALOR ABONO *</label><input type="number" class="form-control" id="ab-valor" min="0" placeholder="0" oninput="validateAbono()"></div>
       <div class="form-group"><label class="form-label">MÉTODO DE PAGO</label><select class="form-control" id="ab-metodo">${(state.cfg_metodos_pago && state.cfg_metodos_pago.filter((m) => m.activo !== false).length > 0 ? state.cfg_metodos_pago.filter((m) => m.activo !== false) : [{ id: 'efectivo', nombre: '💵 Efectivo' }, { id: 'transferencia', nombre: '📱 Transferencia' }]).map((m) => `<option value="${m.id}">${m.nombre}</option>`).join('')}</select></div>
@@ -541,10 +546,11 @@
     const d = calcDeudaProveedor(state, provId);
     openModal(`<div class="modal-title">📋 Abonos — ${provNombre}<button class="modal-close" onclick="closeModal()">×</button></div>
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;font-size:12px;line-height:1.45">
-    <div><span style="color:var(--text2)">Compromiso (libro):</span> <b>${fmt(d.compromisoReconocido)}</b></div>
+    <div><span style="color:var(--text2)">Deuda total (a costo):</span> <b>${fmt(d.refOperativaTotal)}</b></div>
+    <div><span style="color:var(--text2)">Libro (opc.):</span> <b>${fmt(d.compromisoReconocido)}</b></div>
     <div><span style="color:var(--text2)">Abonado:</span> <b style="color:var(--green)">${fmt(d.abonos)}</b></div>
-    <div><span style="color:var(--text2)">Saldo:</span> <b style="color:var(--yellow)">${fmt(d.saldo)}</b></div></div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.45"><b>Referencia (info):</b> inventario ${fmt(d.valorInventarioCosto)} · vendido POS ${fmt(d.costoVendidoHist)} (${d.unidadesVendidasHist} uds) · suma ${fmt(d.refOperativaTotal)}</div>
+    <div><span style="color:var(--text2)">Saldo por pagar:</span> <b style="color:var(--yellow)">${fmt(d.saldo)}</b></div></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.45">Desglose: en stock ${fmt(d.valorInventarioCosto)} · ya vendido (POS a costo) ${fmt(d.costoVendidoHist)} (${d.unidadesVendidasHist} uds)</div>
     <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Valor</th><th>Método</th><th>Nota</th></tr></thead><tbody>${abonos.length > 0 ? abonos.reverse().map((ab) => `<tr><td>${formatDate(ab.fecha)}</td><td style="color:var(--green);font-weight:700">${fmt(ab.valor)}</td><td>${ab.metodo || '—'}</td><td style="color:var(--text2);font-size:11px">${ab.nota || '—'}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:20px">Sin abonos registrados</td></tr>'}</tbody></table></div>
     <button class="btn btn-primary btn-sm" style="margin-top:12px;width:100%" onclick="closeModal();openAbonoProvModal('${provId}','${String(provNombre).replace(/'/g, "\\'")}')">+ Nuevo Abono</button>`);
   }
