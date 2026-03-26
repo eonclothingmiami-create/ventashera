@@ -1,0 +1,8 @@
+{
+  "name": "ventashera-main",
+  "private": true,
+  "description": "VentasHera — CLI Supabase como devDependency (ver https://github.com/supabase/cli#install-the-cli)",
+  "devDependencies": {
+    "supabase": "^2.84.1"
+  }
+}

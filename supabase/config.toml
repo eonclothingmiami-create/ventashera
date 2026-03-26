@@ -1,0 +1,14 @@
+# Supabase CLI — ref de nube: usar `supabase link` o --project-ref al desplegar.
+# project_id es el nombre del proyecto local (Docker), no el Project ID del dashboard.
+project_id = "ventashera-main"
+
+[functions.hera-rappi-sync]
+verify_jwt = true
+
+# RSS/CSV para Pinterest «Crear Pines en lote» (Pinterest no envía JWT al leer el feed)
+[functions.pinterest-product-feed]
+verify_jwt = false
+
+# Falabella Seller Center — credenciales API solo en servidor
+[functions.falabella-sync-product]
+verify_jwt = true
