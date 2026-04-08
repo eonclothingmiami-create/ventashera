@@ -5253,38 +5253,60 @@ async function saveAjusteInv() {
     ) {
       const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
       if (costoUnit > 0) {
-        const marker = window.AppTreasuryModule?.CXPIV_ABONO_MARKER || '[cxp:inv_entrada]';
-        const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
-        const provNombre = prov?.nombre || product.proveedorNombre || '';
-        const valorNeg = -(costoUnit * cant);
-        const abonoInvId = dbId();
-        const fhAb = new Date().toISOString();
-        const notaAb = `${marker} inv_ajuste_id:${ajuste.id} · Entrada inventario crédito · ${product.nombre || artId} · ${motivo}`;
-        const { error: abInsErr } = await supabaseClient.from('tes_abonos_prov').insert({
-          id: abonoInvId,
-          proveedor_id: product.proveedorId,
-          proveedor_nombre: provNombre,
-          valor: valorNeg,
-          metodo: 'inv_entrada_credito',
-          fecha: today(),
-          nota: notaAb,
-          fecha_hora: fhAb
+        const isRpcMissing =
+          typeof window.AppTreasuryModule?.isRpcMissingError === 'function'
+            ? window.AppTreasuryModule.isRpcMissingError
+            : (err) => {
+                const c = err?.code;
+                const m = String(err?.message || err?.error_description || '');
+                return (
+                  c === '42883' ||
+                  c === 'PGRST202' ||
+                  /does not exist|function.*not found|no existe la funci/i.test(m)
+                );
+              };
+        /** Espejo CXP vía RPC (idempotente con trigger `trg_inv_ajustes_cxp_cargo` en BD reciente). */
+        const { error: cxpRpcErr } = await supabaseClient.rpc('tes_cxp_upsert_cargo_inv_ajuste', {
+          p_inv_ajuste_id: String(ajuste.id),
         });
-        if (!abInsErr) {
-          if (!state.tes_abonos_prov) state.tes_abonos_prov = [];
-          state.tes_abonos_prov.unshift({
-            id: abonoInvId,
-            proveedorId: product.proveedorId,
-            proveedorNombre: provNombre,
-            valor: valorNeg,
-            metodo: 'inv_entrada_credito',
-            fecha: today(),
-            nota: notaAb,
-            fechaCreacion: today(),
-            fechaHora: fhAb
-          });
-        } else {
-          console.warn('[tes_abonos_prov inv entrada]', abInsErr.message);
+        if (cxpRpcErr) {
+          if (isRpcMissing(cxpRpcErr)) {
+            const marker = window.AppTreasuryModule?.CXPIV_ABONO_MARKER || '[cxp:inv_entrada]';
+            const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
+            const provNombre = prov?.nombre || product.proveedorNombre || '';
+            const valorNeg = -(costoUnit * cant);
+            const abonoInvId = dbId();
+            const fhAb = new Date().toISOString();
+            const notaAb = `${marker} inv_ajuste_id:${ajuste.id} · Entrada inventario crédito · ${product.nombre || artId} · ${motivo}`;
+            const { error: abInsErr } = await supabaseClient.from('tes_abonos_prov').insert({
+              id: abonoInvId,
+              proveedor_id: product.proveedorId,
+              proveedor_nombre: provNombre,
+              valor: valorNeg,
+              metodo: 'inv_entrada_credito',
+              fecha: today(),
+              nota: notaAb,
+              fecha_hora: fhAb,
+            });
+            if (!abInsErr) {
+              if (!state.tes_abonos_prov) state.tes_abonos_prov = [];
+              state.tes_abonos_prov.unshift({
+                id: abonoInvId,
+                proveedorId: product.proveedorId,
+                proveedorNombre: provNombre,
+                valor: valorNeg,
+                metodo: 'inv_entrada_credito',
+                fecha: today(),
+                nota: notaAb,
+                fechaCreacion: today(),
+                fechaHora: fhAb,
+              });
+            } else {
+              console.warn('[tes_abonos_prov inv entrada fallback]', abInsErr.message);
+            }
+          } else {
+            console.warn('[tes_cxp_upsert_cargo_inv_ajuste]', cxpRpcErr.message || cxpRpcErr);
+          }
         }
       }
     }
@@ -5317,7 +5339,25 @@ async function saveAjusteInv() {
     if (_sbConnected && typeof refreshCriticalSlice === 'function') {
       try {
         const rr = await refreshCriticalSlice('inventario');
-        if (!rr.ok) notify('warning', '📡', 'No se pudo sincronizar', 'El ajuste se guardó; la vista puede estar desactualizada. Reintenta.', { duration: 5500 });
+        const needTes =
+          tipo === 'entrada' &&
+          product?.proveedorId &&
+          (typeof window.esMercanciaCredito === 'function'
+            ? window.esMercanciaCredito(product.tituloMercancia)
+            : String(product.tituloMercancia || '').trim().toLowerCase() === 'credito');
+        let rr2 = rr;
+        if (needTes) {
+          rr2 = await refreshCriticalSlice('tes_prov');
+        }
+        if (!rr.ok || (needTes && !rr2.ok)) {
+          notify(
+            'warning',
+            '📡',
+            'No se pudo sincronizar',
+            'El ajuste se guardó; la vista puede estar desactualizada. Reintenta.',
+            { duration: 5500 },
+          );
+        }
       } catch (_) { /* noop */ }
     }
 

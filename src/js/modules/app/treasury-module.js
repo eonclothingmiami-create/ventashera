@@ -3483,6 +3483,8 @@
     guardarAbonoProv,
     verAbonosProv,
     eliminarAbonoProv,
+    /** Misma detección que reversión de abono: 42883 / PGRST202 / “function not found”. */
+    isRpcMissingError: rpcRevertMissingError,
     renderTesCajas,
     openCajaModal,
     saveCaja,
