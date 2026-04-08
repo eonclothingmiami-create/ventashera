@@ -5008,9 +5008,6 @@ async function saveArticulo(existingId, options) {
         const beforeEligible = elig(prevArt);
         const afterEligible = elig(artLocal);
         const transitionToDebt = !beforeEligible && afterEligible;
-        // #region agent log
-        fetch('http://127.0.0.1:7397/ingest/fdd15a6c-f2bb-4e50-9cda-32cc3a03f3ff',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00229b'},body:JSON.stringify({sessionId:'00229b',runId:'pre-fix',hypothesisId:'A_transition_detection',location:'src/js/modules/core.js:saveArticulo',message:'debt_transition_check',data:{productId,existingId:!!existingId,beforeEligible,afterEligible,transitionToDebt,beforeTitulo:prevArt?.tituloMercancia,afterTitulo:artLocal?.tituloMercancia,beforeProv:prevArt?.proveedorId,afterProv:artLocal?.proveedorId,beforeCost:prevArt?.precioCompra,afterCost:artLocal?.precioCompra,beforeStock:prevArt?.stock,afterStock:artLocal?.stock},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (transitionToDebt && window.AppTreasuryModule?.logRegistroDeudaArticulo) {
           try {
             await window.AppTreasuryModule.logRegistroDeudaArticulo({

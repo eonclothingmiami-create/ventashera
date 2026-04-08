@@ -2121,11 +2121,7 @@
 
   async function logRegistroDeudaArticulo(ctx) {
     const { state, supabaseClient, uid, artLocal, reason } = ctx;
-    const log = (message, data, hypothesisId) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7397/ingest/fdd15a6c-f2bb-4e50-9cda-32cc3a03f3ff',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00229b'},body:JSON.stringify({sessionId:'00229b',runId:'pre-fix',hypothesisId,location:'src/js/modules/app/treasury-module.js:logRegistroDeudaArticulo',message,data,timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-    };
+    const log = () => {};
     if (!artLocal) {
       log('debt_log_skip:no_art', {}, 'B_debt_log_decision');
       return;
