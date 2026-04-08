@@ -2948,6 +2948,39 @@
         return;
       }
     }
+    const fechaDia = String(fecha || '').slice(0, 10);
+    const rowsProv = (state.tes_cxp_movimientos || []).filter((r) => String(r.proveedorId) === String(provId));
+    const mismoMonto = (m) => Math.abs((parseFloat(m) || 0) - valor) < 0.05;
+    const dupInvAjuste = rowsProv.some(
+      (r) =>
+        r.naturaleza === 'cargo' &&
+        r.tipo === 'cargo_inv_ajuste' &&
+        String(r.fecha || '').slice(0, 10) === fechaDia &&
+        mismoMonto(r.monto),
+    );
+    if (dupInvAjuste) {
+      notify(
+        'warning',
+        '⚠️',
+        'Duplicado CXP',
+        'Ya existe un cargo automático de entrada inventario (cargo_inv_ajuste) con el mismo monto y fecha. No registres otro cargo CXP por el mismo ingreso: el saldo subiría dos veces. Si ves factura duplicada, revisa el libro CXP y elimina el cargo manual sobrante.',
+        { duration: 9000 },
+      );
+      return;
+    }
+    const dupCargoCompra = rowsProv.filter(
+      (r) =>
+        r.naturaleza === 'cargo' &&
+        r.tipo === 'cargo_compra' &&
+        String(r.fecha || '').slice(0, 10) === fechaDia &&
+        mismoMonto(r.monto),
+    );
+    if (dupCargoCompra.length > 0) {
+      const ok = confirm(
+        `Ya hay ${dupCargoCompra.length} cargo(s) compra con el mismo monto (${fmt(valor)}) en la misma fecha. ¿Seguro que es otra compra distinta y no un duplicado?`,
+      );
+      if (!ok) return;
+    }
     const id = nextId();
     const fechaHora = new Date().toISOString();
     const row = {
