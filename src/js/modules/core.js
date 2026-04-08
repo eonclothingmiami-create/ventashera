@@ -25,6 +25,9 @@ var supabaseClient = window.AppRepository?.supabaseClient;
 // Variables de control
 let isFirstLoad = true;
 let _sbConnected = false;
+// #region agent log
+fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'HB_log_channel',location:'src/js/modules/core.js:boot',message:'heartbeat_boot',data:{hasSupabase:!!(window.supabase),hasRepository:!!window.AppRepository,href:location.href},timestamp:Date.now()})}).catch(()=>{});
+// #endregion
 // ===================================================================
 // ===== SUPABASE REST API (FUNCIONES BASE) =====
 // ===================================================================
