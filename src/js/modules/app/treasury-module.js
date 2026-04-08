@@ -367,8 +367,13 @@
       fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_pijama_not_counting',location:'src/js/modules/app/treasury-module.js:calcDeudaProveedor',message:'debt_calc_entry_probe',data:{provId,provNombre,articulosCount:(state.articulos||[]).length,pijama:{id:pij?.id,tituloMercancia:pij?.tituloMercancia,proveedorId:pij?.proveedorId,proveedorNombre:pij?.proveedorNombre,stock:pij?.stock,cost:pij?.precioCompra},matchesNombreButNotId},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
     } catch (_) {}
+    const articuloCuentaComoCredito = (a) => {
+      if (!a) return false;
+      if (a.esCreditoProveedor != null) return !!a.esCreditoProveedor;
+      return esMercCreditoTitulo(a.tituloMercancia);
+    };
     const articulos = (state.articulos || []).filter((a) => {
-      if (!esMercCreditoTitulo(a.tituloMercancia)) return false;
+      if (!articuloCuentaComoCredito(a)) return false;
       if (!a.proveedorId) return false;
       return String(a.proveedorId) === String(provId);
     });

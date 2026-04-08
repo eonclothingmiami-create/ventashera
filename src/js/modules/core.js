@@ -1966,6 +1966,7 @@ async function hydrateArticulosFromSupabase() {
       mostrarEnWeb: catalogVisibleFromProductRow(p),
       supabaseId: p.id,
       tituloMercancia: p.titulo_mercancia || '',
+      esCreditoProveedor: p.es_credito_proveedor,
       proveedorId: p.proveedor_id || null,
       proveedorNombre: p.proveedor_nombre || '',
       falabellaSellerSku: p.falabella_seller_sku || '',
@@ -4725,7 +4726,8 @@ async function saveArticulo(existingId, options) {
       ? ((state.articulos || []).find((a) => a.id === existingId)?.stock || 0)
       : (parseInt(document.getElementById('m-art-stock0')?.value) || 0);
     const eligProvDeuda = !!(proveedorId && costoInput > 0 && stockInput > 0);
-    if (eligProvDeuda && tituloMercancia !== 'credito') {
+    const esCreditoProveedor = tituloMercancia === 'credito';
+    if (eligProvDeuda && !esCreditoProveedor) {
       // #region agent log
       fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_product_credit_misclassified',location:'src/js/modules/core.js:saveArticulo',message:'confirm_non_credit_with_supplier_stock_cost',data:{existingId:!!existingId,proveedorId,tituloMercancia,cost:costoInput,stock:stockInput},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
@@ -4772,6 +4774,7 @@ async function saveArticulo(existingId, options) {
         active: true,
         visible: catalogVisibleBool,
         titulo_mercancia: tituloMercancia || null,
+        es_credito_proveedor: esCreditoProveedor,
         proveedor_id: proveedorId || null,
         proveedor_nombre: proveedorObj?.nombre || null,
         sizes: tallasStr,
