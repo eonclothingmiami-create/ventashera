@@ -363,9 +363,6 @@
           cost: a.precioCompra
         }));
       const pij = (state.articulos || []).find((a) => /pijama\s+corta\s+juli/i.test(String(a?.nombre || a?.name || '')));
-      // #region agent log
-      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_pijama_not_counting',location:'src/js/modules/app/treasury-module.js:calcDeudaProveedor',message:'debt_calc_entry_probe',data:{provId,provNombre,articulosCount:(state.articulos||[]).length,pijama:{id:pij?.id,tituloMercancia:pij?.tituloMercancia,proveedorId:pij?.proveedorId,proveedorNombre:pij?.proveedorNombre,stock:pij?.stock,cost:pij?.precioCompra},matchesNombreButNotId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     } catch (_) {}
     const articuloCuentaComoCredito = (a) => {
       if (!a) return false;
@@ -2986,9 +2983,6 @@
         mismoMonto(r.monto),
     );
     if (dupInvAjuste) {
-      // #region agent log
-      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H2_cxp_duplicate_guard',location:'src/js/modules/app/treasury-module.js:guardarCargoCxpMov',message:'blocked_manual_cargo_due_to_inv_ajuste_mirror',data:{provId,fecha:fechaDia,monto:valor},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       notify(
         'warning',
         '⚠️',
@@ -3006,9 +3000,6 @@
         mismoMonto(r.monto),
     );
     if (dupCargoCompra.length > 0) {
-      // #region agent log
-      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H3_manual_cargo_duplicate',location:'src/js/modules/app/treasury-module.js:guardarCargoCxpMov',message:'manual_cargo_same_day_same_amount_warning',data:{provId,fecha:fechaDia,monto:valor,existingCount:dupCargoCompra.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const ok = confirm(
         `Ya hay ${dupCargoCompra.length} cargo(s) compra con el mismo monto (${fmt(valor)}) en la misma fecha. ¿Seguro que es otra compra distinta y no un duplicado?`,
       );

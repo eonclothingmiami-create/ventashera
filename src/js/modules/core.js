@@ -25,9 +25,6 @@ var supabaseClient = window.AppRepository?.supabaseClient;
 // Variables de control
 let isFirstLoad = true;
 let _sbConnected = false;
-// #region agent log
-fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'HB_log_channel',location:'src/js/modules/core.js:boot',message:'heartbeat_boot',data:{hasSupabase:!!(window.supabase),hasRepository:!!window.AppRepository,href:location.href},timestamp:Date.now()})}).catch(()=>{});
-// #endregion
 // ===================================================================
 // ===== SUPABASE REST API (FUNCIONES BASE) =====
 // ===================================================================
@@ -1986,9 +1983,6 @@ async function hydrateArticulosFromSupabase() {
   try {
     const t = (state.articulos || []).find((a) => /pijama\s+corta\s+juli/i.test(String(a?.nombre || a?.name || '')));
     if (t) {
-      // #region agent log
-      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_pijama_not_counting',location:'src/js/modules/core.js:hydrateArticulosFromSupabase',message:'pijama_corta_juli_hydrated',data:{id:t.id,ref:t.codigo,tituloMercancia:t.tituloMercancia,proveedorId:t.proveedorId,proveedorNombre:t.proveedorNombre,stock:t.stock,cost:t.precioCompra},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     }
   } catch (_) {}
 }
@@ -4728,9 +4722,6 @@ async function saveArticulo(existingId, options) {
     const eligProvDeuda = !!(proveedorId && costoInput > 0 && stockInput > 0);
     const esCreditoProveedor = tituloMercancia === 'credito';
     if (eligProvDeuda && !esCreditoProveedor) {
-      // #region agent log
-      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_product_credit_misclassified',location:'src/js/modules/core.js:saveArticulo',message:'confirm_non_credit_with_supplier_stock_cost',data:{existingId:!!existingId,proveedorId,tituloMercancia,cost:costoInput,stock:stockInput},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const ok = confirm(
         `Este artículo tiene proveedor, stock y costo (stock ${stockInput} × costo ${costoInput}). Si NO es “Mercancía a Crédito”, la deuda operativa de proveedores puede quedar mal.\n\n¿Confirmas que debe quedar como “${tituloMercancia || '—'}” y no como “credito”?`,
       );
