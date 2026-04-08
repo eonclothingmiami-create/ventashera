@@ -1982,6 +1982,14 @@ async function hydrateArticulosFromSupabase() {
       pinterestCatalogItemId: integIds.pinterestCatalogItemId
     };
   });
+  try {
+    const t = (state.articulos || []).find((a) => /pijama\s+corta\s+juli/i.test(String(a?.nombre || a?.name || '')));
+    if (t) {
+      // #region agent log
+      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_pijama_not_counting',location:'src/js/modules/core.js:hydrateArticulosFromSupabase',message:'pijama_corta_juli_hydrated',data:{id:t.id,ref:t.codigo,tituloMercancia:t.tituloMercancia,proveedorId:t.proveedorId,proveedorNombre:t.proveedorNombre,stock:t.stock,cost:t.precioCompra},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
+  } catch (_) {}
 }
 
 async function hydrateInvSliceFromSupabase() {
