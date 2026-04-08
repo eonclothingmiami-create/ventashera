@@ -4709,6 +4709,21 @@ async function saveArticulo(existingId, options) {
       return;
     }
 
+    const costoInput = parseFloat(document.getElementById('m-art-pc').value) || 0;
+    const stockInput = existingId
+      ? ((state.articulos || []).find((a) => a.id === existingId)?.stock || 0)
+      : (parseInt(document.getElementById('m-art-stock0')?.value) || 0);
+    const eligProvDeuda = !!(proveedorId && costoInput > 0 && stockInput > 0);
+    if (eligProvDeuda && tituloMercancia !== 'credito') {
+      // #region agent log
+      fetch('http://127.0.0.1:7612/ingest/e67f932d-f17c-48e7-afda-08b8fe05476f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'13c04b'},body:JSON.stringify({sessionId:'13c04b',runId:'pre-fix',hypothesisId:'H1_product_credit_misclassified',location:'src/js/modules/core.js:saveArticulo',message:'confirm_non_credit_with_supplier_stock_cost',data:{existingId:!!existingId,proveedorId,tituloMercancia,cost:costoInput,stock:stockInput},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      const ok = confirm(
+        `Este artículo tiene proveedor, stock y costo (stock ${stockInput} × costo ${costoInput}). Si NO es “Mercancía a Crédito”, la deuda operativa de proveedores puede quedar mal.\n\n¿Confirmas que debe quedar como “${tituloMercancia || '—'}” y no como “credito”?`,
+      );
+      if (!ok) return;
+    }
+
     const chkCatalogo = document.getElementById('art-mostrar-web');
     const catalogVisibleBool = normalizeVisibleFlag(!!(chkCatalogo && chkCatalogo.checked));
 
@@ -4739,12 +4754,10 @@ async function saveArticulo(existingId, options) {
         categoria: document.getElementById('m-art-cat').value,
         description: document.getElementById('m-art-desc').value.trim(),
         price: parseFloat(document.getElementById('m-art-pv').value) || 0,
-        cost: parseFloat(document.getElementById('m-art-pc').value) || 0,
+        cost: costoInput,
         // Nuevo producto: usa el stock inicial del formulario
         // Producto existente: mantiene el stock actual (no sobreescribir)
-        stock: existingId
-          ? ((state.articulos||[]).find(a=>a.id===existingId)?.stock || 0)
-          : (parseInt(document.getElementById('m-art-stock0').value) || 0),
+        stock: stockInput,
         active: true,
         visible: catalogVisibleBool,
         titulo_mercancia: tituloMercancia || null,
