@@ -1,6 +1,0 @@
-# Supabase CLI (cuando agregues carpeta supabase/)
-supabase/.temp/
-
-node_modules/
-.DS_Store
-Thumbs.db
