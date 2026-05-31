@@ -297,11 +297,92 @@
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
   }
 
+  // ---- notificación tolerante (usa notify del ERP si existe) ----
+  function notifyMsg(type, icon, title, desc) {
+    if (typeof global.notify === 'function') {
+      try {
+        global.notify(type, icon, title, desc, { duration: 4500 });
+        return true;
+      } catch (e) {
+        /* noop */
+      }
+    }
+    return false;
+  }
+
+  function setBtnBusy(id, busyText) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = true;
+      el.dataset.prevText = el.textContent;
+      el.textContent = busyText;
+    }
+  }
+
+  // Acción administrativa explícita: genera el histórico llamando SOLO al backfill
+  // existente (idempotente, no crea duplicados, no toca caja/stock/ventas/facturas).
+  async function generarHistorico() {
+    if (typeof global.backfillSaleItemsVentaPos !== 'function') {
+      notifyMsg('warning', '⚠️', 'No disponible', 'No se cargó el backfill (pos-repository.js / core.js). Recarga la página.');
+      return;
+    }
+    if (
+      !global.confirm(
+        'Se generarán líneas consolidadas desde facturas existentes. No toca caja, stock, ventas ni facturas. Es idempotente. ¿Continuar?',
+      )
+    ) {
+      return;
+    }
+    setBtnBusy('vc-btn-generar', 'Generando…');
+    setBtnBusy('vc-btn-generar-empty', 'Generando…');
+    try {
+      // `true` => evita la confirmación propia del backfill (ya confirmamos aquí).
+      await global.backfillSaleItemsVentaPos(true);
+      if (typeof global.loadSaleItemsIntoState === 'function') {
+        try {
+          await global.loadSaleItemsIntoState();
+        } catch (e) {
+          console.warn('[VentasConsolidado] loadSaleItemsIntoState:', e && e.message);
+        }
+      }
+      renderVentasConsolidado(_ctx);
+    } catch (e) {
+      console.warn('[VentasConsolidado] generarHistorico:', e);
+      if (!notifyMsg('danger', '⚠️', 'No se pudo generar', (e && e.message) || 'Error inesperado.')) {
+        renderVentasConsolidado(_ctx);
+      }
+    }
+  }
+
+  // Recarga datos desde el estado (sin modificar nada) y re-renderiza.
+  async function recargar() {
+    setBtnBusy('vc-btn-recargar', 'Recargando…');
+    setBtnBusy('vc-btn-recargar-empty', 'Recargando…');
+    try {
+      if (typeof global.loadSaleItemsIntoState === 'function') {
+        await global.loadSaleItemsIntoState();
+      }
+    } catch (e) {
+      console.warn('[VentasConsolidado] recargar:', e && e.message);
+    }
+    renderVentasConsolidado(_ctx);
+  }
+
   function emptyStateHtml() {
     return `<div class="card">
       <div class="card-title">Consolidado de ventas</div>
-      <div style="text-align:center;color:var(--text2);padding:32px 16px">
-        No hay líneas cargadas. Ejecuta el backfill <b>POS líneas</b> o verifica que la migración <code>sale_items</code> esté aplicada.
+      <div style="max-width:560px;margin:0 auto;text-align:center;color:var(--text2);padding:28px 16px">
+        <div style="font-size:13px;line-height:1.5;margin-bottom:16px">
+          Todavía no hay líneas consolidadas. Las ventas nuevas se consolidan automáticamente;
+          para cargar ventas históricas desde facturas existentes puedes generar el histórico una sola vez.
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-primary" id="vc-btn-generar-empty" onclick="AppVentasConsolidadoModule.generarHistorico()">Generar histórico</button>
+          <button class="btn btn-secondary" id="vc-btn-recargar-empty" onclick="AppVentasConsolidadoModule.recargar()">Recargar</button>
+        </div>
+        <div style="font-size:11px;color:var(--text2)">
+          Esta acción no toca caja, stock, ventas ni facturas. Solo crea líneas de reporte faltantes.
+        </div>
       </div>
     </div>`;
   }
@@ -339,7 +420,7 @@
           <div><label style="${labelStyle}">Canal</label><select id="vc-canal" class="form-control" onchange="AppVentasConsolidadoModule.apply()">${optHtml(canales)}</select></div>
           <div><label style="${labelStyle}">Talla</label><select id="vc-talla" class="form-control" onchange="AppVentasConsolidadoModule.apply()">${optHtml(tallas)}</select></div>
           <div><label style="${labelStyle}">&nbsp;</label><label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="vc-incluir-anuladas" onchange="AppVentasConsolidadoModule.apply()"> Incluir anuladas</label></div>
-          <div style="display:flex;gap:8px"><button class="btn btn-secondary" onclick="AppVentasConsolidadoModule.clear()">Limpiar</button><button class="btn btn-primary" onclick="AppVentasConsolidadoModule.exportCsv()">Exportar CSV</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="AppVentasConsolidadoModule.clear()">Limpiar</button><button class="btn btn-secondary" id="vc-btn-recargar" onclick="AppVentasConsolidadoModule.recargar()">Recargar</button><button class="btn btn-secondary" id="vc-btn-generar" onclick="AppVentasConsolidadoModule.generarHistorico()" title="Crea líneas de reporte faltantes desde facturas. Idempotente; no toca caja, stock, ventas ni facturas.">Generar histórico</button><button class="btn btn-primary" onclick="AppVentasConsolidadoModule.exportCsv()">Exportar CSV</button></div>
         </div>
       </div>
 
@@ -366,5 +447,7 @@
     apply,
     clear,
     exportCsv,
+    generarHistorico,
+    recargar,
   };
 })(window);
