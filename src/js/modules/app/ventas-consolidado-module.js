@@ -184,7 +184,7 @@
 
   function tbodyHtml(rows) {
     if (!rows.length) {
-      return `<tr><td colspan="12" style="text-align:center;color:var(--text2);padding:24px">Sin líneas para los filtros actuales</td></tr>`;
+      return `<tr><td colspan="13" style="text-align:center;color:var(--text2);padding:24px">Sin líneas para los filtros actuales</td></tr>`;
     }
     return rows
       .map(
@@ -201,9 +201,54 @@
         <td style="text-align:right;font-weight:700;color:var(--accent)">${fmtCOP(r.subtotal)}</td>
         <td>${esc(r.canal || '—')}</td>
         <td style="font-size:10px;color:var(--text2)">${esc(r.source || '—')}</td>
+        <td style="text-align:right"><button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF de factura" data-vc-pdf data-vc-pdf-iid="${esc(r.invoiceId || '')}" data-vc-pdf-inum="${esc(r.invoiceNumber || '')}">PDF</button></td>
       </tr>`,
       )
       .join('');
+  }
+
+  // Reutiliza el flujo PDF EXISTENTE de Facturas (no genera PDF nuevo ni recalcula
+  // totales). Abre la factura COMPLETA asociada a la línea. 100% solo lectura.
+  function openFacturaPdf(invoiceId, invoiceNumber) {
+    const st = (_ctx && _ctx.state) || global.state || {};
+    const facturas = Array.isArray(st.facturas) ? st.facturas : [];
+    let f = null;
+    if (invoiceId) f = facturas.find((x) => String(x.id) === String(invoiceId));
+    if (!f && invoiceNumber) f = facturas.find((x) => String(x.numero) === String(invoiceNumber));
+    if (!f && invoiceNumber) f = facturas.find((x) => String(x.number) === String(invoiceNumber));
+    if (!f) {
+      if (typeof global.notify === 'function') {
+        global.notify('warning', 'PDF', 'Factura no encontrada', 'No se encontró la factura asociada a esta línea. Recarga datos o revisa sale_items.', { duration: 5000 });
+      } else {
+        global.alert('Factura no encontrada. Recarga datos o revisa sale_items.');
+      }
+      return;
+    }
+    if (typeof global.downloadDocPdf === 'function') {
+      global.downloadDocPdf('facturas', f.id);
+      return;
+    }
+    if (typeof global.viewDoc === 'function') {
+      global.viewDoc('facturas', f.id);
+      return;
+    }
+    if (typeof global.notify === 'function') {
+      global.notify('warning', 'PDF', 'No disponible', 'No se pudo abrir el PDF (módulo no cargado). Recarga la página.', { duration: 5000 });
+    } else {
+      global.alert('No se pudo abrir el PDF. Recarga la página.');
+    }
+  }
+
+  // Listener delegado en el <tbody> (nodo estable aunque cambie su innerHTML al filtrar).
+  function bindPdfDelegation() {
+    const tbodyEl = document.getElementById('vc-tbody');
+    if (!tbodyEl || tbodyEl.__vcPdfBound) return;
+    tbodyEl.__vcPdfBound = true;
+    tbodyEl.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-vc-pdf]') : null;
+      if (!btn) return;
+      openFacturaPdf(btn.getAttribute('data-vc-pdf-iid') || '', btn.getAttribute('data-vc-pdf-inum') || '');
+    });
   }
 
   // Recalcula KPIs + tbody + contador SIN re-renderizar los inputs (preserva foco).
@@ -432,7 +477,7 @@
           <table>
             <thead><tr>
               <th>Fecha</th><th>Hora</th><th>Factura</th><th>Cliente</th><th>Artículo</th><th>Ref</th><th>Talla</th>
-              <th style="text-align:right">Cant</th><th style="text-align:right">P. Unit</th><th style="text-align:right">Subtotal</th><th>Canal</th><th>Fuente</th>
+              <th style="text-align:right">Cant</th><th style="text-align:right">P. Unit</th><th style="text-align:right">Subtotal</th><th>Canal</th><th>Fuente</th><th style="text-align:right">PDF</th>
             </tr></thead>
             <tbody id="vc-tbody"></tbody>
           </table>
@@ -440,6 +485,7 @@
       </div>`;
 
     apply();
+    bindPdfDelegation();
   }
 
   global.AppVentasConsolidadoModule = {
@@ -449,5 +495,6 @@
     exportCsv,
     generarHistorico,
     recargar,
+    openFacturaPdf,
   };
 })(window);

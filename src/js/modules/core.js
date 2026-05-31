@@ -6393,9 +6393,29 @@ function docItemChanged(i,artId){
       renderDocItems
     });
   }
-  if(artId==='custom'){_docItems[i].articuloId='custom';_docItems[i].nombre='Personalizado'}
-  else{const art=(state.articulos||[]).find(a=>a.id===artId);if(art){_docItems[i].articuloId=artId;_docItems[i].nombre=art.nombre;_docItems[i].precio=art.precioVenta}}
+  if(artId==='custom'){_docItems[i].articuloId='custom';if(!_docItems[i].nombre||_docItems[i].nombre==='Personalizado')_docItems[i].nombre=''}
+  else{const art=(state.articulos||[]).find(a=>a.id===artId);if(art){_docItems[i].articuloId=artId;_docItems[i].nombre=art.nombre;_docItems[i].precio=art.precioVenta}else{_docItems[i].articuloId=''}}
   renderDocItems();
+}
+function docItemName(i,val){
+  if (window.AppDocumentsModule?.docItemName) {
+    return window.AppDocumentsModule.docItemName({
+      i, val,
+      getDocItems: () => _docItems,
+      setDocItems: (v) => { _docItems = v; }
+    });
+  }
+  if(_docItems[i])_docItems[i].nombre=val;
+}
+function docItemTalla(i,val){
+  if (window.AppDocumentsModule?.docItemTalla) {
+    return window.AppDocumentsModule.docItemTalla({
+      i, val,
+      getDocItems: () => _docItems,
+      setDocItems: (v) => { _docItems = v; }
+    });
+  }
+  if(_docItems[i])_docItems[i].talla=val;
 }
 function docItemQty(i,val){
   if (window.AppDocumentsModule?.docItemQty) {
@@ -6462,6 +6482,8 @@ async function saveDoc(collection,tipo){
   const refId=document.getElementById('m-doc-ref')?.value||'';
   const items=_docItems.filter(i=>i.precio>0);
   if(items.length===0){notify('warning','⚠️','Sin ítems','Agrega al menos un ítem.',{duration:3000});return}
+  const _sinNombre=items.findIndex(i=>!String(i.nombre||'').trim());
+  if(_sinNombre!==-1){notify('warning','⚠️','Falta descripción',`La línea ${_sinNombre+1} tiene precio pero no tiene nombre de producto. Selecciona un artículo o escribe una descripción ("Personalizado").`,{duration:6000});return}
   const subtotal=items.reduce((a,i)=>a+(i.cantidad*i.precio),0);
   const ivaEl=document.getElementById('m-doc-apply-iva');
   const applyIvaF=ivaEl?ivaEl.checked:false;

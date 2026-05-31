@@ -149,11 +149,18 @@
     const items = ctx.getDocItems();
     const el = document.getElementById('m-doc-items'); if (!el) return;
     el.innerHTML = items.map((item, i) => `
-    <div style="display:grid;grid-template-columns:2fr 80px 120px 40px;gap:8px;margin-bottom:8px;align-items:end">
-      <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'ARTÍCULO' : ''}</label><select class="form-control" onchange="docItemChanged(${i},this.value)" style="padding:8px"><option value="">— Seleccionar —</option>${(state.articulos || []).map((a) => '<option value="' + a.id + '" ' + (item.articuloId === a.id ? 'selected' : '') + '>' + a.nombre + '</option>').join('')}<option value="custom">✏️ Personalizado</option></select></div>
-      <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'CANT' : ''}</label><input type="number" class="form-control" value="${item.cantidad}" min="1" onchange="docItemQty(${i},this.value)" style="padding:8px"></div>
-      <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'PRECIO' : ''}</label><input type="number" class="form-control" value="${item.precio}" min="0" onchange="docItemPrice(${i},this.value)" style="padding:8px" id="doc-item-price-${i}"></div>
-      <button class="btn btn-xs btn-danger" onclick="removeDocItem(${i})" style="margin-bottom:0;height:38px">✕</button>
+    <div style="margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:2fr 80px 120px 40px;gap:8px;align-items:end">
+        <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'ARTÍCULO' : ''}</label><select class="form-control" onchange="docItemChanged(${i},this.value)" style="padding:8px"><option value="">— Seleccionar —</option>${(state.articulos || []).map((a) => '<option value="' + a.id + '" ' + (item.articuloId === a.id ? 'selected' : '') + '>' + a.nombre + '</option>').join('')}<option value="custom" ${item.articuloId === 'custom' ? 'selected' : ''}>✏️ Personalizado</option></select></div>
+        <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'CANT' : ''}</label><input type="number" class="form-control" value="${item.cantidad}" min="1" onchange="docItemQty(${i},this.value)" style="padding:8px"></div>
+        <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'PRECIO' : ''}</label><input type="number" class="form-control" value="${item.precio}" min="0" onchange="docItemPrice(${i},this.value)" style="padding:8px" id="doc-item-price-${i}"></div>
+        <button class="btn btn-xs btn-danger" onclick="removeDocItem(${i})" style="margin-bottom:0;height:38px">✕</button>
+      </div>
+      ${item.articuloId === 'custom' ? `<div style="display:grid;grid-template-columns:2fr 120px 40px;gap:8px;margin-top:6px">
+        <input type="text" class="form-control" value="${escHtml(item.nombre || '')}" placeholder="Descripción del producto" oninput="docItemName(${i},this.value)" style="padding:8px">
+        <input type="text" class="form-control" value="${escHtml(item.talla || '')}" placeholder="Talla (opcional)" oninput="docItemTalla(${i},this.value)" style="padding:8px">
+        <span></span>
+      </div>` : ''}
     </div>`).join('');
     updateDocTotal();
   }
@@ -163,17 +170,36 @@
     const items = ctx.getDocItems();
     if (artId === 'custom') {
       items[i].articuloId = 'custom';
-      items[i].nombre = 'Personalizado';
+      // Antes se fijaba 'Personalizado'; ahora se limpia para forzar descripción real
+      // capturada vía el input de texto que aparece bajo la fila.
+      if (!items[i].nombre || items[i].nombre === 'Personalizado') items[i].nombre = '';
     } else {
       const art = (state.articulos || []).find((a) => a.id === artId);
       if (art) {
         items[i].articuloId = artId;
         items[i].nombre = art.nombre;
         items[i].precio = art.precioVenta;
+      } else {
+        // "— Seleccionar —": sin artículo asignado.
+        items[i].articuloId = '';
       }
     }
     ctx.setDocItems(items);
     renderDocItems();
+  }
+
+  // Captura de descripción libre / talla para ítems "Personalizado" (no re-renderiza
+  // para no perder el foco mientras se escribe).
+  function docItemName(ctx) {
+    const items = ctx.getDocItems();
+    if (items[ctx.i]) items[ctx.i].nombre = ctx.val;
+    ctx.setDocItems(items);
+  }
+
+  function docItemTalla(ctx) {
+    const items = ctx.getDocItems();
+    if (items[ctx.i]) items[ctx.i].talla = ctx.val;
+    ctx.setDocItems(items);
   }
 
   function docItemQty(ctx) {
@@ -222,6 +248,13 @@
     const refId = document.getElementById('m-doc-ref')?.value || '';
     const items = ctx.getDocItems().filter((i) => i.precio > 0);
     if (items.length === 0) { notify('warning', '⚠️', 'Sin ítems', 'Agrega al menos un ítem.', { duration: 3000 }); return; }
+    // No permitir guardar líneas con precio pero SIN descripción (causaba facturas
+    // con "una sola prenda sin nombre" en el PDF). No toca totales ni numeración.
+    const sinNombre = items.findIndex((i) => !String(i.nombre || '').trim());
+    if (sinNombre !== -1) {
+      notify('warning', '⚠️', 'Falta descripción', `La línea ${sinNombre + 1} tiene precio pero no tiene nombre de producto. Selecciona un artículo o escribe una descripción ("Personalizado").`, { duration: 6000 });
+      return;
+    }
     const subtotal = items.reduce((a, i) => a + (i.cantidad * i.precio), 0);
     const ivaEl = document.getElementById('m-doc-apply-iva');
     const applyIva = ivaEl ? ivaEl.checked : (collection !== 'facturas');
@@ -300,6 +333,8 @@
     addDocItem,
     renderDocItems,
     docItemChanged,
+    docItemName,
+    docItemTalla,
     docItemQty,
     docItemPrice,
     removeDocItem,
