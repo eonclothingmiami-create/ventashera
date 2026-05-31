@@ -2043,6 +2043,15 @@ try {
   window.loadSaleItemsIntoState = loadSaleItemsIntoState;
 } catch (e) {}
 
+// Punto único de lectura para reportes sobre sale_items: por defecto excluye facturas
+// anuladas (sale_items no se borra al anular). Usa { includeAnuladas:true } para incluirlas.
+try {
+  window.getSaleItemsReportRows = (options) =>
+    (window.AppSaleItemsReports && typeof window.AppSaleItemsReports.getReportRows === 'function')
+      ? window.AppSaleItemsReports.getReportRows(state, options)
+      : (Array.isArray(state.saleItems) ? state.saleItems.slice() : []);
+} catch (e) {}
+
 // ----- Anti-desincronización (refresco parcial, sin duplicar reglas de negocio) -----
 let _criticalRefreshChain = Promise.resolve();
 
@@ -3012,6 +3021,14 @@ async function loadState() {
 
     await loadStockMovesVentasIntoState();
 
+    // Capa canónica de reporte (no bloqueante): tolera tabla ausente / RLS / sin conexión.
+    // Va después de cargar facturas y ventas. Nunca debe romper loadState().
+    try {
+      await loadSaleItemsIntoState();
+    } catch (e) {
+      console.warn('sale_items (carga inicial):', e?.message || e);
+    }
+
     if (window.AppComprasCxp?.loadComprasCxpFromDb) {
       try {
         await window.AppComprasCxp.loadComprasCxpFromDb(supabaseClient, state);
@@ -3331,9 +3348,21 @@ function renderPage(id){
     tes_comp_retencion:renderTesCompRetencion, tes_comp_ingreso:renderTesCompIngreso,
     tes_comp_egreso:renderTesCompEgreso, tes_transferencias:renderTesTransferencias,
     juego:renderGamePage, recompensas:renderRewards,
-    alertas:renderAlertas, historial:renderHistorial, config:renderConfig, separados:renderSeparados
+    alertas:renderAlertas, historial:renderHistorial, config:renderConfig, separados:renderSeparados,
+    ventas_consolidado:renderVentasConsolidado
   };
   if(renderers[id])renderers[id]();
+}
+
+/** Bridge SOLO LECTURA hacia ventas-consolidado-module.js (consolidado por líneas, sale_items). */
+function renderVentasConsolidado(){
+  const M = window.AppVentasConsolidadoModule;
+  const el = document.getElementById('ventas_consolidado-content');
+  if (!M || typeof M.renderVentasConsolidado !== 'function') {
+    if (el) el.innerHTML = '<div class="card"><div class="card-title">Consolidado de ventas</div><div style="color:var(--text2);padding:16px">No se cargó ventas-consolidado-module.js. Recarga la página.</div></div>';
+    return;
+  }
+  M.renderVentasConsolidado({ state, fmt, fmtN, formatDate, today });
 }
 
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-overlay').classList.toggle('active')}

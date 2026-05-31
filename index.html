@@ -70,7 +70,7 @@
 <script defer src="./src/js/modules/app/caja-logic.js?v=20260328legacycaja"></script>
 <script defer src="./src/js/modules/app/state.js?v=20260327caja1"></script>
 <script defer src="./src/js/modules/app/pos-service.js?v=20260322comp1"></script>
-<script defer src="./src/js/modules/app/pos-repository.js?v=20260531saleitems2"></script>
+<script defer src="./src/js/modules/app/pos-repository.js?v=20260531saleitems3"></script>
 <script defer src="./src/js/modules/app/pos-view.js?v=20260503poscart"></script>
 <script defer src="./src/js/modules/app/pos-controller.js?v=20260322pos3"></script>
 <script defer src="./src/js/modules/app/users-module.js?v=20260319mod6"></script>
@@ -83,6 +83,7 @@
 <script defer src="./src/js/modules/app/proveedores-payments-module.js?v=20260524hardening1"></script>
 <script defer src="./src/js/modules/app/treasury-module.js?v=20260531saleitems1"></script>
 <script defer src="./src/js/modules/app/ingresos-egresos-module.js?v=20260326iefecha"></script>
+<script defer src="./src/js/modules/app/ventas-consolidado-module.js?v=20260531consolidado1"></script>
 <script defer src="./src/js/modules/app/game-system-module.js?v=20260503canalpend"></script>
 <script defer src="./src/js/modules/app/separados-module.js?v=20260322comp2"></script>
 <script defer src="./src/js/modules/app/ventas-catalogo-module.js?v=20260322despacho2"></script>
@@ -90,7 +91,7 @@
 <script defer src="./src/js/modules/app/pos-receipt-print.js?v=20260517pos80"></script>
 <script defer src="./src/js/modules/app/sync-guard.js?v=20260327antids1"></script>
 <script defer src="./src/js/modules/app/falabella-maquetador.js?v=20260327falmoda1"></script>
-<script defer src="./src/js/modules/core.js?v=20260531saleitems2"></script>
+<script defer src="./src/js/modules/core.js?v=20260531saleitems3"></script>
 <script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
 
 </head>
@@ -188,6 +189,7 @@
     <div class="nav-item" onclick="showPage('cotizaciones')"><span class="nav-icon">📋</span>Cotizaciones</div>
     <div class="nav-item" onclick="showPage('ordenes')"><span class="nav-icon">📄</span>Órdenes de Venta</div>
     <div class="nav-item" onclick="showPage('facturas')"><span class="nav-icon">🧾</span>Facturas</div>
+    <div class="nav-item" onclick="showPage('ventas_consolidado')"><span class="nav-icon">📈</span>Consolidado</div>
     <div class="nav-item" onclick="showPage('notas_credito')"><span class="nav-icon">↩</span>Notas Crédito</div>
     <div class="nav-item" onclick="showPage('notas_debito')"><span class="nav-icon">↪</span>Notas Débito</div>
     <div class="nav-item" onclick="showPage('remisiones')"><span class="nav-icon">📦</span>Remisiones</div>
@@ -261,6 +263,7 @@
   <div class="page" id="page-cotizaciones"><div class="page-title">Cotizaciones</div><div id="cotizaciones-content"></div></div>
   <div class="page" id="page-ordenes"><div class="page-title">Órdenes de Venta</div><div id="ordenes-content"></div></div>
   <div class="page" id="page-facturas"><div class="page-title">Facturas de Venta</div><div id="facturas-content"></div></div>
+  <div class="page" id="page-ventas_consolidado"><div class="page-title">Consolidado de ventas</div><div id="ventas_consolidado-content"></div></div>
   <div class="page" id="page-notas_credito"><div class="page-title">Notas Crédito de Venta</div><div id="notas_credito-content"></div></div>
   <div class="page" id="page-notas_debito"><div class="page-title">Notas Débito de Venta</div><div id="notas_debito-content"></div></div>
   <div class="page" id="page-remisiones"><div class="page-title">Remisiones de Venta</div><div id="remisiones-content"></div></div>

@@ -1066,6 +1066,25 @@
     return list.filter((r) => !anuladas.has(String(r && r.invoiceId)));
   }
 
+  /**
+   * Punto ÚNICO para obtener filas de reporte sobre sale_items.
+   * IMPORTANTE: sale_items NO se borra al anular una factura; por eso, por defecto,
+   * este helper EXCLUYE las líneas de facturas anuladas (cruza por `invoiceId` contra
+   * `state.facturas`). Todo reporte futuro sobre sale_items debe pasar por aquí.
+   * Usa `{ includeAnuladas: true }` solo si explícitamente quieres contarlas.
+   * Tolera `state.saleItems` / `state.facturas` vacíos o inexistentes.
+   * @param {object} state  estado global (usa state.saleItems y state.facturas)
+   * @param {{includeAnuladas?:boolean}} [options]
+   * @returns {Array<object>} copia de las filas (no muta el estado)
+   */
+  function getSaleItemsReportRows(state, options) {
+    const o = options || {};
+    const s = state || {};
+    const rows = Array.isArray(s.saleItems) ? s.saleItems : [];
+    if (o.includeAnuladas === true) return rows.slice();
+    return filterSaleItemsExcluyendoAnuladas(rows, Array.isArray(s.facturas) ? s.facturas : []);
+  }
+
   global.AppSaleItemsReports = {
     saleItemDay,
     saleItemTime,
@@ -1075,6 +1094,7 @@
     filterByProducto: filterSaleItemsByProducto,
     filterByCanal: filterSaleItemsByCanal,
     excluirAnuladas: filterSaleItemsExcluyendoAnuladas,
+    getReportRows: getSaleItemsReportRows,
   };
 
   global.AppPosRepository = {
