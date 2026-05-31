@@ -1830,11 +1830,7 @@ function calcXP(canal,valor){
 function getISOWeek(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()+4-(d.getDay()||7));const yearStart=new Date(d.getFullYear(),0,1);return{week:Math.ceil((((d-yearStart)/86400000)+1)/7),year:d.getFullYear()}}
 function getWeekSnack(){const{week,year}=getISOWeek(new Date());const hash=Math.abs((week*31+year*7+week*year)%SNACKS.length);return{snack:SNACKS[hash],week,year}}
 function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday=new Date(now);monday.setDate(now.getDate()-dow+1);monday.setHours(0,0,0,0);const active=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v));let xp=0;active.forEach(v=>{const vDate=new Date(v.fecha+'T12:00:00');if(vDate>=monday)xp+=calcXP(canonCanalVenta(v),v.valor)});return xp}
-function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;
-  // #region agent log
-  try{ if(type==='factura'){ var _maxF=0; (state.facturas||[]).forEach(function(f){var m=parseInt(String(f.numero||f.number||'').replace(/\D/g,''),10); if(m>_maxF)_maxF=m;}); fetch('http://127.0.0.1:7373/ingest/dc6f9647-6b4c-4ca4-9387-f5e5b4dc5353',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a4f7d0'},body:JSON.stringify({sessionId:'a4f7d0',hypothesisId:'B',location:'core.js:getNextConsec',message:'consecutivo factura emitido',data:{read:n,issued:'POS-'+String(n).padStart(5,'0'),sbConnected:_sbConnected,localMaxFactura:_maxF,regression:(n<=_maxF)},timestamp:Date.now()})}).catch(function(){}); } }catch(_e){}
-  // #endregion
-  return String(n).padStart(5,'0')}
+function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
 function getArticuloStock(artId, bodegaId) {
   // Lee directamente de products.stock (fuente de verdad en Supabase)
   // Si se pide por bodega específica, usa inv_movimientos como antes
@@ -3116,10 +3112,6 @@ async function loadState() {
       } catch(e){}
     });
 
-    // #region agent log
-    try{ var _mf=0; (state.facturas||[]).forEach(function(f){var m=parseInt(String(f.numero||f.number||'').replace(/\D/g,''),10); if(m>_mf)_mf=m;}); var _lf=(state.consecutivos&&state.consecutivos.factura); fetch('http://127.0.0.1:7373/ingest/dc6f9647-6b4c-4ca4-9387-f5e5b4dc5353',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a4f7d0'},body:JSON.stringify({sessionId:'a4f7d0',hypothesisId:'A',location:'core.js:cargarDatos:consecutivos',message:'consecutivos cargado desde servidor',data:{loadedFactura:_lf,localMaxFacturaEnState:_mf,counterBehindReality:(_lf<=_mf)},timestamp:Date.now()})}).catch(function(){});}catch(_e){}
-    // #endregion
-
     _sbConnected = true;
     if (pendingLegacyCajaMerge && pendingLegacyCajaMerge.merged && pendingLegacyCajaMerge.canonical && supabaseClient) {
       try {
@@ -3461,55 +3453,6 @@ function renderDashboard(){
   const sumDespachosHoy=sumValor(ventasHoy);
 
   const despachoHoy=ventasHoy.length;
-  // #region agent log
-  (function __dbgDashReconcile() {
-    const monthStart = `${ymMes}-01`;
-    const mtdV = ventasTablaCOPForYmdRange(monthStart, hoy);
-    const mtdT = tesVentaPosIngresosForYmdRange(state.tes_movimientos || [], monthStart, hoy);
-    let excludedByFactura = 0;
-    let excludedArchived = 0;
-    (state.ventas || []).forEach((v) => {
-      if (!v) return;
-      if (v.archived) {
-        excludedArchived++;
-        return;
-      }
-      const f = (state.facturas || []).find((x) => String(x.id) === String(v.id));
-      if (f && f.estado === 'anulada') excludedByFactura++;
-    });
-    fetch('http://127.0.0.1:7558/ingest/da6af010-dd9f-445b-9c22-3138d2550475', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'e76de5' },
-      body: JSON.stringify({
-        sessionId: 'e76de5',
-        runId: 'pre-fix',
-        hypothesisId: 'H2-H4-H5',
-        location: 'core.js:renderDashboard',
-        message: 'dashboard meta vs mtd ventas/tes',
-        data: {
-          ymMes,
-          hoy,
-          metaTotCop: metaTot.cop,
-          metaProgCop,
-          vmTotalCOP: vm.totalCOP,
-          totalMesCal,
-          resumenMesLen: resumenMesCal.length,
-          tesMesIngresos: tesMes.ingresosCOP,
-          tesMesLineas: tesMes.lineas,
-          mtdVentasCop: mtdV.cop,
-          mtdVentasFacts: mtdV.facturas,
-          mtdTesCop: mtdT.ingresosCOP,
-          mtdTesLineas: mtdT.lineas,
-          stateVentasLen: (state.ventas || []).length,
-          stateTesLen: (state.tes_movimientos || []).length,
-          excludedArchivedCount: excludedArchived,
-          excludedAnuladaCount: excludedByFactura
-        },
-        timestamp: Date.now()
-      })
-    }).catch(function () {});
-  })();
-  // #endregion
   const missions=[
     {id:'m1',icon:'⚔️',label:'5 despachos hoy (sin vitrina)',cur:Math.min(5,despachoHoy),max:5,xp:50},
     {id:'m2',icon:'🛡️',label:'Meta 25% mes',cur:Math.min(100,Math.round(pct)),max:100,xp:100,pctTarget:25,done:pct>=25},

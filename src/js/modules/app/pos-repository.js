@@ -797,6 +797,9 @@
    * Clave determinista e idempotente de una línea de venta.
    * NO incluye `source`: así una línea escrita por POS no se duplica al hacer backfill.
    * Si falta product_id cae a product_name (filas históricas sin id).
+   * Incluye `unitPrice` y `lineIndex` (posición dentro de la factura) para no fusionar
+   * dos líneas del mismo producto+talla en una misma factura (precio distinto o repetidas).
+   * Idempotente: POS y backfill recorren el mismo `invoices.items` en el mismo orden.
    */
   function computeSaleLineKey(parts) {
     const p = parts || {};
@@ -804,7 +807,9 @@
     const productId = normLineKeyPart(p.productId);
     const talla = normLineKeyPart(p.talla);
     const productName = normLineKeyPart(p.productName);
-    return [invoiceId, productId || `name:${productName}`, talla].join('|');
+    const unitPrice = normLineKeyPart(p.unitPrice);
+    const lineIndex = normLineKeyPart(p.lineIndex);
+    return [invoiceId, productId || `name:${productName}`, talla, unitPrice, lineIndex].join('|');
   }
 
   /** ISO seguro a partir de una fecha `YYYY-MM-DD` (mediodía local, sin hora real). */
@@ -873,7 +878,7 @@
         fecha: fecha || null,
         fecha_hora: fechaHora,
         source,
-        line_key: computeSaleLineKey({ invoiceId, productId, talla, productName }),
+        line_key: computeSaleLineKey({ invoiceId, productId, talla, productName, unitPrice, lineIndex: i }),
         meta,
       });
     }
@@ -927,7 +932,12 @@
       for (let fi = 0; fi < facturas.length; fi++) {
         const f = facturas[fi];
         if (!f || f.estado === 'anulada') continue;
-        const items = Array.isArray(f.items) ? f.items : [];
+        // Tolera `items` como array o como string JSON (algunas facturas históricas lo guardan serializado).
+        let items = f.items;
+        if (typeof items === 'string' && items.trim()) {
+          try { items = JSON.parse(items); } catch (_) { items = []; }
+        }
+        if (!Array.isArray(items)) items = [];
         if (items.length === 0) continue;
         const ventaRecord = ventasById.get(String(f.id)) || { id: f.id, invoiceId: f.id };
         const rows = buildSaleItemRows({
@@ -1038,6 +1048,24 @@
     return list.filter((r) => normLineKeyPart(r.canal) === c);
   }
 
+  /**
+   * Excluye líneas cuyas facturas estén anuladas. Las filas `sale_items` se escriben
+   * al vender y NO se eliminan ni compensan al anular; por eso TODO reporte sobre
+   * `state.saleItems` debe cruzar contra `state.facturas` para no contar anuladas.
+   * @param {Array<object>} rows  state.saleItems (cada fila con `invoiceId`)
+   * @param {Array<object>} facturas  state.facturas (con `id` y `estado`)
+   */
+  function filterSaleItemsExcluyendoAnuladas(rows, facturas) {
+    const list = Array.isArray(rows) ? rows : [];
+    const anuladas = new Set(
+      (Array.isArray(facturas) ? facturas : [])
+        .filter((f) => f && f.estado === 'anulada')
+        .map((f) => String(f.id)),
+    );
+    if (anuladas.size === 0) return list.slice();
+    return list.filter((r) => !anuladas.has(String(r && r.invoiceId)));
+  }
+
   global.AppSaleItemsReports = {
     saleItemDay,
     saleItemTime,
@@ -1046,6 +1074,7 @@
     filterByCliente: filterSaleItemsByCliente,
     filterByProducto: filterSaleItemsByProducto,
     filterByCanal: filterSaleItemsByCanal,
+    excluirAnuladas: filterSaleItemsExcluyendoAnuladas,
   };
 
   global.AppPosRepository = {
