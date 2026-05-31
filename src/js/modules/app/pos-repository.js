@@ -773,11 +773,283 @@
     }
   }
 
+  // ===========================================================================
+  // sale_items — capa canónica de líneas de venta (NO descuenta stock ni caja).
+  // Convive con invoices.items / ventas / stock_moves; solo para reportes.
+  // ===========================================================================
+
+  /** Normaliza un trozo de clave: trim + colapsa espacios + minúsculas. */
+  function normLineKeyPart(v) {
+    return String(v == null ? '' : v)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  /**
+   * Clave determinista e idempotente de una línea de venta.
+   * NO incluye `source`: así una línea escrita por POS no se duplica al hacer backfill.
+   * Si falta product_id cae a product_name (filas históricas sin id).
+   */
+  function computeSaleLineKey(parts) {
+    const p = parts || {};
+    const invoiceId = normLineKeyPart(p.invoiceId);
+    const productId = normLineKeyPart(p.productId);
+    const talla = normLineKeyPart(p.talla);
+    const productName = normLineKeyPart(p.productName);
+    return [invoiceId, productId || `name:${productName}`, talla].join('|');
+  }
+
+  /** ISO seguro a partir de una fecha `YYYY-MM-DD` (mediodía local, sin hora real). */
+  function fechaToNoonIso(fecha) {
+    const d = String(fecha || '').split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return `${d}T12:00:00`;
+    return new Date().toISOString();
+  }
+
+  /**
+   * Construye filas para `sale_items` a partir de un encabezado (factura/venta)
+   * y una lista de ítems (factura.items o invoices.items). Puro: no toca BD.
+   * @returns {Array<object>} filas listas para upsert.
+   */
+  function buildSaleItemRows(ctx) {
+    const o = ctx || {};
+    const factura = o.factura || {};
+    const ventaRecord = o.ventaRecord || {};
+    const source = o.source || 'pos';
+    const invoiceId = String(factura.id != null ? factura.id : (ventaRecord.invoiceId || ventaRecord.id || '')).trim();
+    const saleId = String(ventaRecord.id != null ? ventaRecord.id : factura.id || '').trim();
+    const fecha = (factura.fecha || ventaRecord.fecha || '').toString().split('T')[0] || null;
+    // POS: hora exacta del evento; backfill/histórico: mediodía del día (sin hora real).
+    const fechaHora = source === 'pos' ? new Date().toISOString() : fechaToNoonIso(fecha);
+
+    let items = Array.isArray(o.items) ? o.items : factura.items;
+    if (typeof items === 'string' && items.trim()) {
+      try { items = JSON.parse(items); } catch (_) { items = []; }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    const idFromItem = typeof global.articuloIdFromInvoiceItem === 'function'
+      ? global.articuloIdFromInvoiceItem
+      : (it) => String((it && (it.articuloId || it.articulo_id || it.productId || it.product_id || it.id)) || '');
+
+    const nextId = typeof o.idGen === 'function'
+      ? o.idGen
+      : () => (global.AppId?.uuid ? global.AppId.uuid() : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()));
+
+    const rows = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i] && typeof items[i] === 'object' ? items[i] : {};
+      const productId = idFromItem(it);
+      const productName = it.nombre || it.name || '';
+      const talla = it.talla || '';
+      const qty = Math.abs(Number(it.qty != null ? it.qty : (it.cantidad != null ? it.cantidad : 0))) || 0;
+      const unitPrice = Number(it.precio != null ? it.precio : (it.price != null ? it.price : 0)) || 0;
+      if (qty <= 0 && !productId && !productName) continue;
+      const meta = {};
+      if (!productId) meta.missing_product_id = true;
+      rows.push({
+        id: nextId(),
+        sale_id: saleId || null,
+        invoice_id: invoiceId || null,
+        invoice_number: factura.numero || ventaRecord.desc || null,
+        product_id: productId || null,
+        product_ref: it.product_ref || it.ref || it.codigo || null,
+        product_name: productName || null,
+        talla: talla || null,
+        qty,
+        unit_price: unitPrice,
+        subtotal: qty * unitPrice,
+        canal: factura.canal || ventaRecord.canal || null,
+        cliente_nombre: factura.cliente || ventaRecord.cliente || null,
+        cliente_telefono: factura.telefono || ventaRecord.telefono || null,
+        fecha: fecha || null,
+        fecha_hora: fechaHora,
+        source,
+        line_key: computeSaleLineKey({ invoiceId, productId, talla, productName }),
+        meta,
+      });
+    }
+    return rows;
+  }
+
+  /**
+   * Persiste líneas en `sale_items` (upsert idempotente por `line_key`).
+   * NO debe bloquear la venta: el caller lo invoca en try/catch aislado.
+   * @returns {{ok:boolean, inserted:number, error?:any}}
+   */
+  async function persistSaleItems(ctx) {
+    const o = ctx || {};
+    const supabaseClient = o.supabaseClient;
+    if (!supabaseClient) return { ok: false, inserted: 0, error: new Error('persistSaleItems: sin supabaseClient') };
+    const rows = Array.isArray(o.rows) ? o.rows : buildSaleItemRows(o);
+    if (rows.length === 0) return { ok: true, inserted: 0 };
+    try {
+      const { error } = await supabaseClient
+        .from('sale_items')
+        .upsert(rows, { onConflict: 'line_key', ignoreDuplicates: true });
+      if (error) return { ok: false, inserted: 0, error };
+      return { ok: true, inserted: rows.length };
+    } catch (e) {
+      return { ok: false, inserted: 0, error: e };
+    }
+  }
+
+  /**
+   * Backfill idempotente: crea `sale_items` faltantes a partir de `invoices.items`.
+   * No toca stock, caja, ventas ni invoices. Re-ejecutable sin duplicar (line_key).
+   */
+  async function backfillSaleItemsFromInvoices(ctx) {
+    const o = ctx || {};
+    const state = o.state || {};
+    const supabaseClient = o.supabaseClient;
+    const sbConnected = o.sbConnected;
+    const notify = o.notify;
+    const showLoadingOverlay = o.showLoadingOverlay;
+    if (!sbConnected || !supabaseClient) {
+      if (typeof notify === 'function') {
+        notify('warning', '📡', 'Sin conexión', 'Conecta Supabase para rellenar sale_items.', { duration: 4000 });
+      }
+      return { inserted: 0 };
+    }
+    const facturas = Array.isArray(state.facturas) ? state.facturas : [];
+    const ventasById = new Map((state.ventas || []).map((v) => [String(v.id), v]));
+    let allRows = [];
+    try {
+      if (typeof showLoadingOverlay === 'function') showLoadingOverlay('connecting');
+      for (let fi = 0; fi < facturas.length; fi++) {
+        const f = facturas[fi];
+        if (!f || f.estado === 'anulada') continue;
+        const items = Array.isArray(f.items) ? f.items : [];
+        if (items.length === 0) continue;
+        const ventaRecord = ventasById.get(String(f.id)) || { id: f.id, invoiceId: f.id };
+        const rows = buildSaleItemRows({
+          factura: f,
+          ventaRecord,
+          items,
+          source: 'backfill_invoices_items',
+        });
+        if (rows.length) allRows = allRows.concat(rows);
+      }
+      let inserted = 0;
+      let lastError = '';
+      // Lotes de 200 para no exceder límites de payload.
+      for (let i = 0; i < allRows.length; i += 200) {
+        const chunk = allRows.slice(i, i + 200);
+        const res = await persistSaleItems({ supabaseClient, rows: chunk });
+        if (res.ok) inserted += res.inserted;
+        else lastError = res.error?.message || String(res.error);
+      }
+      if (typeof showLoadingOverlay === 'function') showLoadingOverlay('hide');
+      if (typeof notify === 'function') {
+        if (lastError && /row-level security|RLS|permission denied|42501|relation .* does not exist|sale_items/i.test(lastError) && inserted === 0) {
+          notify('danger', '🧾', 'sale_items bloqueado', `No se pudieron insertar líneas: ${lastError}. Verifica que la migración 20260531_sales_items_canonical_v1.sql esté aplicada (tabla + RLS).`, { duration: 12000 });
+        } else {
+          notify('success', '🧾', 'sale_items', inserted ? `Se sincronizaron ${inserted} línea(s) en sale_items (idempotente; re-correr no duplica).` : 'No había líneas nuevas: sale_items ya estaba al día.', { duration: 6000 });
+        }
+      }
+      if (typeof o.onDone === 'function') await o.onDone();
+      return { inserted };
+    } catch (e) {
+      if (typeof showLoadingOverlay === 'function') showLoadingOverlay('hide');
+      console.warn('[backfill sale_items]', e);
+      if (typeof notify === 'function') notify('danger', '⚠️', 'Error', e?.message || String(e), { duration: 6000 });
+      return { inserted: 0, error: e };
+    }
+  }
+
+  // ===========================================================================
+  // Helpers puros de reporte sobre sale_items (state.saleItems). Sin UI ni BD.
+  // ===========================================================================
+
+  /** Extrae el día `YYYY-MM-DD` de una fila (usa fecha; cae a fecha_hora). */
+  function saleItemDay(row) {
+    if (!row) return '';
+    if (row.fecha) return String(row.fecha).split('T')[0];
+    if (row.fechaHora) return String(row.fechaHora).split('T')[0];
+    return '';
+  }
+
+  /** `HH:MM` desde fecha_hora (vacío si no hay). */
+  function saleItemTime(row) {
+    if (!row || !row.fechaHora) return '';
+    const m = String(row.fechaHora).match(/T(\d{2}:\d{2})/);
+    return m ? m[1] : '';
+  }
+
+  /** Filtra por rango de día inclusive [desde, hasta] (`YYYY-MM-DD`; cualquiera opcional). */
+  function filterSaleItemsByFecha(rows, desde, hasta) {
+    const list = Array.isArray(rows) ? rows : [];
+    return list.filter((r) => {
+      const d = saleItemDay(r);
+      if (!d) return false;
+      if (desde && d < desde) return false;
+      if (hasta && d > hasta) return false;
+      return true;
+    });
+  }
+
+  /** Filtra por rango de hora inclusive [desde, hasta] (`HH:MM`); ignora filas sin fecha_hora. */
+  function filterSaleItemsByHora(rows, desde, hasta) {
+    const list = Array.isArray(rows) ? rows : [];
+    return list.filter((r) => {
+      const t = saleItemTime(r);
+      if (!t) return false;
+      if (desde && t < desde) return false;
+      if (hasta && t > hasta) return false;
+      return true;
+    });
+  }
+
+  /** Filtra por cliente (subcadena en nombre o teléfono, case-insensitive). */
+  function filterSaleItemsByCliente(rows, query) {
+    const q = normLineKeyPart(query);
+    const list = Array.isArray(rows) ? rows : [];
+    if (!q) return list.slice();
+    return list.filter((r) =>
+      normLineKeyPart(r.clienteNombre).includes(q) || normLineKeyPart(r.clienteTelefono).includes(q),
+    );
+  }
+
+  /** Filtra por artículo: product_id exacto o subcadena en nombre/ref. */
+  function filterSaleItemsByProducto(rows, query) {
+    const q = normLineKeyPart(query);
+    const list = Array.isArray(rows) ? rows : [];
+    if (!q) return list.slice();
+    return list.filter((r) =>
+      normLineKeyPart(r.productId) === q ||
+      normLineKeyPart(r.productName).includes(q) ||
+      normLineKeyPart(r.productRef).includes(q),
+    );
+  }
+
+  /** Filtra por canal exacto (vitrina/local/inter). */
+  function filterSaleItemsByCanal(rows, canal) {
+    const c = normLineKeyPart(canal);
+    const list = Array.isArray(rows) ? rows : [];
+    if (!c) return list.slice();
+    return list.filter((r) => normLineKeyPart(r.canal) === c);
+  }
+
+  global.AppSaleItemsReports = {
+    saleItemDay,
+    saleItemTime,
+    filterByFecha: filterSaleItemsByFecha,
+    filterByHora: filterSaleItemsByHora,
+    filterByCliente: filterSaleItemsByCliente,
+    filterByProducto: filterSaleItemsByProducto,
+    filterByCanal: filterSaleItemsByCanal,
+  };
+
   global.AppPosRepository = {
     preparePosSaleForPersist,
     isPosFacturaShape,
     applyLocalInventoryMovement,
     persistPosSale,
+    computeSaleLineKey,
+    buildSaleItemRows,
+    persistSaleItems,
+    backfillSaleItemsFromInvoices,
     syncStockToSupabase,
     applyPosSaleStockLinesAtomic,
     applyStockDecrementForLine,

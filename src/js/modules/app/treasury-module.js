@@ -722,6 +722,7 @@
       <button type="button" class="btn btn-primary btn-sm" onclick="openCargoCxpModal()" title="Cargo compra CXP">＋ Cargo</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="openNotaCreditoCxpModal()" title="Nota crédito CXP">N/C</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="backfillStockMovesVentaPos()" title="Solo stock_moves desde facturas (sin tocar products.stock)">POS moves</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="backfillSaleItemsVentaPos()" title="Crear líneas sale_items desde facturas (idempotente; no toca stock ni caja)">POS líneas</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="repararStockProductosPosMasivo()" title="Sincronizar stock en artículos según facturas POS y pendientes">POS stock</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="sincronizarPosInventarioCompleto()" title="Moves + stock (recomendado si faltaba trazabilidad)">POS todo</button>
       <button class="btn btn-secondary btn-sm" onclick="openCompromisoProvModal()" title="Nota en libro">Nota</button>

@@ -277,6 +277,7 @@ let state = {
   tes_devoluciones_prov: [],
   tes_ajustes_unidades_prov: [],
   stock_moves_ventas: [],
+  saleItems: [],
   // ===== CONFIGURACIONES =====
   cfg_categorias: [
     {id:'cat1',seccion:'Trajes de Baño',nombre:'Enterizos'},
@@ -1810,7 +1811,11 @@ function calcXP(canal,valor){
 function getISOWeek(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()+4-(d.getDay()||7));const yearStart=new Date(d.getFullYear(),0,1);return{week:Math.ceil((((d-yearStart)/86400000)+1)/7),year:d.getFullYear()}}
 function getWeekSnack(){const{week,year}=getISOWeek(new Date());const hash=Math.abs((week*31+year*7+week*year)%SNACKS.length);return{snack:SNACKS[hash],week,year}}
 function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday=new Date(now);monday.setDate(now.getDate()-dow+1);monday.setHours(0,0,0,0);const active=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v));let xp=0;active.forEach(v=>{const vDate=new Date(v.fecha+'T12:00:00');if(vDate>=monday)xp+=calcXP(canonCanalVenta(v),v.valor)});return xp}
-function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
+function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;
+  // #region agent log
+  try{ if(type==='factura'){ var _maxF=0; (state.facturas||[]).forEach(function(f){var m=parseInt(String(f.numero||f.number||'').replace(/\D/g,''),10); if(m>_maxF)_maxF=m;}); fetch('http://127.0.0.1:7373/ingest/dc6f9647-6b4c-4ca4-9387-f5e5b4dc5353',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a4f7d0'},body:JSON.stringify({sessionId:'a4f7d0',hypothesisId:'B',location:'core.js:getNextConsec',message:'consecutivo factura emitido',data:{read:n,issued:'POS-'+String(n).padStart(5,'0'),sbConnected:_sbConnected,localMaxFactura:_maxF,regression:(n<=_maxF)},timestamp:Date.now()})}).catch(function(){}); } }catch(_e){}
+  // #endregion
+  return String(n).padStart(5,'0')}
 function getArticuloStock(artId, bodegaId) {
   // Lee directamente de products.stock (fuente de verdad en Supabase)
   // Si se pide por bodega específica, usa inv_movimientos como antes
@@ -1958,6 +1963,69 @@ async function loadStockMovesVentasIntoState() {
 }
 try {
   window.reloadStockMovesVentasFromDb = loadStockMovesVentasIntoState;
+} catch (e) {}
+
+/**
+ * Carga la capa canónica `sale_items` → `state.saleItems` (no altera ventas/facturas).
+ * Lectura pura para reportes por fecha/hora/artículo/cliente. Tolera tabla ausente.
+ */
+async function loadSaleItemsIntoState() {
+  state.saleItems = [];
+  if (!supabaseClient) return;
+  const pushRows = (chunk) => {
+    (chunk || []).forEach((r) => {
+      state.saleItems.push({
+        id: r.id,
+        saleId: r.sale_id || null,
+        invoiceId: r.invoice_id || null,
+        invoiceNumber: r.invoice_number || '',
+        productId: r.product_id || null,
+        productRef: r.product_ref || '',
+        productName: r.product_name || '',
+        talla: r.talla || '',
+        qty: Number(r.qty) || 0,
+        unitPrice: Number(r.unit_price) || 0,
+        subtotal: Number(r.subtotal) || 0,
+        canal: r.canal || '',
+        clienteNombre: r.cliente_nombre || '',
+        clienteTelefono: r.cliente_telefono || '',
+        fecha: r.fecha || null,
+        fechaHora: r.fecha_hora || null,
+        source: r.source || '',
+        meta: r.meta && typeof r.meta === 'object' ? r.meta : {},
+      });
+    });
+  };
+  try {
+    const rows = await fetchAllRowsFiltered('sale_items', '*', 'order=fecha_hora.asc');
+    pushRows(rows);
+  } catch (e) {
+    console.warn('sale_items (REST paginado):', e.message);
+    try {
+      let off = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data: rows, error } = await supabaseClient
+          .from('sale_items')
+          .select('*')
+          .order('fecha_hora', { ascending: true })
+          .range(off, off + PAGE - 1);
+        if (error) {
+          console.warn('sale_items (SDK):', error.message);
+          break;
+        }
+        const chunk = rows || [];
+        pushRows(chunk);
+        if (chunk.length < PAGE) break;
+        off += PAGE;
+      }
+    } catch (e2) {
+      console.warn('sale_items:', e2.message);
+    }
+  }
+}
+try {
+  window.loadSaleItemsIntoState = loadSaleItemsIntoState;
 } catch (e) {}
 
 // ----- Anti-desincronización (refresco parcial, sin duplicar reglas de negocio) -----
@@ -3019,6 +3087,10 @@ async function loadState() {
         else if(c.key==='consecutivos')state.consecutivos=val;
       } catch(e){}
     });
+
+    // #region agent log
+    try{ var _mf=0; (state.facturas||[]).forEach(function(f){var m=parseInt(String(f.numero||f.number||'').replace(/\D/g,''),10); if(m>_mf)_mf=m;}); var _lf=(state.consecutivos&&state.consecutivos.factura); fetch('http://127.0.0.1:7373/ingest/dc6f9647-6b4c-4ca4-9387-f5e5b4dc5353',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a4f7d0'},body:JSON.stringify({sessionId:'a4f7d0',hypothesisId:'A',location:'core.js:cargarDatos:consecutivos',message:'consecutivos cargado desde servidor',data:{loadedFactura:_lf,localMaxFacturaEnState:_mf,counterBehindReality:(_lf<=_mf)},timestamp:Date.now()})}).catch(function(){});}catch(_e){}
+    // #endregion
 
     _sbConnected = true;
     if (pendingLegacyCajaMerge && pendingLegacyCajaMerge.merged && pendingLegacyCajaMerge.canonical && supabaseClient) {
@@ -4178,6 +4250,22 @@ async function procesarVentaPOS(opts) {
         window.AppPosRepository.preparePosSaleForPersist(factura, ventaRecord);
       }
       try { await saveRecord('ventas', ventaRecord.id, ventaRecord); } catch(_) { /* noop */ }
+    }
+  }
+
+  // sale_items: capa canónica de líneas (NO bloquea la venta; no toca stock/caja).
+  if (_sbConnected && window.AppPosRepository?.persistSaleItems) {
+    try {
+      const rSI = await window.AppPosRepository.persistSaleItems({
+        supabaseClient, factura, ventaRecord, source: 'pos', idGen: dbId
+      });
+      if (!rSI.ok) {
+        console.warn('[POS] sale_items no persistió:', rSI.error?.message || rSI.error);
+        ventaRecord.syncError = 'sale_items';
+      }
+    } catch (e) {
+      console.warn('[POS] sale_items no bloqueante:', e?.message || e);
+      ventaRecord.syncError = 'sale_items';
     }
   }
 
@@ -7985,6 +8073,38 @@ async function backfillStockMovesVentaPos(skipConfirm) {
   }
   notify('warning', '⚠️', 'Módulo POS', 'Carga pos-repository.js', { duration: 3000 });
 }
+
+/** Backfill idempotente de líneas canónicas sale_items desde facturas (no toca stock/caja). */
+async function backfillSaleItemsVentaPos(skipConfirm) {
+  if (
+    !skipConfirm &&
+    !confirm(
+      'Se crearán las líneas «sale_items» que falten según tus facturas (no toca stock, caja, ventas ni invoices). Es idempotente: correrlo de nuevo no duplica. ¿Continuar?',
+    )
+  ) {
+    return;
+  }
+  if (window.AppPosRepository?.backfillSaleItemsFromInvoices) {
+    return window.AppPosRepository.backfillSaleItemsFromInvoices({
+      state,
+      supabaseClient,
+      sbConnected: _sbConnected,
+      notify,
+      showLoadingOverlay,
+      onDone: async () => {
+        try {
+          if (typeof window.loadSaleItemsIntoState === 'function') {
+            await window.loadSaleItemsIntoState();
+          }
+        } catch (e) {
+          console.warn('loadSaleItemsIntoState:', e);
+        }
+      },
+    });
+  }
+  notify('warning', '⚠️', 'Módulo POS', 'Carga pos-repository.js', { duration: 3000 });
+}
+window.backfillSaleItemsVentaPos = backfillSaleItemsVentaPos;
 
 function renderTesPagosProv() {
   const fn = treasuryFn('renderTesPagosProv');
