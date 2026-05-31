@@ -58,6 +58,24 @@
     return String((r && (r.fechaHora || r.fecha)) || '');
   }
 
+  // Proveedor NO vive en sale_items; se deriva del producto (productId -> artículo ->
+  // proveedorNombre). Mapa cacheado por render para no reconstruirlo en cada filtro.
+  let _provByProduct = null;
+  function buildProvMap() {
+    const st = (_ctx && _ctx.state) || global.state || {};
+    const arts = Array.isArray(st.articulos) ? st.articulos : [];
+    const m = new Map();
+    arts.forEach((a) => {
+      if (a && a.id != null) m.set(String(a.id), String(a.proveedorNombre || '').trim());
+    });
+    _provByProduct = m;
+  }
+  function rowProveedor(r) {
+    if (!_provByProduct) buildProvMap();
+    const pid = r && r.productId != null ? String(r.productId) : '';
+    return (pid && _provByProduct.get(pid)) || '';
+  }
+
   // ---- fuente de datos (central; fallback seguro) ----
   function getBaseRows(includeAnuladas) {
     if (typeof global.getSaleItemsReportRows === 'function') {
@@ -90,6 +108,7 @@
       articulo: val('vc-articulo').trim().toLowerCase(),
       canal: val('vc-canal'),
       talla: val('vc-talla'),
+      proveedor: val('vc-proveedor'),
       includeAnuladas: checked('vc-incluir-anuladas'),
     };
   }
@@ -116,6 +135,14 @@
       }
       if (f.canal && f.canal !== '__all__' && String(r.canal || '') !== f.canal) return false;
       if (f.talla && f.talla !== '__all__' && String(r.talla || '') !== f.talla) return false;
+      if (f.proveedor && f.proveedor !== '__all__') {
+        const pv = rowProveedor(r);
+        if (f.proveedor === '__none__') {
+          if (pv) return false;
+        } else if (pv !== f.proveedor) {
+          return false;
+        }
+      }
       return true;
     });
   }
@@ -267,7 +294,7 @@
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
-    ['vc-canal', 'vc-talla'].forEach((id) => {
+    ['vc-canal', 'vc-talla', 'vc-proveedor'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.value = '__all__';
     });
@@ -451,6 +478,21 @@
       `<option value="__all__">Todos</option>` +
       arr.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
 
+    // Opciones de proveedor derivadas de los productos presentes (estables).
+    buildProvMap();
+    const provSet = new Set();
+    let hasSinProv = false;
+    allRows.forEach((r) => {
+      const pv = rowProveedor(r);
+      if (pv) provSet.add(pv);
+      else hasSinProv = true;
+    });
+    const proveedores = Array.from(provSet).sort((a, b) => a.localeCompare(b, 'es'));
+    const provOptHtml =
+      `<option value="__all__">Todos</option>` +
+      proveedores.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('') +
+      (hasSinProv ? `<option value="__none__">(Sin proveedor)</option>` : '');
+
     const labelStyle = 'font-size:10px;color:var(--text2);display:block;margin-bottom:4px';
 
     mount.innerHTML = `
@@ -464,6 +506,7 @@
           <div style="flex:1;min-width:160px"><label style="${labelStyle}">Artículo (nombre/ref/id)</label><input type="text" id="vc-articulo" class="form-control" placeholder="Buscar artículo…" oninput="AppVentasConsolidadoModule.apply()"></div>
           <div><label style="${labelStyle}">Canal</label><select id="vc-canal" class="form-control" onchange="AppVentasConsolidadoModule.apply()">${optHtml(canales)}</select></div>
           <div><label style="${labelStyle}">Talla</label><select id="vc-talla" class="form-control" onchange="AppVentasConsolidadoModule.apply()">${optHtml(tallas)}</select></div>
+          <div><label style="${labelStyle}">Proveedor</label><select id="vc-proveedor" class="form-control" onchange="AppVentasConsolidadoModule.apply()">${provOptHtml}</select></div>
           <div><label style="${labelStyle}">&nbsp;</label><label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="vc-incluir-anuladas" onchange="AppVentasConsolidadoModule.apply()"> Incluir anuladas</label></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="AppVentasConsolidadoModule.clear()">Limpiar</button><button class="btn btn-secondary" id="vc-btn-recargar" onclick="AppVentasConsolidadoModule.recargar()">Recargar</button><button class="btn btn-secondary" id="vc-btn-generar" onclick="AppVentasConsolidadoModule.generarHistorico()" title="Crea líneas de reporte faltantes desde facturas. Idempotente; no toca caja, stock, ventas ni facturas.">Generar histórico</button><button class="btn btn-primary" onclick="AppVentasConsolidadoModule.exportCsv()">Exportar CSV</button></div>
         </div>
