@@ -415,6 +415,10 @@
     if (global.AppCajaLogic?.normalizeCaja) global.AppCajaLogic.normalizeCaja(caja);
     const metodo = (posFormState && posFormState.metodo) ? posFormState.metodo : 'efectivo';
     const concepto = buildPosIngresoConcepto(numFactura, cart);
+    const movMeta = {
+      createdAt: new Date().toISOString(),
+      facturaId: factura && factura.id ? factura.id : null
+    };
     const movsToPersist = [];
     if (metodo === 'mixto') {
       const mixEfe = parseFloat(posFormState?.mixtoEfectivo) || 0;
@@ -432,7 +436,8 @@
           fecha: fechaActual,
           metodo: 'efectivo',
           categoria: 'venta_pos',
-          bucket: 'efectivo'
+          bucket: 'efectivo',
+          ...movMeta
         });
       }
       if (tOk > 0) {
@@ -446,7 +451,8 @@
           fecha: fechaActual,
           metodo: 'transferencia',
           categoria: 'venta_pos',
-          bucket: 'transferencia'
+          bucket: 'transferencia',
+          ...movMeta
         });
       }
     } else {
@@ -462,7 +468,8 @@
         fecha: fechaActual,
         metodo,
         categoria: 'venta_pos',
-        bucket
+        bucket,
+        ...movMeta
       });
     }
     movsToPersist.forEach((m) => global.AppCajaLogic?.enrichMovWithSesion?.(state, caja.id, m, nextId));

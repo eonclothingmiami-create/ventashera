@@ -278,6 +278,12 @@ let state = {
   tes_ajustes_unidades_prov: [],
   stock_moves_ventas: [],
   saleItems: [],
+  compras: [],
+  compra_items: [],
+  proveedor_cxp_movimientos: [],
+  proveedor_abonos: [],
+  proveedor_abono_aplicaciones: [],
+  proveedor_notas_credito: [],
   // ===== CONFIGURACIONES =====
   cfg_categorias: [
     {id:'cat1',seccion:'Trajes de Baño',nombre:'Enterizos'},
@@ -338,7 +344,20 @@ if (window.AppState?.createInitialState) {
 }
 try {
   window.__HERA_STATE__ = state;
-} catch (e) {}
+  Object.defineProperty(window, 'state', {
+    get() {
+      return state;
+    },
+    set(v) {
+      if (v && typeof v === 'object') state = v;
+    },
+    configurable: true,
+  });
+} catch (e) {
+  try {
+    window.state = state;
+  } catch (e2) {}
+}
 
 let posFormState = { 
   canal: 'vitrina', empresa: '', transportadora: '', guia: '', ciudad: '', direccion: '',
@@ -2580,6 +2599,7 @@ async function hydrateVentasFacturasTesSliceFromSupabase(opts) {
     valor: parseFloat(m.valor) || 0,
     concepto: m.concepto || '',
     fecha: m.fecha,
+    createdAt: m.created_at || m.createdAt || null,
     metodo: m.metodo || 'efectivo',
     categoria: m.categoria || '',
     bucket: m.bucket || '',
@@ -2996,6 +3016,14 @@ async function loadState() {
 
     await loadStockMovesVentasIntoState();
 
+    if (window.AppComprasCxp?.loadComprasCxpFromDb) {
+      try {
+        await window.AppComprasCxp.loadComprasCxpFromDb(supabaseClient, state);
+      } catch (e) {
+        console.warn('compras/cxp v1:', e.message);
+      }
+    }
+
     // Cargar configuraciones desde Supabase (si existen, sobreescriben los defaults)
     try {
       const cfgTables = ['cfg_categorias','cfg_secciones','cfg_transportadoras','cfg_metodos_pago','cfg_tarifas','cfg_impuestos'];
@@ -3020,7 +3048,7 @@ async function loadState() {
     }
 
     // Tesorería
-    state.tes_movimientos = (tesMov||[]).map(m=>({id:m.id,cajaId:m.caja_id,tipo:m.tipo,valor:parseFloat(m.valor)||0,concepto:m.concepto||'',fecha:m.fecha,metodo:m.metodo||'efectivo',categoria:m.categoria||'',bucket:m.bucket||'',sesionId:m.sesion_id||null,refAbonoProvId:m.ref_abono_prov_id||null}));
+    state.tes_movimientos = (tesMov||[]).map(m=>({id:m.id,cajaId:m.caja_id,tipo:m.tipo,valor:parseFloat(m.valor)||0,concepto:m.concepto||'',fecha:m.fecha,createdAt:m.created_at||m.createdAt||null,metodo:m.metodo||'efectivo',categoria:m.categoria||'',bucket:m.bucket||'',sesionId:m.sesion_id||null,refAbonoProvId:m.ref_abono_prov_id||null}));
 
     state.tes_cierres_caja = [];
     try {
@@ -3306,7 +3334,7 @@ function renderPage(id){
     inv_ajustes:renderInvAjustes, inv_traslados:renderInvTraslados,
     nom_ausencias:renderNomAusencias, nom_anticipos:renderNomAnticipos,
     nom_conceptos:renderNomConceptos, nom_nominas:renderNomNominas,
-    tes_cajas:renderTesCajas, tes_pagos_prov:renderTesPagosProv, tes_dinero:renderTesDinero,
+    tes_cajas:renderTesCajas, tes_pagos_prov:renderTesPagosProv, compras:renderCompras, tes_dinero:renderTesDinero,
     tes_impuestos:renderTesImpuestos, tes_retenciones:renderTesRetenciones,
     tes_comp_retencion:renderTesCompRetencion, tes_comp_ingreso:renderTesCompIngreso,
     tes_comp_egreso:renderTesCompEgreso, tes_transferencias:renderTesTransferencias,
@@ -3732,6 +3760,22 @@ function syncPOSFormState() {
 }
   
 function renderPOS(){
+  // Preserve focused input (e.g. flete) across full rerenders.
+  let _focusRestore = null;
+  try {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+      const id = ae.id;
+      if (id) {
+        _focusRestore = {
+          id,
+          start: typeof ae.selectionStart === 'number' ? ae.selectionStart : null,
+          end: typeof ae.selectionEnd === 'number' ? ae.selectionEnd : null
+        };
+      }
+    }
+  } catch (_) {}
+
   let posCartScroll = 0;
   try {
     const cartEl = document.getElementById('pos-cart-items');
@@ -3751,8 +3795,22 @@ function renderPOS(){
       if (cartEl && posCartScroll > 0) cartEl.scrollTop = posCartScroll;
     } catch (_) {}
   };
+  const restoreFocus = () => {
+    if (!_focusRestore || !_focusRestore.id) return;
+    try {
+      const el = document.getElementById(_focusRestore.id);
+      if (!el || typeof el.focus !== 'function') return;
+      el.focus();
+      if (typeof el.setSelectionRange === 'function' && _focusRestore.start !== null && _focusRestore.end !== null) {
+        el.setSelectionRange(_focusRestore.start, _focusRestore.end);
+      }
+    } catch (_) {}
+  };
   requestAnimationFrame(() => {
-    requestAnimationFrame(restoreCartScroll);
+    requestAnimationFrame(() => {
+      restoreFocus();
+      restoreCartScroll();
+    });
   });
 }
 
@@ -4573,115 +4631,14 @@ function handlePOSScan(e){
   }
 }
 
-// ===== RECEIPT PRINTING =====
+// Ticket POS 80mm: template/CSS en pos-receipt-print.js (AppPosReceipt).
 function printReceipt(factura) {
-  const emp = state.empresa || {};
-
-  const logoHtml = emp.logoBase64
-    ? `<img src="${emp.logoBase64}" style="max-width:180px;display:block;margin:0 auto 8px;filter:grayscale(1);">`
-    : `<div style="font-family:Arial;font-size:18px;font-weight:900;text-align:center;letter-spacing:2px;margin-bottom:4px">${emp.nombre||'EON CLOTHING'}</div>`;
-
-  const itemsList = factura.items || [];
-  const subtotal = factura.subtotal || 0;
-  const iva = factura.iva || 0;
-  const flete = factura.flete || 0;
-  const total = factura.total || (subtotal + iva + flete);
-  const nombreCliente = factura.customer_name || factura.cliente || 'CLIENTE MOSTRADOR';
-  const telefonoCliente = factura.customer_phone || factura.telefono || '';
-  const ciudadCliente = factura.ciudad || '';
-  const numeroFactura = factura.number || factura.numero || 'PREVIEW';
-  const fecha = factura.fecha || today();
-  const hora = new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'});
-  const metodo = factura.metodo || factura.metodoPago || 'Efectivo';
-  const vendedora = emp.vendedora || '';
-  const bodega = emp.nombreComercial || emp.nombre || '';
-
-  const itemsHTML = itemsList.map(i => {
-    const precio = i.price || i.precio || 0;
-    const qty = i.qty || i.cantidad || 1;
-    const nom = i.name || i.nombre || '';
-    const ref = i.ref || i.codigo || '';
-    const talla = i.talla || '';
-    return `<tr>
-      <td style="padding:3px 0;vertical-align:top;line-height:1.4;word-break:break-word;">
-        <b>${nom}</b>${ref ? ' | '+ref : ''}${talla ? '<br>Talla: '+talla : ''}
-      </td>
-      <td style="text-align:center;vertical-align:top;padding:3px 4px;white-space:nowrap;">x${qty}</td>
-      <td style="text-align:right;vertical-align:top;white-space:nowrap;"><b>${fmtN(precio*qty)}</b></td>
-    </tr>`;
-  }).join('');
-
-  const receiptHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Courier New',Courier,monospace; font-size:11px; width:72mm; color:#000; }
-    .center { text-align:center; }
-    .bold { font-weight:bold; }
-    .line { border-top:1px dashed #000; margin:5px 0; }
-    table { width:100%; border-collapse:collapse; }
-    th { font-size:10px; border-bottom:1px solid #000; padding:2px 0; text-align:left; }
-    th:last-child, td:last-child { text-align:right; }
-    th:nth-child(2), td:nth-child(2) { text-align:center; }
-    .total-row td { font-size:13px; font-weight:900; padding-top:4px; }
-    .small { font-size:9px; }
-  </style></head><body>
-
-  <div class="center">${logoHtml}</div>
-  <div class="center bold" style="font-size:13px;">${emp.nombre||'EON CLOTHING'}</div>
-  ${emp.nombreComercial && emp.nombreComercial !== emp.nombre ? `<div class="center">${emp.nombreComercial}</div>` : ''}
-  <div class="center small">NIT: ${emp.nit||''} | ${emp.regimenFiscal||'Régimen ordinario No responsable de IVA'}</div>
-  <div class="center small">${emp.departamento||''} / ${emp.ciudad||''} / ${emp.direccion||''}</div>
-  <div class="center small">Teléfonos: ${emp.telefono||''}${emp.telefono2?' / '+emp.telefono2:''}</div>
-  ${emp.email?`<div class="center small">Email: ${emp.email}</div>`:''}
-  ${emp.web?`<div class="center small">Página web: ${emp.web}</div>`:''}
-
-  <div class="line"></div>
-  <div class="center bold" style="font-size:12px;">FACTURA DE VENTA</div>
-  <div class="center bold">No.: ${numeroFactura}</div>
-  <div class="center small">${emp.nombreComercial||emp.nombre||''}</div>
-  <div class="center small">${fecha} ${hora}</div>
-
-  ${emp.mensajeHeader ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;">${emp.mensajeHeader}</div>` : ''}
-
-  <div class="line"></div>
-  <div class="small">Cliente: <b>${nombreCliente}</b>${telefonoCliente?' | '+telefonoCliente:''}${factura.cedulaCliente||factura.cedula_cliente ? ' | CC: '+(factura.cedulaCliente||factura.cedula_cliente) : ''}${ciudadCliente?' | Ciudad: '+ciudadCliente:''}${factura.direccion ? ' | Dir: '+factura.direccion : ''}</div>
-  ${vendedora?`<div class="small">Elaboró: ${vendedora}</div>`:''}
-  ${bodega?`<div class="small">Vendedor: ${vendedora||''} | Bodega: ${bodega}</div>`:''}
-
-  <div class="line"></div>
-  <table>
-    <thead><tr><th>DESCRIPCIÓN</th><th>CANT</th><th>TOTAL</th></tr></thead>
-    <tbody>${itemsHTML}</tbody>
-  </table>
-  <div class="line"></div>
-
-  <table>
-    <tr><td>SUBTOTAL</td><td></td><td style="text-align:right">${fmtN(subtotal)}</td></tr>
-    ${iva > 0 ? `<tr><td>IVA (19%)</td><td></td><td style="text-align:right">${fmtN(iva)}</td></tr>` : ''}
-    ${flete > 0 ? `<tr><td>Flete</td><td></td><td style="text-align:right">${fmtN(flete)}</td></tr>` : ''}
-    <tr class="total-row"><td colspan="2">TOTAL NETO</td><td style="text-align:right;font-size:14px;">${fmtN(total)}</td></tr>
-  </table>
-  <div class="line"></div>
-
-  <div class="small bold">MEDIO DE PAGO:</div>
-  <div class="small">${metodo}</div>
-
-  ${emp.mensajePie ? `<div class="line"></div><div class="center small bold" style="white-space:pre-wrap;">${emp.mensajePie}</div>` : ''}
-  ${emp.politicaDatos ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;">${emp.politicaDatos}</div>` : ''}
-  ${emp.web ? `<div class="center small">${emp.web}</div>` : ''}
-  ${emp.mensajeGarantias ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;font-style:italic;">${emp.mensajeGarantias}</div>` : ''}
-
-  <div class="line"></div>
-  <div class="center small">Factura generada por VentasHera ERP</div>
-
-  </body></html>`;
-
-  const pWin = window.open('', '_blank', 'width=380,height=750,scrollbars=yes');
-  if(!pWin) { notify('warning','⚠️','Popup bloqueado','Permite popups para imprimir.',{duration:4000}); return; }
-  pWin.document.write(receiptHTML);
-  pWin.document.close();
-  setTimeout(() => { pWin.print(); }, 600);
+  if (window.AppPosReceipt && typeof window.AppPosReceipt.print === 'function') {
+    return window.AppPosReceipt.print(factura, { state, today, fmtN, notify });
+  }
+  notify('warning', '⚠️', 'Ticket POS', 'Módulo de impresión no cargado.', { duration: 4000 });
 }
+
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}
   syncPOSFormState();
@@ -4846,6 +4803,142 @@ async function bulkMercadoLibreSyncVisibleArticles() {
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
 
+function artEligibleAutoCompra(proveedorId, tituloMercancia, deltaStock, costo) {
+  const t = String(tituloMercancia || '').trim().toLowerCase();
+  return (
+    !!window.__PAGOS_PROV_REBUILD__ &&
+    !!proveedorId &&
+    (t === 'contado' || t === 'credito') &&
+    (parseInt(deltaStock, 10) || 0) > 0 &&
+    (parseFloat(costo) || 0) > 0
+  );
+}
+
+function defaultTipoCompraFromTitulo(tituloMercancia) {
+  const t = String(tituloMercancia || '').trim().toLowerCase();
+  if (t === 'contado') return 'contado';
+  if (t === 'credito') return 'credito';
+  return 'credito';
+}
+
+function resolverAutoCompraModal(confirmed, tipoCompra) {
+  const fn = window.__autoCompraPendingResolve;
+  window.__autoCompraPendingResolve = null;
+  if (fn) {
+    fn(
+      confirmed
+        ? { confirmed: true, tipoCompra: tipoCompra || defaultTipoCompraFromTitulo('credito') }
+        : { confirmed: false },
+    );
+  }
+}
+
+function cancelarAutoCompraModal() {
+  closeModal();
+  resolverAutoCompraModal(false);
+}
+
+function aceptarAutoCompraModal() {
+  const tipo = document.getElementById('auto-compra-tipo')?.value || 'credito';
+  closeModal();
+  resolverAutoCompraModal(true, tipo);
+}
+
+function confirmarAutoCompraDesdeArticulo(params) {
+  const { proveedorNombre, nombreArt, deltaStock, costo, tituloMercancia } = params;
+  const qty = parseInt(deltaStock, 10) || 0;
+  const unit = parseFloat(costo) || 0;
+  const total = qty * unit;
+  const defTipo = defaultTipoCompraFromTitulo(tituloMercancia);
+  const esc = (s) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/"/g, '&quot;');
+  const fmtFn = typeof window.fmt === 'function' ? window.fmt : (v) => String(v);
+  return new Promise((resolve) => {
+    window.__autoCompraPendingResolve = resolve;
+    openModal(
+      `<div class="modal-title">Registrar entrada como compra<button type="button" class="modal-close" onclick="cancelarAutoCompraModal()">×</button></div>
+      <p style="font-size:13px;margin-bottom:12px">Proveedor: <b>${esc(proveedorNombre)}</b><br>Artículo: <b>${esc(nombreArt)}</b><br>Cantidad: <b>${qty}</b> · Costo unit.: <b>${fmtFn(unit)}</b> · Total: <b>${fmtFn(total)}</b></p>
+      <div class="form-group"><label>Tipo de compra</label>
+        <select id="auto-compra-tipo" class="form-control">
+          <option value="contado" ${defTipo === 'contado' ? 'selected' : ''}>Contado</option>
+          <option value="credito" ${defTipo === 'credito' ? 'selected' : ''}>Crédito</option>
+          <option value="consignacion" ${defTipo === 'consignacion' ? 'selected' : ''}>Consignación</option>
+        </select>
+      </div>
+      <p style="font-size:12px;color:var(--text2)">Se creará un documento en Compras (COMP-…) y, si aplica, cargo en cuentas por pagar.</p>
+      <button type="button" class="btn btn-primary" onclick="aceptarAutoCompraModal()">Registrar compra</button>
+      <button type="button" class="btn btn-secondary" style="margin-left:8px" onclick="cancelarAutoCompraModal()">Solo guardar artículo</button>`,
+      true,
+    );
+  });
+}
+
+async function aplicarEntradaStockArticulo(productId, cantidad, bodegaId, motivo) {
+  const qty = parseInt(cantidad, 10) || 0;
+  if (qty <= 0) return;
+  const bod = bodegaId || 'bodega_main';
+  const art = (state.articulos || []).find((a) => String(a.id) === String(productId));
+  if (window.AppInventoryModule?.syncStockViaRpc) {
+    const newStock = await window.AppInventoryModule.syncStockViaRpc(supabaseClient, productId, qty);
+    if (newStock != null && art) art.stock = newStock;
+    else if (art) art.stock = (parseFloat(art.stock) || 0) + qty;
+  } else if (art) {
+    const newStock = (parseFloat(art.stock) || 0) + qty;
+    await supabaseClient.from('products').update({ stock: newStock }).eq('id', productId);
+    art.stock = newStock;
+  }
+  const ajId = dbId();
+  const fechaDoc = today();
+  try {
+    await supabaseClient.from('inv_ajustes').insert({
+      id: ajId,
+      articulo_id: productId,
+      bodega_id: bod,
+      tipo: 'entrada',
+      cantidad: qty,
+      motivo: motivo || 'Entrada adicional desde artículo',
+      fecha: fechaDoc,
+    });
+    if (!state.inv_ajustes) state.inv_ajustes = [];
+    state.inv_ajustes.push({
+      id: ajId,
+      articuloId: productId,
+      bodegaId: bod,
+      tipo: 'entrada',
+      cantidad: qty,
+      motivo: motivo || 'Entrada adicional',
+      fecha: fechaDoc,
+    });
+    if (!state.inv_movimientos) state.inv_movimientos = [];
+    state.inv_movimientos.push({
+      id: 'aj_' + ajId,
+      articuloId: productId,
+      bodegaId: bod,
+      cantidad: qty,
+      tipo: 'ajuste_entrada',
+      fecha: fechaDoc,
+      referencia: 'Ajuste',
+      nota: motivo || 'Entrada adicional',
+    });
+  } catch (e) {
+    console.warn('[saveArticulo] inv_ajuste entrada:', e.message);
+  }
+}
+
+function updateArtComprasHint() {
+  const hint = document.getElementById('m-art-compras-hint');
+  const wrap = document.getElementById('m-art-stock-add-wrap');
+  if (!window.__PAGOS_PROV_REBUILD__) return;
+  const prov = document.getElementById('m-art-proveedor')?.value || '';
+  const titulo = document.getElementById('m-art-titulo-mercancia')?.value || '';
+  const show = !!prov && (titulo === 'contado' || titulo === 'credito');
+  if (hint) hint.style.display = show ? 'block' : 'none';
+  if (wrap) wrap.style.display = show && window._editingArticuloId ? 'block' : 'none';
+}
+
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
     // Cargar imágenes existentes del artículo en la galería temporal
@@ -4969,7 +5062,7 @@ function openArticuloModal(id){
             </div>
 
             <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
-                    <select class="form-control" id="m-art-titulo-mercancia">
+                    <select class="form-control" id="m-art-titulo-mercancia" onchange="typeof updateArtComprasHint==='function'&&updateArtComprasHint()">
                         <option value="" ${!art?.tituloMercancia ? 'selected' : ''}>— Seleccionar —</option>
                         <option value="propia" ${art?.tituloMercancia === 'propia' ? 'selected' : ''}>🏷️ Mercancía Propia</option>
                         <option value="contado" ${art?.tituloMercancia === 'contado' ? 'selected' : ''}>💵 Mercancía de Contado</option>
@@ -4984,12 +5077,20 @@ function openArticuloModal(id){
                 <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva ?? 19}"></div>
             </div>
             <div class="form-group"><label class="form-label">🏭 PROVEEDOR</label>
-                <select class="form-control" id="m-art-proveedor">
+                <select class="form-control" id="m-art-proveedor" onchange="typeof updateArtComprasHint==='function'&&updateArtComprasHint()">
                     <option value="">— Sin proveedor —</option>
                     ${(state.usu_proveedores||[]).map(p => `<option value="${p.id}" ${art?.proveedorId === p.id ? 'selected' : ''}>${p.nombre}${p.cedula ? ' · ' + p.cedula : ''}</option>`).join('')}
                 </select>
                 ${(state.usu_proveedores||[]).length === 0 ? '<span style="font-size:10px;color:var(--text2)">Sin proveedores. <a onclick="closeModal();showPage(\'usu_proveedores\')" style="color:var(--accent);cursor:pointer">→ Crear proveedor</a></span>' : ''}
             </div>
+            ${
+              window.__PAGOS_PROV_REBUILD__
+                ? `<p id="m-art-compras-hint" style="display:none;font-size:12px;color:var(--accent);margin:8px 0 0;padding:10px;background:rgba(0,229,180,.08);border-radius:8px;border:1px solid rgba(0,229,180,.2)">
+              Con proveedor y mercancía contado/crédito puedes registrar la entrada como <b>compra</b> al guardar, o usar <b>Compras</b> para entradas grandes.
+              <a onclick="closeModal();showPage('compras')" style="color:var(--accent);cursor:pointer;margin-left:6px">→ Ir a Compras</a>
+            </p>`
+                : ''
+            }
             <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-mostrar-web" style="width: 18px; height: 18px;"> 
@@ -5066,9 +5167,18 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
                   <input type="number" class="form-control" id="m-art-stock0"
                     value="${art ? (art.stock||0) : 0}"
                     ${art ? 'readonly style="opacity:0.5;cursor:not-allowed"' : 'min="0"'}>
-                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para ajustar el stock usa: Inventario → Ajustes</div>' : ''}
+                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para más stock: «Entrada adicional» abajo o Inventario → Ajustes</div>' : ''}
                 </div>
             </div>
+            ${
+              window.__PAGOS_PROV_REBUILD__ && art
+                ? `<div class="form-group" id="m-art-stock-add-wrap" style="display:none;margin-top:8px">
+                <label class="form-label">ENTRADA ADICIONAL (unidades)</label>
+                <input type="number" class="form-control" id="m-art-stock-add" min="0" step="1" value="0" />
+                <div style="font-size:10px;color:var(--text2);margin-top:3px">Al guardar puedes registrar una compra COMP-… o solo un ajuste de inventario.</div>
+              </div>`
+                : ''
+            }
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px;">
         <button type="button" class="btn btn-primary" id="m-art-btn-save" style="width:100%; font-weight:800;" onclick="saveArticulo('${id || ''}', {})">💾 GUARDAR Y ACTUALIZAR WEB</button>
@@ -5085,6 +5195,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
     }
     applyFalabellaDraftToMaquetadorFields(art || {});
     onMaquetadorChannelProfileChange();
+    if (typeof updateArtComprasHint === 'function') updateArtComprasHint();
     wireFalabellaMaquetadorInputs();
     window._falabellaCategoryIndexed = null;
     refreshFalabellaMaquetadorValidation();
@@ -5092,6 +5203,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
   }, 10);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
+    if (typeof updateArtComprasHint === 'function') updateArtComprasHint();
 }
 
 function removeMainImg(){
@@ -5309,27 +5421,113 @@ async function saveArticulo(existingId, options) {
             .eq('id', productId);
         if (visUpdErr) console.warn('[saveArticulo] actualizar visible:', visUpdErr.message);
 
-        // 1b. Solo en alta: stock inicial → un inv_ajuste. En edición el stock del modal es solo lectura
-        // (no insertar otra entrada en cada guardado: inflaba inv_ajustes y tes_abonos_prov a crédito).
-        const stockInicial = parseInt(document.getElementById('m-art-stock0')?.value)||0;
-        if (!existingId && stockInicial > 0) {
-          const ajId = dbId();
+        // 1b. Entrada de stock: auto-compra (Compras V1) o ajuste de inventario
+        const stockInicial = !existingId ? parseInt(document.getElementById('m-art-stock0')?.value, 10) || 0 : 0;
+        const stockAdd = existingId ? parseInt(document.getElementById('m-art-stock-add')?.value, 10) || 0 : 0;
+        const deltaStock = existingId ? stockAdd : stockInicial;
+        const bodegaIdArt = document.getElementById('m-art-bodega')?.value || 'bodega_main';
+        let autoCompra = { confirmed: false };
+        if (artEligibleAutoCompra(proveedorId, tituloMercancia, deltaStock, costoInput)) {
+          autoCompra = await confirmarAutoCompraDesdeArticulo({
+            proveedorNombre: proveedorObj?.nombre || '',
+            nombreArt: nombre,
+            deltaStock,
+            costo: costoInput,
+            tituloMercancia,
+          });
+        }
+        if (autoCompra.confirmed && window.AppComprasCxp?.guardarCompra) {
           try {
-            await supabaseClient.from('inv_ajustes').insert({
-              id: ajId, articulo_id: productId, bodega_id: 'bodega_main',
-              tipo: 'entrada', cantidad: stockInicial,
-              motivo: 'Stock inicial al crear artículo',
-              fecha: today()
-            });
-            if(!state.inv_ajustes) state.inv_ajustes = [];
-            state.inv_ajustes.push({id:ajId, articuloId:productId, bodegaId:'bodega_main',
-              tipo:'entrada', cantidad:stockInicial,
-              motivo: 'Stock inicial', fecha:today()});
-            if(!state.inv_movimientos) state.inv_movimientos = [];
-            state.inv_movimientos.push({id:'aj_'+ajId, articuloId:productId,
-              bodegaId:'bodega_main', cantidad:stockInicial, tipo:'ajuste_entrada',
-              fecha:today(), referencia:'Ajuste', nota:'Stock inicial'});
-          } catch(e) { console.warn('inv_ajuste stock error:', e.message); }
+            const resCompra = await window.AppComprasCxp.guardarCompra(
+              { state, supabaseClient, dbId, today, notify, fmt },
+              {
+                proveedorId,
+                proveedorNombre: proveedorObj?.nombre || '',
+                tipoCompra: autoCompra.tipoCompra,
+                fecha: today(),
+                nota: `Auto-compra desde artículo ${refID}`,
+                lineas: [
+                  {
+                    articuloId: productId,
+                    articuloNombre: nombre,
+                    cantidad: deltaStock,
+                    costoUnitario: costoInput,
+                    bodegaId: bodegaIdArt,
+                  },
+                ],
+                omitirAjusteStock: !existingId,
+              },
+            );
+            notify(
+              'success',
+              '📦',
+              'Compra registrada',
+              resCompra?.compra?.numero ? `Documento ${resCompra.compra.numero}` : '',
+            );
+            if (resCompra?.advertenciaStock) {
+              notify('warning', '⚠️', 'Stock parcial', resCompra.advertenciaStock);
+            }
+          } catch (eCompra) {
+            notify(
+              'warning',
+              '⚠️',
+              'Compra no registrada',
+              `El artículo se guardó, pero falló la compra: ${eCompra.message || eCompra}`,
+            );
+            if (deltaStock > 0) {
+              await aplicarEntradaStockArticulo(
+                productId,
+                deltaStock,
+                bodegaIdArt,
+                existingId ? 'Entrada adicional (compra fallida)' : 'Stock inicial al crear artículo',
+              );
+            }
+          }
+        } else if (deltaStock > 0) {
+          if (!existingId) {
+            const ajId = dbId();
+            try {
+              await supabaseClient.from('inv_ajustes').insert({
+                id: ajId,
+                articulo_id: productId,
+                bodega_id: bodegaIdArt,
+                tipo: 'entrada',
+                cantidad: stockInicial,
+                motivo: 'Stock inicial al crear artículo',
+                fecha: today(),
+              });
+              if (!state.inv_ajustes) state.inv_ajustes = [];
+              state.inv_ajustes.push({
+                id: ajId,
+                articuloId: productId,
+                bodegaId: bodegaIdArt,
+                tipo: 'entrada',
+                cantidad: stockInicial,
+                motivo: 'Stock inicial',
+                fecha: today(),
+              });
+              if (!state.inv_movimientos) state.inv_movimientos = [];
+              state.inv_movimientos.push({
+                id: 'aj_' + ajId,
+                articuloId: productId,
+                bodegaId: bodegaIdArt,
+                cantidad: stockInicial,
+                tipo: 'ajuste_entrada',
+                fecha: today(),
+                referencia: 'Ajuste',
+                nota: 'Stock inicial',
+              });
+            } catch (e) {
+              console.warn('inv_ajuste stock error:', e.message);
+            }
+          } else {
+            await aplicarEntradaStockArticulo(
+              productId,
+              stockAdd,
+              bodegaIdArt,
+              'Entrada adicional desde artículo',
+            );
+          }
         }
 
         // 2. MANEJAR IMÁGENES en product_media - solo si hubo cambios reales
@@ -5529,6 +5727,39 @@ async function saveArticulo(existingId, options) {
         if(artIdx >= 0) state.articulos[artIdx] = artLocal;
         else state.articulos.push(artLocal);
 
+        if (
+          existingId &&
+          proveedorId &&
+          window.AppComprasCxp?.ajusteCostoProveedor &&
+          Math.abs(costoInput - (parseFloat(prevArt.precioCompra ?? prevArt.cost ?? 0) || 0)) > 0.01
+        ) {
+          const prevCost = parseFloat(prevArt.precioCompra ?? prevArt.cost ?? 0) || 0;
+          const unidadesCost = parseFloat(artLocal.stock ?? productData.stock ?? 0) || 0;
+          if (
+            unidadesCost > 0 &&
+            confirm(
+              `El costo cambió de ${fmt(prevCost)} a ${fmt(costoInput)} (${unidadesCost} uds en stock).\n\n¿Registrar ajuste de costo en cuentas por pagar del proveedor?`,
+            )
+          ) {
+            try {
+              await window.AppComprasCxp.ajusteCostoProveedor(
+                { state, supabaseClient, dbId, today },
+                {
+                  proveedorId,
+                  proveedorNombre: proveedorObj?.nombre || '',
+                  articuloId: productId,
+                  unidades: unidadesCost,
+                  costoAnterior: prevCost,
+                  costoNuevo: costoInput,
+                },
+              );
+              notify('success', '📊', 'Ajuste de costo', 'Registrado en CXP del proveedor.');
+            } catch (eAjuste) {
+              notify('warning', '⚠️', 'Ajuste de costo', eAjuste.message || String(eAjuste));
+            }
+          }
+        }
+
         // ===== Deuda proveedor: detectar transición no-deuda -> deuda (idempotente) =====
         const esCredito = (t) =>
           typeof window.esMercanciaCredito === 'function'
@@ -5543,7 +5774,11 @@ async function saveArticulo(existingId, options) {
         const beforeEligible = elig(prevArt);
         const afterEligible = elig(artLocal);
         const transitionToDebt = !beforeEligible && afterEligible;
-        if (transitionToDebt && window.AppTreasuryModule?.logRegistroDeudaArticulo) {
+        if (
+          transitionToDebt &&
+          !pagosProvModuleWritesBlocked() &&
+          window.AppTreasuryModule?.logRegistroDeudaArticulo
+        ) {
           try {
             await window.AppTreasuryModule.logRegistroDeudaArticulo({
               state,
@@ -5631,7 +5866,9 @@ async function eliminarAjuste(id) {
         art.stock = newStock;
       }
     }
-    if (a.tipo === 'devolucion') {
+    if (a.tipo === 'devolucion' && pagosProvModuleWritesBlocked() && window.AppComprasCxp?.anularDevolucionPorAjuste) {
+      await window.AppComprasCxp.anularDevolucionPorAjuste({ state, supabaseClient }, a.id);
+    } else if (a.tipo === 'devolucion' && !pagosProvModuleWritesBlocked()) {
       const dv = (state.tes_devoluciones_prov||[]).find(x => String(x.invAjusteId) === String(a.id));
       if (dv) {
         if (window.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
@@ -5734,13 +5971,42 @@ async function saveAjusteInv() {
       product.stock = newStock;
     }
 
-    if (tipo === 'devolucion' && product.tituloMercancia === 'credito' && product.proveedorId) {
+    const notaDvCore = `Devolución inventario · ${product.nombre||artId} · ${motivo}`;
+    if (
+      tipo === 'devolucion' &&
+      product.proveedorId &&
+      pagosProvModuleWritesBlocked() &&
+      window.AppComprasCxp?.registrarDevolucion &&
+      (product.tituloMercancia === 'credito' ||
+        (typeof window.esMercanciaCredito === 'function' && window.esMercanciaCredito(product.tituloMercancia)))
+    ) {
+      const prov = (state.usu_proveedores||[]).find(p => String(p.id) === String(product.proveedorId));
+      const provNombre = prov?.nombre || product.proveedorNombre || '';
+      const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
+      await window.AppComprasCxp.registrarDevolucion(
+        { state, supabaseClient, dbId, today },
+        {
+          proveedorId: product.proveedorId,
+          proveedorNombre: provNombre,
+          lineas: [{ articuloId: artId, articuloNombre: product.nombre || '', cantidad: cant, costoUnitario: costoUnit, bodegaId }],
+          motivo: notaDvCore,
+          fecha: today(),
+          invAjusteId: ajuste.id,
+          omitirAjusteStock: true,
+        },
+      );
+    } else if (
+      tipo === 'devolucion' &&
+      product.tituloMercancia === 'credito' &&
+      product.proveedorId &&
+      !pagosProvModuleWritesBlocked()
+    ) {
       const prov = (state.usu_proveedores||[]).find(p => String(p.id) === String(product.proveedorId));
       const provNombre = prov?.nombre || product.proveedorNombre || '';
       const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
       const valorCosto = costoUnit * cant;
       const devId = dbId();
-      const notaDv = `Devolución inventario · ${product.nombre||artId} · ${motivo}`;
+      const notaDv = notaDvCore;
       const fh = new Date().toISOString();
       const { error: dInsErr } = await supabaseClient.from('tes_devoluciones_prov').insert({
         id: devId, proveedor_id: product.proveedorId, proveedor_nombre: provNombre,
@@ -5776,9 +6042,11 @@ async function saveAjusteInv() {
       }
     }
 
+    // Bloqueado durante rebuild de Pagos proveedores — sin RPC CXP ni tes_abonos_prov.
     if (
       tipo === 'entrada' &&
       product.proveedorId &&
+      !pagosProvModuleWritesBlocked() &&
       (typeof window.esMercanciaCredito === 'function'
         ? window.esMercanciaCredito(product.tituloMercancia)
         : String(product.tituloMercancia || '').trim().toLowerCase() === 'credito')
@@ -7973,6 +8241,26 @@ try {
   };
 } catch (e) {}
 
+/** Consola: `__cxpGoLiveCheck()` — smoke test Compras/CXP (oleada 5 go-live). */
+try {
+  window.__cxpGoLiveCheck = async function () {
+    const Svc = window.AppComprasCxp;
+    if (!Svc?.goLiveSmokeCheck) {
+      console.warn('[CXP Go-live] AppComprasCxp.goLiveSmokeCheck no disponible');
+      return null;
+    }
+    const result = await Svc.goLiveSmokeCheck({
+      state,
+      supabaseClient,
+      dbId,
+      fmt,
+      today,
+    });
+    if (typeof Svc.logGoLiveSmokeCheck === 'function') Svc.logGoLiveSmokeCheck(result);
+    return result;
+  };
+} catch (e) {}
+
 /** Alertas de tesorería/proveedores (anexar siempre al resultado de buildAlerts base). */
 function appendBuildAlertsTreasuryProveedor() {
   const extra = [];
@@ -8041,8 +8329,21 @@ function appendBuildAlertsTreasuryProveedor() {
   return extra;
 }
 
+function pagosProvRebuildBlockedCore() {
+  if (!window.__PAGOS_PROV_REBUILD__) return false;
+  if (typeof notify === 'function') {
+    notify('warning', '🔧', 'Pagos proveedores', 'Módulo en reconstrucción. Operación no disponible.', { duration: 4500 });
+  }
+  return true;
+}
+
+function pagosProvModuleWritesBlocked() {
+  return window.AppTreasuryModule?.pagosProvModuleWritesBlocked?.() ?? !!window.__PAGOS_PROV_REBUILD__;
+}
+
 /** Una sola vez: stock_moves desde facturas POS históricas (deuda proveedor / columna vendido). */
 async function backfillStockMovesVentaPos(skipConfirm) {
+  if (pagosProvRebuildBlockedCore()) return;
   if (
     !skipConfirm &&
     !confirm(
@@ -8113,6 +8414,17 @@ function renderTesPagosProv() {
   if (el) {
     el.innerHTML =
       '<div class="card" style="padding:20px;color:var(--red)">No se cargó <b>treasury-module.js</b>. Pagos a proveedores no disponibles hasta recargar.</div>';
+  }
+}
+
+function renderCompras() {
+  if (window.AppPurchases?.render) {
+    return window.AppPurchases.render({ state, fmt, formatDate });
+  }
+  const el = document.getElementById('compras-content');
+  if (el) {
+    el.innerHTML =
+      '<div class="card" style="padding:20px;color:var(--red)">Cargue purchases-module.js y compras-cxp-service.js.</div>';
   }
 }
 
@@ -8427,7 +8739,7 @@ function saveMovCaja(cajaId, tipo) {
 
 function renderTesDinero() {
   const fn = treasuryFn('renderTesDinero');
-  if (fn) return fn({ state, formatDate, fmt, today });
+  if (fn) return fn({ state, formatDate, fmt, today, openModal });
   const el = document.getElementById('tes_dinero-content');
   if (el) {
     el.innerHTML =
@@ -8998,6 +9310,7 @@ async function repararStockProductosPosVenta(id) {
 
 /** Todas las facturas POS: recuperar movimientos faltantes y descuentos pendientes en products. */
 async function repararStockProductosPosMasivo(opts) {
+  if (pagosProvRebuildBlockedCore()) return;
   const skipConfirm = opts && opts.skipConfirm;
   if (
     !skipConfirm &&
@@ -9043,6 +9356,7 @@ async function repararStockProductosPosMasivo(opts) {
 
 /** Rellenar stock_moves (histórico) y luego sincronizar products. Orden recomendado para datos viejos. */
 async function sincronizarPosInventarioCompleto() {
+  if (pagosProvRebuildBlockedCore()) return;
   if (
     !confirm(
       'Paso 1: crear stock_moves POS faltantes desde facturas. Paso 2: sincronizar stock en productos (products). ¿Ejecutar ambos?',

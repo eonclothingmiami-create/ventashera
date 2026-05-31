@@ -2,6 +2,10 @@
 (function initInventoryModule(global) {
   let _invTrFilt = { desde: null, hasta: null, artId: '', provId: '', bodegaId: '', tipo: '' };
 
+  function skipPagosProvMirror() {
+    return global.AppTreasuryModule?.pagosProvModuleWritesBlocked?.() ?? !!global.__PAGOS_PROV_REBUILD__;
+  }
+
   /** Delta firmado: positivo → increment_stock, negativo → decrement_stock. Retorna nuevo stock o null si delta 0. */
   async function syncStockViaRpc(supabaseClient, productId, signedDelta) {
     const n = parseInt(signedDelta, 10) || 0;
@@ -238,7 +242,9 @@
           const newStock = await syncStockViaRpc(supabaseClient, a.articuloId, revert);
           if (newStock != null) art.stock = newStock;
         }
-        if (a.tipo === 'devolucion') {
+        if (a.tipo === 'devolucion' && skipPagosProvMirror() && global.AppComprasCxp?.anularDevolucionPorAjuste) {
+          await global.AppComprasCxp.anularDevolucionPorAjuste({ state, supabaseClient }, a.id);
+        } else if (a.tipo === 'devolucion' && !skipPagosProvMirror()) {
           const dv = (state.tes_devoluciones_prov || []).find((x) => String(x.invAjusteId) === String(a.id));
           if (dv) {
             if (global.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
@@ -285,7 +291,9 @@
         const newStock = await syncStockViaRpc(supabaseClient, a.articuloId, revert);
         if (newStock != null) art.stock = newStock;
       }
-      if (a.tipo === 'devolucion') {
+      if (a.tipo === 'devolucion' && skipPagosProvMirror() && global.AppComprasCxp?.anularDevolucionPorAjuste) {
+        await global.AppComprasCxp.anularDevolucionPorAjuste({ state, supabaseClient }, a.id);
+      } else if (a.tipo === 'devolucion' && !skipPagosProvMirror()) {
         const dv = (state.tes_devoluciones_prov || []).find((x) => String(x.invAjusteId) === String(a.id));
         if (dv) {
           if (global.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
@@ -546,7 +554,7 @@
           const newStock = await syncStockViaRpc(supabaseClient, artId, revert);
           if (newStock != null) product.stock = newStock;
         }
-        if (devId) {
+        if (devId && !skipPagosProvMirror()) {
           if (global.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
             try {
               await global.AppTreasuryModule.deleteCxpMirrorDevolucion(state, supabaseClient, devId);
@@ -613,7 +621,99 @@
         }
         if (newStock != null) product.stock = newStock;
 
-        if (tipo === 'devolucion' && artEsMercanciaCredito(product) && product.proveedorId) {
+        const notaDvLinea =
+          tipo === 'devolucion'
+            ? `Devolución inventario · ${product.nombre || artId} · ${motivo}`
+            : motivo;
+
+        if (
+          tipo === 'entrada' &&
+          artEsMercanciaCredito(product) &&
+          product.proveedorId &&
+          skipPagosProvMirror() &&
+          global.AppComprasCxp?.guardarCompra
+        ) {
+          const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
+          const provNombre = prov?.nombre || product.proveedorNombre || '';
+          const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
+          try {
+            await global.AppComprasCxp.guardarCompra(
+              {
+                state,
+                supabaseClient,
+                dbId: nextId,
+                today: () => fechaStr,
+              },
+              {
+                proveedorId: product.proveedorId,
+                proveedorNombre: provNombre,
+                tipoCompra: 'credito',
+                fecha: fechaStr,
+                facturaProveedor: `AJ-INV-${String(ajuste.id).slice(0, 20)}`,
+                nota: `Ajuste inventario entrada · ${motivo} · inv:${ajuste.id}`,
+                origenSistema: 'ajuste_inv_entrada',
+                lineas: [
+                  {
+                    articuloId: artId,
+                    articuloNombre: product.nombre || '',
+                    cantidad: cant,
+                    costoUnitario: costoUnit,
+                    bodegaId,
+                  },
+                ],
+                omitirAjusteStock: true,
+              },
+            );
+          } catch (cxpErr) {
+            await rollbackLoteSave(completed);
+            throw cxpErr;
+          }
+        } else if (
+          tipo === 'devolucion' &&
+          artEsMercanciaCredito(product) &&
+          product.proveedorId &&
+          skipPagosProvMirror() &&
+          global.AppComprasCxp?.registrarDevolucion
+        ) {
+          const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
+          const provNombre = prov?.nombre || product.proveedorNombre || '';
+          const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
+          try {
+            await global.AppComprasCxp.registrarDevolucion(
+              {
+                state,
+                supabaseClient,
+                dbId: nextId,
+                today: () => fechaStr,
+              },
+              {
+                proveedorId: product.proveedorId,
+                proveedorNombre: provNombre,
+                lineas: [
+                  {
+                    articuloId: artId,
+                    articuloNombre: product.nombre || '',
+                    cantidad: cant,
+                    costoUnitario: costoUnit,
+                    bodegaId,
+                  },
+                ],
+                motivo: notaDvLinea,
+                fecha: fechaStr,
+                invAjusteId: ajuste.id,
+                omitirAjusteStock: true,
+              },
+            );
+          } catch (cxpErr) {
+            await rollbackLoteSave(completed);
+            throw cxpErr;
+          }
+        } else if (
+          tipo === 'devolucion' &&
+          artEsMercanciaCredito(product) &&
+          product.proveedorId &&
+          !skipPagosProvMirror()
+        ) {
           const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
           const provNombre = prov?.nombre || product.proveedorNombre || '';
           const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;

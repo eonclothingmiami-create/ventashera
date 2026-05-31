@@ -1,4 +1,7 @@
 // ===================================================================
+// LEGACY — no cargado en index.html principal (2026-05).
+// Pagos proveedores en reconstrucción: ver __PAGOS_PROV_REBUILD__ en treasury-module.js.
+// ===================================================================
 // ===== TESORERÍA =====
 // ===================================================================
 // Pagos a proveedores, abonos y vista de pagos delegan en

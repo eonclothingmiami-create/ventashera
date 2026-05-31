@@ -538,114 +538,17 @@ function handlePOSScan(e){
   }
 }
 
-// ===== RECEIPT PRINTING =====
+// ===== RECEIPT PRINTING (LEGACY — no cargado en index.html; usar AppPosReceipt / core.js) =====
 function printReceipt(factura) {
-  const emp = state.empresa || {};
-
-  const logoHtml = emp.logoBase64
-    ? `<img src="${emp.logoBase64}" style="max-width:180px;display:block;margin:0 auto 8px;filter:grayscale(1);">`
-    : `<div style="font-family:Arial;font-size:18px;font-weight:900;text-align:center;letter-spacing:2px;margin-bottom:4px">${emp.nombre||'EON CLOTHING'}</div>`;
-
-  const itemsList = factura.items || [];
-  const subtotal = factura.subtotal || 0;
-  const iva = factura.iva || 0;
-  const flete = factura.flete || 0;
-  const total = factura.total || (subtotal + iva + flete);
-  const nombreCliente = factura.customer_name || factura.cliente || 'CLIENTE MOSTRADOR';
-  const telefonoCliente = factura.customer_phone || factura.telefono || '';
-  const ciudadCliente = factura.ciudad || '';
-  const numeroFactura = factura.number || factura.numero || 'PREVIEW';
-  const fecha = factura.fecha || today();
-  const hora = new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'});
-  const metodo = factura.metodo || factura.metodoPago || 'Efectivo';
-  const vendedora = emp.vendedora || '';
-  const bodega = emp.nombreComercial || emp.nombre || '';
-
-  const itemsHTML = itemsList.map(i => {
-    const precio = i.price || i.precio || 0;
-    const qty = i.qty || i.cantidad || 1;
-    const nom = i.name || i.nombre || '';
-    const ref = i.ref || i.codigo || '';
-    const talla = i.talla || '';
-    return `<tr>
-      <td style="padding:3px 0;vertical-align:top;line-height:1.4;word-break:break-word;">
-        <b>${nom}</b>${ref ? ' | '+ref : ''}${talla ? '<br>Talla: '+talla : ''}
-      </td>
-      <td style="text-align:center;vertical-align:top;padding:3px 4px;white-space:nowrap;">x${qty}</td>
-      <td style="text-align:right;vertical-align:top;white-space:nowrap;"><b>${fmtN(precio*qty)}</b></td>
-    </tr>`;
-  }).join('');
-
-  const receiptHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Courier New',Courier,monospace; font-size:11px; width:72mm; color:#000; }
-    .center { text-align:center; }
-    .bold { font-weight:bold; }
-    .line { border-top:1px dashed #000; margin:5px 0; }
-    table { width:100%; border-collapse:collapse; }
-    th { font-size:10px; border-bottom:1px solid #000; padding:2px 0; text-align:left; }
-    th:last-child, td:last-child { text-align:right; }
-    th:nth-child(2), td:nth-child(2) { text-align:center; }
-    .total-row td { font-size:13px; font-weight:900; padding-top:4px; }
-    .small { font-size:9px; }
-  </style></head><body>
-
-  <div class="center">${logoHtml}</div>
-  <div class="center bold" style="font-size:13px;">${emp.nombre||'EON CLOTHING'}</div>
-  ${emp.nombreComercial && emp.nombreComercial !== emp.nombre ? `<div class="center">${emp.nombreComercial}</div>` : ''}
-  <div class="center small">NIT: ${emp.nit||''} | ${emp.regimenFiscal||'Régimen ordinario No responsable de IVA'}</div>
-  <div class="center small">${emp.departamento||''} / ${emp.ciudad||''} / ${emp.direccion||''}</div>
-  <div class="center small">Teléfonos: ${emp.telefono||''}${emp.telefono2?' / '+emp.telefono2:''}</div>
-  ${emp.email?`<div class="center small">Email: ${emp.email}</div>`:''}
-  ${emp.web?`<div class="center small">Página web: ${emp.web}</div>`:''}
-
-  <div class="line"></div>
-  <div class="center bold" style="font-size:12px;">FACTURA DE VENTA</div>
-  <div class="center bold">No.: ${numeroFactura}</div>
-  <div class="center small">${emp.nombreComercial||emp.nombre||''}</div>
-  <div class="center small">${fecha} ${hora}</div>
-
-  ${emp.mensajeHeader ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;">${emp.mensajeHeader}</div>` : ''}
-
-  <div class="line"></div>
-  <div class="small">Cliente: <b>${nombreCliente}</b>${telefonoCliente?' | '+telefonoCliente:''}${ciudadCliente?' | Ciudad: '+ciudadCliente:''}</div>
-  ${vendedora?`<div class="small">Elaboró: ${vendedora}</div>`:''}
-  ${bodega?`<div class="small">Vendedor: ${vendedora||''} | Bodega: ${bodega}</div>`:''}
-
-  <div class="line"></div>
-  <table>
-    <thead><tr><th>DESCRIPCIÓN</th><th>CANT</th><th>TOTAL</th></tr></thead>
-    <tbody>${itemsHTML}</tbody>
-  </table>
-  <div class="line"></div>
-
-  <table>
-    <tr><td>SUBTOTAL</td><td></td><td style="text-align:right">${fmtN(subtotal)}</td></tr>
-    ${iva > 0 ? `<tr><td>IVA (19%)</td><td></td><td style="text-align:right">${fmtN(iva)}</td></tr>` : ''}
-    ${flete > 0 ? `<tr><td>Flete</td><td></td><td style="text-align:right">${fmtN(flete)}</td></tr>` : ''}
-    <tr class="total-row"><td colspan="2">TOTAL NETO</td><td style="text-align:right;font-size:14px;">${fmtN(total)}</td></tr>
-  </table>
-  <div class="line"></div>
-
-  <div class="small bold">MEDIO DE PAGO:</div>
-  <div class="small">${metodo}</div>
-
-  ${emp.mensajePie ? `<div class="line"></div><div class="center small bold" style="white-space:pre-wrap;">${emp.mensajePie}</div>` : ''}
-  ${emp.politicaDatos ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;">${emp.politicaDatos}</div>` : ''}
-  ${emp.web ? `<div class="center small">${emp.web}</div>` : ''}
-  ${emp.mensajeGarantias ? `<div class="line"></div><div class="center small" style="white-space:pre-wrap;font-style:italic;">${emp.mensajeGarantias}</div>` : ''}
-
-  <div class="line"></div>
-  <div class="center small">Factura generada por VentasHera ERP</div>
-
-  </body></html>`;
-
-  const pWin = window.open('', '_blank', 'width=380,height=750,scrollbars=yes');
-  if(!pWin) { notify('warning','⚠️','Popup bloqueado','Permite popups para imprimir.',{duration:4000}); return; }
-  pWin.document.write(receiptHTML);
-  pWin.document.close();
-  setTimeout(() => { pWin.print(); }, 600);
+  if (window.AppPosReceipt && typeof window.AppPosReceipt.print === 'function') {
+    return window.AppPosReceipt.print(factura, {
+      state,
+      today,
+      fmtN,
+      notify
+    });
+  }
+  notify('warning', '⚠️', 'Ticket POS', 'Cargar pos-receipt-print.js + core.js para imprimir.', { duration: 4000 });
 }
 function previewReceipt(){
   const cart=state.pos_cart||[];if(cart.length===0){notify('warning','⚠️','Carrito vacío','Agrega productos primero.',{duration:3000});return}

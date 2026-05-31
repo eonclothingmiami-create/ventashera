@@ -59,7 +59,7 @@
       tes_comp_egreso: [],
       tes_transferencias: [],
       empresa: { nombre: 'Hera Swimwear', nit: '', direccion: '', telefono: '', ciudad: '' },
-      consecutivos: { factura: 1, cotizacion: 1, orden: 1, nc: 1, nd: 1, remision: 1, devolucion: 1, ingreso: 1, egreso: 1, retencion: 1 },
+      consecutivos: { factura: 1, cotizacion: 1, orden: 1, nc: 1, nd: 1, remision: 1, devolucion: 1, ingreso: 1, egreso: 1, retencion: 1, compra: 0 },
       pos_cart: [],
       tes_abonos_prov: [],
       /** Compromisos reconocidos (ingreso a crédito); saldo = sum(compromisos) − abonos */
@@ -71,6 +71,13 @@
       tes_ajustes_unidades_prov: [],
       /** Líneas stock_moves tipo venta_pos (carga desde BD) — costo vendido histórico por proveedor */
       stock_moves_ventas: [],
+      /** Compras + CXP V1 (tablas nuevas; no tes_*) */
+      compras: [],
+      compra_items: [],
+      proveedor_cxp_movimientos: [],
+      proveedor_abonos: [],
+      proveedor_abono_aplicaciones: [],
+      proveedor_notas_credito: [],
       cfg_categorias: [
         { id: 'cat1', seccion: 'Trajes de Baño', nombre: 'Enterizos' },
         { id: 'cat2', seccion: 'Trajes de Baño', nombre: 'Bikinis' },

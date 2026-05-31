@@ -9,6 +9,27 @@
   /** Evita doble envío del modal de abono a proveedor (doble clic / reentradas). */
   let _guardarAbonoProvInFlight = false;
 
+  /** true = pantalla Pagos proveedores en reconstrucción; bloquea escrituras manuales del módulo. */
+  if (typeof global.__PAGOS_PROV_REBUILD__ === 'undefined') {
+    global.__PAGOS_PROV_REBUILD__ = true;
+  }
+
+  /** true mientras el módulo Pagos proveedores está en rebuild (sin notificación). */
+  function pagosProvModuleWritesBlocked() {
+    return !!global.__PAGOS_PROV_REBUILD__;
+  }
+
+  function pagosProvRebuildBlocked(notifyFn) {
+    if (!pagosProvModuleWritesBlocked()) return false;
+    const n = notifyFn || global.notify;
+    if (typeof n === 'function') {
+      n('warning', '🔧', 'Pagos proveedores', 'Módulo en reconstrucción. La información histórica se conserva.', {
+        duration: 4500
+      });
+    }
+    return true;
+  }
+
   function normFechaMov(f) {
     if (f == null || f === '') return '';
     const s = String(f);
@@ -72,6 +93,142 @@
       if (v) return v;
     }
     return null;
+  }
+
+  /** Escapa HTML para modales de tesorería. */
+  function escTesHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function escTesAttr(s) {
+    return String(s ?? '')
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'");
+  }
+
+  /** Fecha + hora para movimientos de caja (created_at de Supabase o ISO en fecha). */
+  function formatTesMovFechaHora(m, formatDate) {
+    const raw = m.createdAt || m.created_at || m.fecha;
+    if (raw == null || raw === '') return '—';
+    const s = String(raw);
+    const datePart = normFechaMov(s);
+    const fd = typeof formatDate === 'function' ? formatDate(datePart) : datePart;
+    const hasTime = !!(m.createdAt || m.created_at) || s.includes('T');
+    if (!hasTime) return fd;
+    try {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        const hora = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return hora ? `${fd} ${hora}` : fd;
+      }
+    } catch (_) { /* noop */ }
+    return fd;
+  }
+
+  /**
+   * Enlaza un movimiento `venta_pos` con su factura POS (solo lectura; no crea registros).
+   */
+  function resolveFacturaFromTesMovimiento(state, mov) {
+    if (!mov || mov.categoria !== 'venta_pos' || mov.tipo !== 'ingreso') return null;
+    const facturas = state.facturas || [];
+    const ventas = state.ventas || [];
+    const idKeys = ['facturaId', 'invoiceId', 'documentoId', 'factura_id', 'invoice_id', 'documento_id'];
+    for (let i = 0; i < idKeys.length; i++) {
+      const fid = mov[idKeys[i]];
+      if (fid == null || String(fid).trim() === '') continue;
+      const sid = String(fid).trim();
+      const byId = facturas.find((f) => String(f.id) === sid);
+      if (byId) return byId;
+      const ventaByInv = ventas.find((v) => String(v.invoiceId || '') === sid);
+      if (ventaByInv && ventaByInv.invoiceId) {
+        const fInv = facturas.find((f) => String(f.id) === String(ventaByInv.invoiceId));
+        if (fInv) return fInv;
+      }
+      const ventaById = ventas.find((v) => String(v.id) === sid);
+      if (ventaById) {
+        if (ventaById.invoiceId) {
+          const f2 = facturas.find((f) => String(f.id) === String(ventaById.invoiceId));
+          if (f2) return f2;
+        }
+        const f3 = facturas.find((f) => String(f.id) === String(ventaById.id));
+        if (f3) return f3;
+      }
+    }
+    const ref = parsePosRefFromConcepto(mov.concepto);
+    if (!ref) return null;
+    const byNum = facturas.find((f) => String((f.numero || '').trim()) === ref);
+    if (byNum) return byNum;
+    const venta = resolveVentaForPosRef(state, ref);
+    if (!venta) return null;
+    if (venta.invoiceId) {
+      const fInv = facturas.find((f) => String(f.id) === String(venta.invoiceId));
+      if (fInv) return fInv;
+    }
+    return facturas.find((f) => String(f.id) === String(venta.id)) || null;
+  }
+
+  function canalLabelFactura(f) {
+    const c = String(f?.canal || '').toLowerCase();
+    if (c === 'vitrina') return 'Vitrina';
+    if (c === 'local') return 'Local';
+    if (c === 'inter') return 'Inter';
+    return f?.canal || '—';
+  }
+
+  /** Modal solo lectura; no llama a printReceipt ni printDoc. */
+  function openFacturaReadonlyModal(ctx, factura) {
+    const openModalFn = ctx.openModal || global.openModal;
+    if (!openModalFn || !factura) return;
+    const fmt = ctx.fmt || global.fmt;
+    const formatDate = ctx.formatDate || global.formatDate;
+    const itemsHtml = (factura.items || [])
+      .map((i) => {
+        const q = parseFloat(i.qty ?? i.cantidad) || 1;
+        const p = parseFloat(i.precio ?? i.price) || 0;
+        const talla = i.talla ? ` · ${escTesHtml(i.talla)}` : '';
+        return `<tr>
+          <td>${escTesHtml(i.nombre || i.name || '—')}${talla}</td>
+          <td style="text-align:center">${q}</td>
+          <td style="text-align:right">${fmt(p)}</td>
+          <td style="text-align:right;font-weight:700;color:var(--accent)">${fmt(q * p)}</td>
+        </tr>`;
+      })
+      .join('');
+    const metodo = factura.metodo || factura.metodoPago || '—';
+    openModalFn(
+      `<div class="modal-title">${escTesHtml(factura.numero || 'Factura')}<span class="badge badge-info" style="margin-left:8px;font-size:10px">Solo lectura</span><button class="modal-close" onclick="closeModal()">×</button></div>
+      <div class="grid-2" style="margin-bottom:12px;gap:8px">
+        <div><span style="color:var(--text2);font-size:12px">Fecha:</span> ${escTesHtml(typeof formatDate === 'function' ? formatDate(factura.fecha) : factura.fecha || '—')}</div>
+        <div><span style="color:var(--text2);font-size:12px">Estado:</span> ${escTesHtml(factura.estado || '—')}</div>
+        <div><span style="color:var(--text2);font-size:12px">Cliente:</span> ${escTesHtml(factura.cliente || '—')}</div>
+        <div><span style="color:var(--text2);font-size:12px">Teléfono:</span> ${escTesHtml(factura.telefono || '—')}</div>
+        <div><span style="color:var(--text2);font-size:12px">Canal:</span> ${escTesHtml(canalLabelFactura(factura))}</div>
+        <div><span style="color:var(--text2);font-size:12px">Método de pago:</span> ${escTesHtml(metodo)}</div>
+      </div>
+      <div class="table-wrap" style="margin-bottom:12px"><table><thead><tr><th>Artículo</th><th>Cant</th><th>Precio</th><th>Subtotal</th></tr></thead><tbody>
+      ${itemsHtml || '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:12px">Sin ítems</td></tr>'}
+      </tbody></table></div>
+      <div style="text-align:right;margin-bottom:6px"><span style="color:var(--text2)">Subtotal:</span> ${fmt(factura.subtotal || 0)}</div>
+      ${parseFloat(factura.iva) > 0 ? `<div style="text-align:right;margin-bottom:6px"><span style="color:var(--text2)">IVA:</span> ${fmt(factura.iva)}</div>` : ''}
+      ${parseFloat(factura.flete) > 0 ? `<div style="text-align:right;margin-bottom:6px"><span style="color:var(--text2)">Flete:</span> ${fmt(factura.flete)}</div>` : ''}
+      <div style="text-align:right;font-family:Syne;font-size:20px;font-weight:800;color:var(--accent)">${fmt(factura.total || 0)}</div>
+      <div style="margin-top:16px;text-align:right"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cerrar</button></div>`,
+      true
+    );
+  }
+
+  function verFacturaTesMovimiento(movId) {
+    const ctx = _lastTesDineroCtx;
+    if (!ctx || !ctx.state) return;
+    const mov = (ctx.state.tes_movimientos || []).find((m) => String(m.id) === String(movId));
+    if (!mov) return;
+    const factura = resolveFacturaFromTesMovimiento(ctx.state, mov);
+    if (!factura) return;
+    openFacturaReadonlyModal(ctx, factura);
   }
 
   /**
@@ -688,6 +845,27 @@
   }
 
   function renderTesPagosProv(ctx) {
+    const el = document.getElementById('tes_pagos_prov-content');
+    if (!el) return;
+    if (!global.__PAGOS_PROV_REBUILD__) {
+      renderTesPagosProvLegacy(ctx);
+      return;
+    }
+    if (!global.AppComprasCxp) {
+      el.innerHTML =
+        '<div class="card" style="padding:20px 24px"><p style="margin:0;color:var(--text2)">Cargue compras-cxp-service.js y la migración compras_proveedores_cxp_v1_20260517.sql.</p></div>';
+      return;
+    }
+    el.innerHTML = `
+    <div id="tes-pagos-prov-rebuild-body"></div>`;
+    const body = document.getElementById('tes-pagos-prov-rebuild-body');
+    if (body && global.AppProveedoresPayments?.render) {
+      global.AppProveedoresPayments.render(ctx, body);
+    }
+  }
+
+  /** Implementación legacy (desactivada mientras __PAGOS_PROV_REBUILD__ === true). */
+  function renderTesPagosProvLegacy(ctx) {
     const { state, fmt, formatDate } = ctx;
     const el = document.getElementById('tes_pagos_prov-content');
     if (!el) return;
@@ -986,6 +1164,7 @@
   }
 
   function openCompromisoProvModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId = '', provNombre = '', fmt, openModal, notify, today } = ctx;
     _compromisoModalCtx = { state, notify, fmt };
     const provs = compromisoProveedorOptions(state);
@@ -1034,6 +1213,7 @@
   }
 
   async function guardarCompromisoProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, uid, dbId, today, showLoadingOverlay, supabaseClient, closeModal, renderTesPagosProv, notify, fmt } = ctx;
     const nextId = typeof dbId === 'function' ? dbId : uid;
     const sel = document.getElementById('cp-prov-sel');
@@ -1155,6 +1335,7 @@
   }
 
   async function eliminarCompromisoProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, id, confirm, supabaseClient, renderTesPagosProv, notify } = ctx;
     if (!confirm('¿Eliminar este compromiso? El saldo pendiente se recalculará.')) return;
     try {
@@ -1175,6 +1356,7 @@
   }
 
   function verCompromisosProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId, provNombre, fmt, formatDate, openModal } = ctx;
     const lines = (state.tes_compromisos_prov || []).filter((c) => c.proveedorId === provId);
     const d = calcDeudaProveedor(state, provId);
@@ -1204,6 +1386,7 @@
   }
 
   async function importarEstimacionCompromisosProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, uid, dbId, today, showLoadingOverlay, supabaseClient, renderTesPagosProv, notify, fmt, confirm } = ctx;
     if (
       !confirm(
@@ -1313,6 +1496,7 @@
   }
 
   function openAbonoProvModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId = '', provNombre = '', fmt, openModal, notify, today } = ctx;
     const opts = abonoModalOptions(state);
     if (provId && !opts.find((o) => o.id === provId)) {
@@ -1375,6 +1559,7 @@
   }
 
   function updateSaldoPendiente(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { fmt, state } = ctx || {};
     const sel = document.getElementById('ab-prov-sel');
     const opt = sel?.options[sel.selectedIndex];
@@ -1431,6 +1616,7 @@
   }
 
   function validateAbono(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { fmt, state } = ctx || {};
     const sel = document.getElementById('ab-prov-sel');
     const opt = sel?.options[sel.selectedIndex];
@@ -1474,6 +1660,7 @@
 
   /** Autocompleta #ab-valor con min(vendido desde último abono, saldo). */
   function abonoUsarMontoVendidoSugerido(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { fmt, state } = ctx || {};
     const sel = document.getElementById('ab-prov-sel');
     const opt = sel?.options[sel.selectedIndex];
@@ -1491,6 +1678,7 @@
   }
 
   async function guardarAbonoProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, uid, dbId, today, showLoadingOverlay, supabaseClient, saveRecord, closeModal, renderTesPagosProv, notify, fmt, renderTesCajas } = ctx;
     if (_guardarAbonoProvInFlight) return;
     if (typeof global.ensureAntiDesyncBefore === 'function') {
@@ -1690,6 +1878,7 @@
   }
 
   function verAbonosProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId, provNombre, fmt, formatDate, openModal } = ctx;
     const abonos = (state.tes_abonos_prov || []).filter((ab) => ab.proveedorId === provId);
     const d = calcDeudaProveedor(state, provId);
@@ -1726,6 +1915,7 @@
   }
 
   function openAjusteUnidadesProvModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId, artId, fmt, openModal, notify } = ctx;
     const art = (state.articulos || []).find((a) => String(a.id) === String(artId));
     if (!art || !esMercCreditoTitulo(art.tituloMercancia) || !art.proveedorId) {
@@ -1790,6 +1980,7 @@
   }
 
   async function guardarAjusteUnidadesProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const {
       state,
       provId,
@@ -1864,6 +2055,7 @@
   }
 
   async function eliminarAjusteUnidadesProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, id, confirm, supabaseClient, renderTesPagosProv, notify, closeModal, reopen } = ctx;
     if (!confirm('¿Eliminar este ajuste de unidades? La deuda se recalculará.')) return;
     try {
@@ -1932,6 +2124,7 @@
   }
 
   async function eliminarAbonoProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, id, confirm, supabaseClient, saveRecord, renderTesPagosProv, notify, renderTesCajas } = ctx;
     if (
       !confirm(
@@ -2012,6 +2205,7 @@
   }
 
   function verLibroProveedorModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId, provNombre, fmt, formatDate, openModal } = ctx;
     const rows = [];
     (state.tes_libro_proveedor || [])
@@ -2064,6 +2258,7 @@
   }
 
   async function quitarCreditoArticuloProveedor(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const {
       state,
       artId,
@@ -2145,6 +2340,8 @@
   }
 
   async function logRegistroDeudaArticulo(ctx) {
+    // Bloqueado durante rebuild de Pagos proveedores — no escribir tes_libro_proveedor.
+    if (pagosProvModuleWritesBlocked()) return;
     const { state, supabaseClient, uid, artLocal, reason } = ctx;
     const log = () => {};
     if (!artLocal) {
@@ -2572,8 +2769,11 @@
   }
 
   function renderTesDinero(ctx) {
-    _lastTesDineroCtx = ctx;
-    const { state, formatDate, fmt, today } = ctx;
+    _lastTesDineroCtx = {
+      ...ctx,
+      openModal: ctx.openModal || global.openModal
+    };
+    const { state, formatDate, fmt, today } = _lastTesDineroCtx;
     const t = typeof today === 'function' ? today() : new Date().toISOString().slice(0, 10);
     const desdeEl = document.getElementById('tes-dinero-desde');
     const hastaEl = document.getElementById('tes-dinero-hasta');
@@ -2597,6 +2797,9 @@
         return d >= desde && d <= hasta;
       })
       .sort((a, b) => {
+        const ta = String(a.createdAt || a.created_at || a.fecha || '');
+        const tb = String(b.createdAt || b.created_at || b.fecha || '');
+        if (ta !== tb) return tb.localeCompare(ta);
         const da = normFechaMov(a.fecha);
         const db = normFechaMov(b.fecha);
         if (da !== db) return db.localeCompare(da);
@@ -2622,55 +2825,17 @@
       }
     }
 
-    // #region agent log
-    (function __dbgTesDinero() {
-      let tesNormMismatchInRange = 0;
-      let ventaPosInclusionDiff = 0;
-      const nfv = global.normFechaVentaToYmd;
-      (state.tes_movimientos || []).forEach(function (m) {
-        if (!m || !m.fecha) return;
-        const dMov = normFechaMov(m.fecha);
-        const dYmd = typeof nfv === 'function' ? nfv(m.fecha) : dMov;
-        if (dMov >= desde && dMov <= hasta && dYmd !== dMov) tesNormMismatchInRange++;
-        if (m.tipo !== 'ingreso' || m.categoria !== 'venta_pos') return;
-        const inMov = dMov >= desde && dMov <= hasta;
-        const inYmd = dYmd && dYmd >= desde && dYmd <= hasta;
-        if (inMov !== inYmd) ventaPosInclusionDiff++;
-      });
-      fetch('http://127.0.0.1:7558/ingest/da6af010-dd9f-445b-9c22-3138d2550475', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'e76de5' },
-        body: JSON.stringify({
-          sessionId: 'e76de5',
-          runId: 'pre-fix',
-          hypothesisId: 'H1-H3',
-          location: 'treasury-module.js:renderTesDinero',
-          message: 'tes dinero vs ventas tabla same filter',
-          data: {
-            desde,
-            hasta,
-            sumTotalPeriodo,
-            sumEfectivo,
-            sumTransferencia,
-            sumVentaPosIng,
-            lineasVentaPos,
-            movsFilteredLen: movsFiltered.length,
-            tesNormMismatchInRange,
-            ventaPosInclusionDiff
-          },
-          timestamp: Date.now()
-        })
-      }).catch(function () {});
-    })();
-    // #endregion
-
     const rows =
       movsFiltered
         .map((m) => {
           const caja = (state.cajas || []).find((c) => c.id === m.cajaId);
-          return `<tr><td>${formatDate(m.fecha)}</td><td>${caja?.nombre || '—'}</td><td><span class="badge ${m.tipo === 'ingreso' ? 'badge-ok' : 'badge-pend'}">${m.tipo}</span></td><td style="color:${m.tipo === 'ingreso' ? 'var(--green)' : 'var(--red)'};font-weight:700">${fmt(m.valor)}</td><td style="font-size:11px">${m.bucket || '—'}</td><td style="font-size:11px;color:var(--text2)">${m.categoria || '—'}</td><td>${m.concepto || '—'}</td><td>${m.metodo || '—'}</td></tr>`;
+          const factura = resolveFacturaFromTesMovimiento(state, m);
+          const verBtn = factura
+            ? `<button type="button" class="btn btn-xs btn-secondary" title="Ver factura ${escTesAttr(factura.numero || '')}" onclick="verFacturaTesMovimiento('${escTesAttr(m.id)}')">Ver</button>`
+            : '';
+          return `<tr><td style="white-space:nowrap;font-size:12px">${formatTesMovFechaHora(m, formatDate)}</td><td>${escTesHtml(caja?.nombre || '—')}</td><td><span class="badge ${m.tipo === 'ingreso' ? 'badge-ok' : 'badge-pend'}">${escTesHtml(m.tipo)}</span></td><td style="color:${m.tipo === 'ingreso' ? 'var(--green)' : 'var(--red)'};font-weight:700">${fmt(m.valor)}</td><td style="font-size:11px">${escTesHtml(m.bucket || '—')}</td><td style="font-size:11px;color:var(--text2)">${escTesHtml(m.categoria || '—')}</td><td>${escTesHtml(m.concepto || '—')}</td><td>${escTesHtml(m.metodo || '—')}</td><td style="text-align:right;white-space:nowrap">${verBtn}</td></tr>`;
         })
-        .join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin movimientos</td></tr>';
+        .join('') || '<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin movimientos</td></tr>';
 
     document.getElementById('tes_dinero-content').innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:12px">
@@ -2684,7 +2849,7 @@
       <div class="card" style="padding:10px 12px;margin:0;border:1px solid rgba(0,229,180,.35)"><div style="font-size:10px;color:var(--text2)">Total período</div><div style="font-weight:800;color:${sumTotalPeriodo >= 0 ? 'var(--accent)' : 'var(--red)'}">${fmt(sumTotalPeriodo)}</div><div style="font-size:9px;color:var(--text2);margin-top:2px;opacity:.85">Ingresos − egresos (todos los movimientos)</div></div>
     </div>
     <div class="card"><div class="card-title">MOVIMIENTOS DE DINERO (${movsFiltered.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Caja</th><th>Tipo</th><th>Valor</th><th>Bucket</th><th>Clase</th><th>Concepto</th><th>Método</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    <div class="table-wrap"><table><thead><tr><th>Fecha / hora</th><th>Caja</th><th>Tipo</th><th>Valor</th><th>Bucket</th><th>Clase</th><th>Concepto</th><th>Método</th><th style="text-align:right">Acciones</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   }
 
   function renderSimpleCollection(ctx) {
@@ -2905,6 +3070,7 @@
   }
 
   function openCargoCxpModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId = '', provNombre = '', openModal, notify, today, fmt } = ctx;
     _cargoModalCtx = { state, notify, fmt };
     const provs = state.usu_proveedores || [];
@@ -2949,6 +3115,7 @@
   }
 
   function openNotaCreditoCxpModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId = '', openModal, notify, today } = ctx;
     const provs = state.usu_proveedores || [];
     if (provs.length === 0) {
@@ -2979,6 +3146,7 @@
   }
 
   async function guardarCargoCxpMov(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, uid, dbId, today, showLoadingOverlay, supabaseClient, closeModal, renderTesPagosProv, notify, fmt } = ctx;
     const nextId = typeof dbId === 'function' ? dbId : uid;
     const sel = document.getElementById('cxp-cargo-prov');
@@ -3100,6 +3268,7 @@
   }
 
   async function guardarNotaCreditoCxpMov(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, uid, dbId, today, showLoadingOverlay, supabaseClient, closeModal, renderTesPagosProv, notify, fmt } = ctx;
     const nextId = typeof dbId === 'function' ? dbId : uid;
     const sel = document.getElementById('cxp-nc-prov');
@@ -3275,6 +3444,7 @@
   }
 
   function verLibroCxpModal(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId, provNombre, fmt, formatDate, openModal } = ctx;
     const lines = (state.tes_cxp_movimientos || [])
       .filter((r) => String(r.proveedorId) === String(provId))
@@ -3321,6 +3491,7 @@
   }
 
   async function eliminarCxpMovimiento(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, id, confirm, supabaseClient, renderTesPagosProv, notify, closeModal } = ctx;
     const row = (state.tes_cxp_movimientos || []).find((x) => String(x.id) === String(id));
     const deriv = row ? cxpMovimientoDerivadoInfo(state, row) : { bloqueado: false };
@@ -3351,6 +3522,8 @@
    * Sin esto, `saldoOficial` ignora `tes_devoluciones_prov`.
    */
   async function mirrorDevolucionToCxp(state, supabaseClient, payload) {
+    // Bloqueado durante rebuild de Pagos proveedores — no escribir tes_cxp_movimientos.
+    if (pagosProvModuleWritesBlocked()) return { ok: true, skipped: true };
     const {
       devolucionId,
       proveedorId,
@@ -3401,6 +3574,8 @@
   }
 
   async function deleteCxpMirrorDevolucion(state, supabaseClient, devolucionId) {
+    // Bloqueado durante rebuild de Pagos proveedores — no borrar espejos CXP.
+    if (pagosProvModuleWritesBlocked()) return;
     if (!devolucionId) return;
     const id = cxpIdForDevolucion(devolucionId);
     const { error } = await supabaseClient.from('tes_cxp_movimientos').delete().eq('id', id);
@@ -3409,6 +3584,7 @@
   }
 
   async function alinearCxpEstimacionProv(ctx) {
+    if (pagosProvRebuildBlocked((ctx && ctx.notify) || global.notify)) return;
     const { state, provId, supabaseClient, dbId, uid, today, showLoadingOverlay, renderTesPagosProv, notify, fmt, confirm } = ctx;
     if (typeof global.ensureAntiDesyncBefore === 'function') {
       const ad = await global.ensureAntiDesyncBefore('tes_prov');
@@ -3559,6 +3735,8 @@
     CXPIV_ABONO_MARKER,
     calcDeudaProveedor,
     logAuditVendidoProveedor,
+    pagosProvModuleWritesBlocked,
+    pagosProvRebuildBlocked,
     renderTesPagosProv,
     openAjusteUnidadesProvModal,
     guardarAjusteUnidadesProv,
@@ -3598,6 +3776,8 @@
     openMovCajaModal,
     saveMovCaja,
     renderTesDinero,
+    verFacturaTesMovimiento,
+    resolveFacturaFromTesMovimiento,
     renderSimpleCollection,
     isTreasuryModuleValidForCalc() {
       return typeof this.calcDeudaProveedor === 'function';
@@ -3611,4 +3791,5 @@
     }
   };
   global.AppTreasuryModule = treasuryModuleSelf;
+  global.verFacturaTesMovimiento = verFacturaTesMovimiento;
 })(window);

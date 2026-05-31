@@ -21,10 +21,81 @@
     { id: 'efectivo', nombre: '💵 Efectivo' },
     { id: 'mixto', nombre: '🧾 Mixto (Efectivo + Transferencia)' }
   ];
+  const VITRINA_METODOS_CONTADO = [
+    { id: 'nequi', nombre: '📱 Nequi' },
+    { id: 'daviplata', nombre: '📱 Daviplata' },
+    { id: 'tarjeta_debito', nombre: '💳 Tarjeta débito datafono' },
+    { id: 'tarjeta_credito', nombre: '💳 Tarjeta crédito datafono' },
+    { id: 'efectivo', nombre: '💵 Efectivo' },
+    { id: 'addi', nombre: 'Addi' },
+    { id: 'qr_bold', nombre: 'QR Bold' },
+    { id: 'qr_bancolombia', nombre: 'QR Bancolombia' }
+  ];
+  const VITRINA_METODO_IDS_FORBIDDEN = new Set(['bancolombia', 'transferencia']);
+  const VITRINA_METODO_NAME_KEYS_FORBIDDEN = new Set([
+    'bancolombia',
+    'otra transferencia bancaria',
+    'tarjeta credito',
+    'tarjeta debito',
+    'tarjeta'
+  ]);
+
+  function normalizeMetodoNombreKey(nombre) {
+    return String(nombre || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function isVitrinaMetodoNameForbidden(nombre) {
+    const key = normalizeMetodoNombreKey(nombre);
+    if (!key || VITRINA_METODO_NAME_KEYS_FORBIDDEN.has(key)) return true;
+    if (key.includes('tarjeta') && (key.includes('credito') || key.includes('debito'))) return true;
+    if (key === 'tarjeta credito' || key === 'tarjeta debito') return true;
+    return false;
+  }
+
+  function mergeVitrinaMetodos(state) {
+    const baseIds = new Set(VITRINA_METODOS_CONTADO.map((m) => m.id));
+    const seenIds = new Set();
+    const seenNames = new Set();
+    const out = [];
+
+    const push = (m) => {
+      const id = String(m?.id || '').trim();
+      if (!id) return;
+      const idLc = id.toLowerCase();
+      if (VITRINA_METODO_IDS_FORBIDDEN.has(idLc)) return;
+      if (seenIds.has(idLc)) return;
+      const nameKey = normalizeMetodoNombreKey(m.nombre || id);
+      if (!nameKey || isVitrinaMetodoNameForbidden(m.nombre || id)) return;
+      if (seenNames.has(nameKey)) return;
+      seenIds.add(idLc);
+      seenNames.add(nameKey);
+      out.push({ id, nombre: m.nombre || id });
+    };
+
+    VITRINA_METODOS_CONTADO.forEach(push);
+
+    (state.cfg_metodos_pago || []).forEach((m) => {
+      if (m.activo === false || baseIds.has(m.id)) return;
+      const id = String(m.id || '');
+      if (/^mp\d+$/i.test(id)) return;
+      if (VITRINA_METODO_IDS_FORBIDDEN.has(id.toLowerCase())) return;
+      if (isVitrinaMetodoNameForbidden(m.nombre)) return;
+      push({ id: m.id, nombre: m.nombre || m.id });
+    });
+
+    return out;
+  }
 
   function normalizePosCanalMetodo(posFormState) {
     const interIds = INTER_METODOS_CONTADO.map((m) => m.id);
     const localIds = LOCAL_METODOS_CONTADO.map((m) => m.id);
+    const vitrinaIds = VITRINA_METODOS_CONTADO.map((m) => m.id);
     if (posFormState.canal === 'inter') {
       if (posFormState.tipoPago === 'contraentrega') {
         posFormState.metodo = 'transferencia';
@@ -38,8 +109,12 @@
       } else if (!localIds.includes(posFormState.metodo)) {
         posFormState.metodo = 'nequi';
       }
+    } else if (posFormState.canal === 'vitrina' || !posFormState.canal) {
+      const m = String(posFormState.metodo || '').toLowerCase();
+      if (VITRINA_METODO_IDS_FORBIDDEN.has(m)) {
+        posFormState.metodo = vitrinaIds[0] || 'efectivo';
+      }
     }
-    // Vitrina: permite los mismos medios (Nequi, Daviplata, Bancolombia, transf., tarjetas, efectivo); no forzar a efectivo.
   }
 
   function renderPOSLayout(ctx) {
@@ -77,6 +152,13 @@
     const isInter = posFormState.canal === 'inter';
     const isLocal = posFormState.canal === 'local';
     const curMetodo = posFormState.metodo || 'efectivo';
+
+    const fleteInputValue = posFormState.flete ? String(Math.round(Number(posFormState.flete))) : '';
+    const fleteInputHtml = (prefixText, placeholder) => `
+             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+               <span style="font-size:12px;color:var(--text2);white-space:nowrap">${prefixText}</span>
+               <input type="text" id="pos-flete-valor" class="form-control" style="padding:6px;width:160px" value="${fleteInputValue}" inputmode="numeric" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'');toggleFlete();" placeholder="${placeholder}">
+             </div>`;
     let metodoOptionsHtml = '';
     if ((isInter || isLocal) && posFormState.tipoPago === 'contraentrega') {
       metodoOptionsHtml = '<option value="transferencia" selected>🏦 Transferencia (contra entrega)</option>';
@@ -85,19 +167,16 @@
     } else if (isLocal && posFormState.tipoPago === 'contado') {
       metodoOptionsHtml = LOCAL_METODOS_CONTADO.map((m) => `<option value="${m.id}" ${curMetodo === m.id ? 'selected' : ''}>${m.nombre}</option>`).join('');
     } else {
-      // Vitrina: mismos medios que mensajería (Nequi, Daviplata, Bancolombia, transf., tarjetas, efectivo) + cfg extra (Addi, Mixto…), sin duplicar mp1/mp2…
-      const baseIds = new Set(LOCAL_METODOS_CONTADO.map((m) => m.id));
-      const cfgExtras = (state.cfg_metodos_pago || []).filter((m) => {
-        if (m.activo === false || baseIds.has(m.id)) return false;
-        const id = String(m.id || '');
-        if (/^mp\d+$/i.test(id)) return false;
-        return true;
-      });
-      const vitrinaOpts = [
-        ...LOCAL_METODOS_CONTADO,
-        ...cfgExtras.map((m) => ({ id: m.id, nombre: m.nombre || m.id }))
-      ];
-      metodoOptionsHtml = vitrinaOpts.map((m) => `<option value="${escAttr(m.id)}" ${curMetodo === m.id ? 'selected' : ''}>${m.nombre}</option>`).join('');
+      const vitrinaOpts = mergeVitrinaMetodos(state);
+      const vitrinaIds = vitrinaOpts.map((m) => m.id);
+      let selMetodo = curMetodo;
+      if (!vitrinaIds.includes(selMetodo)) {
+        selMetodo = vitrinaOpts[0]?.id || 'efectivo';
+        posFormState.metodo = selMetodo;
+      }
+      metodoOptionsHtml = vitrinaOpts
+        .map((m) => `<option value="${escAttr(m.id)}" ${selMetodo === m.id ? 'selected' : ''}>${m.nombre}</option>`)
+        .join('');
     }
 
     const addrBlock = isInter
@@ -229,10 +308,7 @@
              <select class="form-control" id="pos-empresa" onchange="handlePOSEmpresa()"></select>
              ${isLocal ? `
              <label class="form-label" style="font-size:10px;color:var(--text2);margin-bottom:4px">🚚 Flete * (COP, obligatorio)</label>
-             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-               <span style="font-size:12px;color:var(--text2);white-space:nowrap">$</span>
-               <input type="text" id="pos-flete-valor" class="form-control" style="padding:6px;width:160px" value="${posFormState.flete ? String(Math.round(Number(posFormState.flete))) : ''}" inputmode="numeric" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'');toggleFlete();" placeholder="Ej: 12000">
-             </div>` : ''}
+             ${fleteInputHtml('$', 'Ej: 12000')}` : ''}
              <select class="form-control" id="pos-transportadora" style="display:none">
                 <option value="">${isInter ? '— Transportadora * —' : '— Transportadora —'}</option>
                 <option value="TCC" ${posFormState.transportadora === 'TCC' ? 'selected' : ''}>TCC</option>
@@ -249,10 +325,7 @@
                Aplicar Flete
              </label>
              ${posFormState.applyFlete ? `
-             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-               <span style="font-size:12px;color:var(--text2);white-space:nowrap">$ Flete (COP)</span>
-               <input type="text" id="pos-flete-valor" class="form-control" style="padding:6px;width:160px" value="${posFormState.flete ? String(Math.round(Number(posFormState.flete))) : ''}" inputmode="numeric" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'');toggleFlete();" placeholder="Ej: 15000">
-             </div>` : ''}` : ''}
+             ${fleteInputHtml('$ Flete (COP)', 'Ej: 15000')}` : ''}` : ''}
              <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:2px">
                <label style="font-size:10px;color:var(--text2);font-weight:700;display:block;margin-bottom:4px">TIPO DE COBRO</label>
                <select class="form-control" id="pos-tipo-pago" onchange="syncPOSFormState();renderPOS()" style="padding:8px">

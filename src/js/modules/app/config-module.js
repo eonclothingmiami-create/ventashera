@@ -43,28 +43,33 @@
     }
     const emp = state.empresa || {};
     if (tab === 'empresa') {
+      const ticketBox = global.AppPosReceipt?.getPreviewContainerStyle?.()
+        || "background:white;color:#000;font-family:'Courier New',monospace;font-size:13px;line-height:1.4;width:76mm;max-width:76mm;padding:2mm 1mm;border:1px solid #ddd;border-radius:4px;margin:0 auto;box-sizing:border-box";
+      const ticketSmall = global.AppPosReceipt?.getPreviewSmallStyle?.() || 'font-size:11px;line-height:1.45';
+      const ticketTitle = global.AppPosReceipt?.getPreviewTitleStyle?.() || 'font-size:15px;font-weight:700';
+      const ticketTotal = global.AppPosReceipt?.getPreviewTotalStyle?.() || 'font-weight:900;font-size:16px;text-align:right';
       el.innerHTML = `
       <div class="card">
         <div class="card-title">🖨️ VISTA PREVIA TICKET 80mm</div>
         <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
-          <div style="background:white;color:#000;font-family:'Courier New',monospace;font-size:10px;width:72mm;padding:8px;border:1px solid #ddd;border-radius:4px;margin:0 auto">
-            ${emp.logoBase64 ? `<div style="text-align:center;margin-bottom:4px"><img src="${emp.logoBase64}" style="max-width:160px"></div>` : `<div style="text-align:center;font-weight:900;font-size:13px;letter-spacing:2px">${emp.nombre || 'NOMBRE EMPRESA'}</div>`}
-            <div style="text-align:center;font-weight:700">${emp.nombre || 'NOMBRE EMPRESA'}</div>
-            <div style="text-align:center;font-size:9px">NIT: ${emp.nit || '---'} | ${emp.regimenFiscal || 'Régimen ordinario'}</div>
-            <div style="text-align:center;font-size:9px">${emp.departamento || ''}/${emp.ciudad || ''} / ${emp.direccion || ''}</div>
-            <div style="text-align:center;font-size:9px">Tel: ${emp.telefono || ''}${emp.telefono2 ? ' / ' + emp.telefono2 : ''}</div>
-            ${emp.email ? `<div style="text-align:center;font-size:9px">${emp.email}</div>` : ''}
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="text-align:center;font-weight:700">FACTURA DE VENTA No.: 00001</div>
-            <div style="text-align:center;font-size:9px">${today()}</div>
-            ${emp.mensajeHeader ? `<div style="text-align:center;font-size:9px;white-space:pre-wrap">${emp.mensajeHeader}</div>` : ''}
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="font-size:9px">Cliente: CLIENTE MOSTRADOR</div>
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="font-size:9px">Producto ejemplo x1 → 48.000</div>
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="font-weight:900;font-size:11px;text-align:right">TOTAL: $48.000</div>
-            ${emp.mensajePie ? `<div style="text-align:center;font-size:9px;margin-top:4px;white-space:pre-wrap">${emp.mensajePie}</div>` : ''}
+          <div style="${ticketBox}">
+            ${emp.logoBase64 ? `<div style="text-align:center;margin-bottom:4px"><img src="${emp.logoBase64}" style="max-width:100%;height:auto"></div>` : `<div style="text-align:center;font-weight:900;font-size:20px;letter-spacing:2px">${emp.nombre || 'NOMBRE EMPRESA'}</div>`}
+            <div style="text-align:center;${ticketTitle}">${emp.nombre || 'NOMBRE EMPRESA'}</div>
+            <div style="text-align:center;${ticketSmall}">NIT: ${emp.nit || '---'} | ${emp.regimenFiscal || 'Régimen ordinario'}</div>
+            <div style="text-align:center;${ticketSmall}">${emp.departamento || ''}/${emp.ciudad || ''} / ${emp.direccion || ''}</div>
+            <div style="text-align:center;${ticketSmall}">Tel: ${emp.telefono || ''}${emp.telefono2 ? ' / ' + emp.telefono2 : ''}</div>
+            ${emp.email ? `<div style="text-align:center;${ticketSmall}">${emp.email}</div>` : ''}
+            <div style="border-top:1px dashed #000;margin:6px 0"></div>
+            <div style="text-align:center;font-weight:700;font-size:14px">FACTURA DE VENTA No.: 00001</div>
+            <div style="text-align:center;${ticketSmall}">${today()}</div>
+            ${emp.mensajeHeader ? `<div style="text-align:center;${ticketSmall};white-space:pre-wrap">${emp.mensajeHeader}</div>` : ''}
+            <div style="border-top:1px dashed #000;margin:6px 0"></div>
+            <div style="${ticketSmall}">Cliente: CLIENTE MOSTRADOR</div>
+            <div style="border-top:1px dashed #000;margin:6px 0"></div>
+            <div style="${ticketSmall}">Producto ejemplo x1 → 48.000</div>
+            <div style="border-top:1px dashed #000;margin:6px 0"></div>
+            <div style="${ticketTotal}">TOTAL: $48.000</div>
+            ${emp.mensajePie ? `<div style="text-align:center;${ticketSmall};margin-top:4px;white-space:pre-wrap">${emp.mensajePie}</div>` : ''}
           </div>
           <div style="flex:2;min-width:280px">
             <div class="form-group">
