@@ -7802,15 +7802,18 @@ async function backfillSaleItemsVentaPos(skipConfirm) {
 }
 window.backfillSaleItemsVentaPos = backfillSaleItemsVentaPos;
 
-/** Placeholder: el módulo CXP Proveedores fue retirado; pantalla lista para reconstruir. */
+/** CXP Proveedores: panel ejecutivo de Cuentas por Pagar (solo lectura, vistas servidor). */
 function renderTesPagosProv() {
+  if (window.AppCxpProveedoresModule?.renderCxpProveedores) {
+    return window.AppCxpProveedoresModule.renderCxpProveedores({ state, supabaseClient });
+  }
   const el = document.getElementById('tes_pagos_prov-content');
   if (el) {
     el.innerHTML =
       '<div class="card" style="padding:24px;text-align:center;color:var(--text-soft,#888)">' +
       '<div style="font-size:32px;margin-bottom:8px">🏭</div>' +
       '<div style="font-size:16px;font-weight:600;margin-bottom:4px">CXP Proveedores</div>' +
-      '<div>Módulo en construcción.</div>' +
+      '<div>Cargando módulo… recarga la página si no aparece.</div>' +
       '</div>';
   }
 }

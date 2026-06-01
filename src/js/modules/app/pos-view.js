@@ -27,6 +27,7 @@
     { id: 'tarjeta_debito', nombre: '💳 Tarjeta débito datafono' },
     { id: 'tarjeta_credito', nombre: '💳 Tarjeta crédito datafono' },
     { id: 'efectivo', nombre: '💵 Efectivo' },
+    { id: 'mixto', nombre: '🧾 Mixto (Efectivo + Transferencia)' },
     { id: 'addi', nombre: 'Addi' },
     { id: 'qr_bold', nombre: 'QR Bold' },
     { id: 'qr_bancolombia', nombre: 'QR Bancolombia' }

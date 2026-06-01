@@ -58,22 +58,35 @@
     return String((r && (r.fechaHora || r.fecha)) || '');
   }
 
-  // Proveedor NO vive en sale_items; se deriva del producto (productId -> artículo ->
-  // proveedorNombre). Mapa cacheado por render para no reconstruirlo en cada filtro.
+  // Proveedor y costo NO viven en sale_items; se derivan del producto
+  // (productId -> artículo -> proveedorNombre / precioCompra). Mapas cacheados por
+  // render para no reconstruirlos en cada filtro.
   let _provByProduct = null;
+  let _costByProduct = null;
   function buildProvMap() {
     const st = (_ctx && _ctx.state) || global.state || {};
     const arts = Array.isArray(st.articulos) ? st.articulos : [];
     const m = new Map();
+    const c = new Map();
     arts.forEach((a) => {
-      if (a && a.id != null) m.set(String(a.id), String(a.proveedorNombre || '').trim());
+      if (a && a.id != null) {
+        m.set(String(a.id), String(a.proveedorNombre || '').trim());
+        c.set(String(a.id), Number(a.precioCompra ?? a.cost ?? 0) || 0);
+      }
     });
     _provByProduct = m;
+    _costByProduct = c;
   }
   function rowProveedor(r) {
     if (!_provByProduct) buildProvMap();
     const pid = r && r.productId != null ? String(r.productId) : '';
     return (pid && _provByProduct.get(pid)) || '';
+  }
+  // Costo unitario del artículo asociado a la línea (0 si no se conoce el costo).
+  function rowCostUnit(r) {
+    if (!_costByProduct) buildProvMap();
+    const pid = r && r.productId != null ? String(r.productId) : '';
+    return (pid && _costByProduct.get(pid)) || 0;
   }
 
   // ---- fuente de datos (central; fallback seguro) ----
@@ -158,6 +171,7 @@
   // ---- KPIs ----
   function computeKpis(rows) {
     let totalCop = 0;
+    let totalCosto = 0;
     let unidades = 0;
     const facturas = new Set();
     const porArticulo = Object.create(null);
@@ -165,6 +179,7 @@
       totalCop += Number(r.subtotal) || 0;
       const q = Number(r.qty) || 0;
       unidades += q;
+      totalCosto += rowCostUnit(r) * q;
       const fk = r.invoiceId || r.invoiceNumber;
       if (fk) facturas.add(String(fk));
       const nombre = r.productName || r.productRef || r.productId || '—';
@@ -181,6 +196,7 @@
     });
     return {
       totalCop,
+      totalCosto,
       unidades,
       lineas: rows.length,
       numFacturas,
@@ -200,6 +216,7 @@
     return (
       `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">` +
       card('Total COP', fmtCOP(k.totalCop)) +
+      card('Total a costo', fmtCOP(k.totalCosto)) +
       card('Unidades', fmtNum(k.unidades)) +
       card('Líneas', fmtNum(k.lineas)) +
       card('Facturas únicas', fmtNum(k.numFacturas)) +
@@ -225,9 +242,9 @@
         <td>${esc(r.talla || '—')}</td>
         <td style="text-align:right;font-weight:700">${fmtNum(r.qty)}</td>
         <td style="text-align:right">${fmtCOP(r.unitPrice)}</td>
+        <td style="text-align:right;color:var(--text2)">${fmtCOP(rowCostUnit(r))}</td>
         <td style="text-align:right;font-weight:700;color:var(--accent)">${fmtCOP(r.subtotal)}</td>
         <td>${esc(r.canal || '—')}</td>
-        <td style="font-size:10px;color:var(--text2)">${esc(r.source || '—')}</td>
         <td style="text-align:right"><button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF de factura" data-vc-pdf data-vc-pdf-iid="${esc(r.invoiceId || '')}" data-vc-pdf-inum="${esc(r.invoiceNumber || '')}">PDF</button></td>
       </tr>`,
       )
@@ -317,9 +334,9 @@
       'Talla',
       'Cantidad',
       'PrecioUnitario',
+      'PrecioCosto',
       'Subtotal',
       'Canal',
-      'Fuente',
     ];
     const cell = (v) => {
       let s = String(v == null ? '' : v);
@@ -340,9 +357,9 @@
           r.talla || '',
           Number(r.qty) || 0,
           Number(r.unitPrice) || 0,
+          rowCostUnit(r) || 0,
           Number(r.subtotal) || 0,
           r.canal || '',
-          r.source || '',
         ]
           .map(cell)
           .join(sep),
@@ -520,7 +537,7 @@
           <table>
             <thead><tr>
               <th>Fecha</th><th>Hora</th><th>Factura</th><th>Cliente</th><th>Artículo</th><th>Ref</th><th>Talla</th>
-              <th style="text-align:right">Cant</th><th style="text-align:right">P. Unit</th><th style="text-align:right">Subtotal</th><th>Canal</th><th>Fuente</th><th style="text-align:right">PDF</th>
+              <th style="text-align:right">Cant</th><th style="text-align:right">P. Unit</th><th style="text-align:right">P. Costo</th><th style="text-align:right">Subtotal</th><th>Canal</th><th style="text-align:right">PDF</th>
             </tr></thead>
             <tbody id="vc-tbody"></tbody>
           </table>
