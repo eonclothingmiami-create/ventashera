@@ -3029,14 +3029,6 @@ async function loadState() {
       console.warn('sale_items (carga inicial):', e?.message || e);
     }
 
-    if (window.AppComprasCxp?.loadComprasCxpFromDb) {
-      try {
-        await window.AppComprasCxp.loadComprasCxpFromDb(supabaseClient, state);
-      } catch (e) {
-        console.warn('compras/cxp v1:', e.message);
-      }
-    }
-
     // Cargar configuraciones desde Supabase (si existen, sobreescriben los defaults)
     try {
       const cfgTables = ['cfg_categorias','cfg_secciones','cfg_transportadoras','cfg_metodos_pago','cfg_tarifas','cfg_impuestos'];
@@ -3343,7 +3335,7 @@ function renderPage(id){
     inv_ajustes:renderInvAjustes, inv_traslados:renderInvTraslados,
     nom_ausencias:renderNomAusencias, nom_anticipos:renderNomAnticipos,
     nom_conceptos:renderNomConceptos, nom_nominas:renderNomNominas,
-    tes_cajas:renderTesCajas, tes_pagos_prov:renderTesPagosProv, compras:renderCompras, tes_dinero:renderTesDinero,
+    tes_cajas:renderTesCajas, tes_pagos_prov:renderTesPagosProv, tes_dinero:renderTesDinero,
     tes_impuestos:renderTesImpuestos, tes_retenciones:renderTesRetenciones,
     tes_comp_retencion:renderTesCompRetencion, tes_comp_ingreso:renderTesCompIngreso,
     tes_comp_egreso:renderTesCompEgreso, tes_transferencias:renderTesTransferencias,
@@ -4775,79 +4767,6 @@ async function bulkMercadoLibreSyncVisibleArticles() {
 // ===== MAQUETADOR PRO (MODO CATÁLOGO + ERP INTEGRADO) =====
 // ===================================================================
 
-function artEligibleAutoCompra(proveedorId, tituloMercancia, deltaStock, costo) {
-  const t = String(tituloMercancia || '').trim().toLowerCase();
-  return (
-    !!window.__PAGOS_PROV_REBUILD__ &&
-    !!proveedorId &&
-    (t === 'contado' || t === 'credito') &&
-    (parseInt(deltaStock, 10) || 0) > 0 &&
-    (parseFloat(costo) || 0) > 0
-  );
-}
-
-function defaultTipoCompraFromTitulo(tituloMercancia) {
-  const t = String(tituloMercancia || '').trim().toLowerCase();
-  if (t === 'contado') return 'contado';
-  if (t === 'credito') return 'credito';
-  return 'credito';
-}
-
-function resolverAutoCompraModal(confirmed, tipoCompra) {
-  const fn = window.__autoCompraPendingResolve;
-  window.__autoCompraPendingResolve = null;
-  if (fn) {
-    fn(
-      confirmed
-        ? { confirmed: true, tipoCompra: tipoCompra || defaultTipoCompraFromTitulo('credito') }
-        : { confirmed: false },
-    );
-  }
-}
-
-function cancelarAutoCompraModal() {
-  closeModal();
-  resolverAutoCompraModal(false);
-}
-
-function aceptarAutoCompraModal() {
-  const tipo = document.getElementById('auto-compra-tipo')?.value || 'credito';
-  closeModal();
-  resolverAutoCompraModal(true, tipo);
-}
-
-function confirmarAutoCompraDesdeArticulo(params) {
-  const { proveedorNombre, nombreArt, deltaStock, costo, tituloMercancia } = params;
-  const qty = parseInt(deltaStock, 10) || 0;
-  const unit = parseFloat(costo) || 0;
-  const total = qty * unit;
-  const defTipo = defaultTipoCompraFromTitulo(tituloMercancia);
-  const esc = (s) =>
-    String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/"/g, '&quot;');
-  const fmtFn = typeof window.fmt === 'function' ? window.fmt : (v) => String(v);
-  return new Promise((resolve) => {
-    window.__autoCompraPendingResolve = resolve;
-    openModal(
-      `<div class="modal-title">Registrar entrada como compra<button type="button" class="modal-close" onclick="cancelarAutoCompraModal()">×</button></div>
-      <p style="font-size:13px;margin-bottom:12px">Proveedor: <b>${esc(proveedorNombre)}</b><br>Artículo: <b>${esc(nombreArt)}</b><br>Cantidad: <b>${qty}</b> · Costo unit.: <b>${fmtFn(unit)}</b> · Total: <b>${fmtFn(total)}</b></p>
-      <div class="form-group"><label>Tipo de compra</label>
-        <select id="auto-compra-tipo" class="form-control">
-          <option value="contado" ${defTipo === 'contado' ? 'selected' : ''}>Contado</option>
-          <option value="credito" ${defTipo === 'credito' ? 'selected' : ''}>Crédito</option>
-          <option value="consignacion" ${defTipo === 'consignacion' ? 'selected' : ''}>Consignación</option>
-        </select>
-      </div>
-      <p style="font-size:12px;color:var(--text2)">Se creará un documento en Compras (COMP-…) y, si aplica, cargo en cuentas por pagar.</p>
-      <button type="button" class="btn btn-primary" onclick="aceptarAutoCompraModal()">Registrar compra</button>
-      <button type="button" class="btn btn-secondary" style="margin-left:8px" onclick="cancelarAutoCompraModal()">Solo guardar artículo</button>`,
-      true,
-    );
-  });
-}
-
 async function aplicarEntradaStockArticulo(productId, cantidad, bodegaId, motivo) {
   const qty = parseInt(cantidad, 10) || 0;
   if (qty <= 0) return;
@@ -4898,17 +4817,6 @@ async function aplicarEntradaStockArticulo(productId, cantidad, bodegaId, motivo
   } catch (e) {
     console.warn('[saveArticulo] inv_ajuste entrada:', e.message);
   }
-}
-
-function updateArtComprasHint() {
-  const hint = document.getElementById('m-art-compras-hint');
-  const wrap = document.getElementById('m-art-stock-add-wrap');
-  if (!window.__PAGOS_PROV_REBUILD__) return;
-  const prov = document.getElementById('m-art-proveedor')?.value || '';
-  const titulo = document.getElementById('m-art-titulo-mercancia')?.value || '';
-  const show = !!prov && (titulo === 'contado' || titulo === 'credito');
-  if (hint) hint.style.display = show ? 'block' : 'none';
-  if (wrap) wrap.style.display = show && window._editingArticuloId ? 'block' : 'none';
 }
 
 function openArticuloModal(id){
@@ -5034,7 +4942,7 @@ function openArticuloModal(id){
             </div>
 
             <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
-                    <select class="form-control" id="m-art-titulo-mercancia" onchange="typeof updateArtComprasHint==='function'&&updateArtComprasHint()">
+                    <select class="form-control" id="m-art-titulo-mercancia">
                         <option value="" ${!art?.tituloMercancia ? 'selected' : ''}>— Seleccionar —</option>
                         <option value="propia" ${art?.tituloMercancia === 'propia' ? 'selected' : ''}>🏷️ Mercancía Propia</option>
                         <option value="contado" ${art?.tituloMercancia === 'contado' ? 'selected' : ''}>💵 Mercancía de Contado</option>
@@ -5049,20 +4957,12 @@ function openArticuloModal(id){
                 <div class="form-group"><label class="form-label">IVA %</label><input type="number" class="form-control" id="m-art-iva" value="${art?.iva ?? 19}"></div>
             </div>
             <div class="form-group"><label class="form-label">🏭 PROVEEDOR</label>
-                <select class="form-control" id="m-art-proveedor" onchange="typeof updateArtComprasHint==='function'&&updateArtComprasHint()">
+                <select class="form-control" id="m-art-proveedor">
                     <option value="">— Sin proveedor —</option>
                     ${(state.usu_proveedores||[]).map(p => `<option value="${p.id}" ${art?.proveedorId === p.id ? 'selected' : ''}>${p.nombre}${p.cedula ? ' · ' + p.cedula : ''}</option>`).join('')}
                 </select>
                 ${(state.usu_proveedores||[]).length === 0 ? '<span style="font-size:10px;color:var(--text2)">Sin proveedores. <a onclick="closeModal();showPage(\'usu_proveedores\')" style="color:var(--accent);cursor:pointer">→ Crear proveedor</a></span>' : ''}
             </div>
-            ${
-              window.__PAGOS_PROV_REBUILD__
-                ? `<p id="m-art-compras-hint" style="display:none;font-size:12px;color:var(--accent);margin:8px 0 0;padding:10px;background:rgba(0,229,180,.08);border-radius:8px;border:1px solid rgba(0,229,180,.2)">
-              Con proveedor y mercancía contado/crédito puedes registrar la entrada como <b>compra</b> al guardar, o usar <b>Compras</b> para entradas grandes.
-              <a onclick="closeModal();showPage('compras')" style="color:var(--accent);cursor:pointer;margin-left:6px">→ Ir a Compras</a>
-            </p>`
-                : ''
-            }
             <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-mostrar-web" style="width: 18px; height: 18px;"> 
@@ -5139,18 +5039,9 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
                   <input type="number" class="form-control" id="m-art-stock0"
                     value="${art ? (art.stock||0) : 0}"
                     ${art ? 'readonly style="opacity:0.5;cursor:not-allowed"' : 'min="0"'}>
-                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para más stock: «Entrada adicional» abajo o Inventario → Ajustes</div>' : ''}
+                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para más stock: Inventario → Ajustes</div>' : ''}
                 </div>
             </div>
-            ${
-              window.__PAGOS_PROV_REBUILD__ && art
-                ? `<div class="form-group" id="m-art-stock-add-wrap" style="display:none;margin-top:8px">
-                <label class="form-label">ENTRADA ADICIONAL (unidades)</label>
-                <input type="number" class="form-control" id="m-art-stock-add" min="0" step="1" value="0" />
-                <div style="font-size:10px;color:var(--text2);margin-top:3px">Al guardar puedes registrar una compra COMP-… o solo un ajuste de inventario.</div>
-              </div>`
-                : ''
-            }
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px;">
         <button type="button" class="btn btn-primary" id="m-art-btn-save" style="width:100%; font-weight:800;" onclick="saveArticulo('${id || ''}', {})">💾 GUARDAR Y ACTUALIZAR WEB</button>
@@ -5167,7 +5058,6 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
     }
     applyFalabellaDraftToMaquetadorFields(art || {});
     onMaquetadorChannelProfileChange();
-    if (typeof updateArtComprasHint === 'function') updateArtComprasHint();
     wireFalabellaMaquetadorInputs();
     window._falabellaCategoryIndexed = null;
     refreshFalabellaMaquetadorValidation();
@@ -5175,7 +5065,6 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
   }, 10);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
-    if (typeof updateArtComprasHint === 'function') updateArtComprasHint();
 }
 
 function removeMainImg(){
@@ -5393,69 +5282,12 @@ async function saveArticulo(existingId, options) {
             .eq('id', productId);
         if (visUpdErr) console.warn('[saveArticulo] actualizar visible:', visUpdErr.message);
 
-        // 1b. Entrada de stock: auto-compra (Compras V1) o ajuste de inventario
+        // 1b. Entrada de stock como ajuste de inventario (sin CXP/compras)
         const stockInicial = !existingId ? parseInt(document.getElementById('m-art-stock0')?.value, 10) || 0 : 0;
         const stockAdd = existingId ? parseInt(document.getElementById('m-art-stock-add')?.value, 10) || 0 : 0;
         const deltaStock = existingId ? stockAdd : stockInicial;
         const bodegaIdArt = document.getElementById('m-art-bodega')?.value || 'bodega_main';
-        let autoCompra = { confirmed: false };
-        if (artEligibleAutoCompra(proveedorId, tituloMercancia, deltaStock, costoInput)) {
-          autoCompra = await confirmarAutoCompraDesdeArticulo({
-            proveedorNombre: proveedorObj?.nombre || '',
-            nombreArt: nombre,
-            deltaStock,
-            costo: costoInput,
-            tituloMercancia,
-          });
-        }
-        if (autoCompra.confirmed && window.AppComprasCxp?.guardarCompra) {
-          try {
-            const resCompra = await window.AppComprasCxp.guardarCompra(
-              { state, supabaseClient, dbId, today, notify, fmt },
-              {
-                proveedorId,
-                proveedorNombre: proveedorObj?.nombre || '',
-                tipoCompra: autoCompra.tipoCompra,
-                fecha: today(),
-                nota: `Auto-compra desde artículo ${refID}`,
-                lineas: [
-                  {
-                    articuloId: productId,
-                    articuloNombre: nombre,
-                    cantidad: deltaStock,
-                    costoUnitario: costoInput,
-                    bodegaId: bodegaIdArt,
-                  },
-                ],
-                omitirAjusteStock: !existingId,
-              },
-            );
-            notify(
-              'success',
-              '📦',
-              'Compra registrada',
-              resCompra?.compra?.numero ? `Documento ${resCompra.compra.numero}` : '',
-            );
-            if (resCompra?.advertenciaStock) {
-              notify('warning', '⚠️', 'Stock parcial', resCompra.advertenciaStock);
-            }
-          } catch (eCompra) {
-            notify(
-              'warning',
-              '⚠️',
-              'Compra no registrada',
-              `El artículo se guardó, pero falló la compra: ${eCompra.message || eCompra}`,
-            );
-            if (deltaStock > 0) {
-              await aplicarEntradaStockArticulo(
-                productId,
-                deltaStock,
-                bodegaIdArt,
-                existingId ? 'Entrada adicional (compra fallida)' : 'Stock inicial al crear artículo',
-              );
-            }
-          }
-        } else if (deltaStock > 0) {
+        if (deltaStock > 0) {
           if (!existingId) {
             const ajId = dbId();
             try {
@@ -5699,72 +5531,6 @@ async function saveArticulo(existingId, options) {
         if(artIdx >= 0) state.articulos[artIdx] = artLocal;
         else state.articulos.push(artLocal);
 
-        if (
-          existingId &&
-          proveedorId &&
-          window.AppComprasCxp?.ajusteCostoProveedor &&
-          Math.abs(costoInput - (parseFloat(prevArt.precioCompra ?? prevArt.cost ?? 0) || 0)) > 0.01
-        ) {
-          const prevCost = parseFloat(prevArt.precioCompra ?? prevArt.cost ?? 0) || 0;
-          const unidadesCost = parseFloat(artLocal.stock ?? productData.stock ?? 0) || 0;
-          if (
-            unidadesCost > 0 &&
-            confirm(
-              `El costo cambió de ${fmt(prevCost)} a ${fmt(costoInput)} (${unidadesCost} uds en stock).\n\n¿Registrar ajuste de costo en cuentas por pagar del proveedor?`,
-            )
-          ) {
-            try {
-              await window.AppComprasCxp.ajusteCostoProveedor(
-                { state, supabaseClient, dbId, today },
-                {
-                  proveedorId,
-                  proveedorNombre: proveedorObj?.nombre || '',
-                  articuloId: productId,
-                  unidades: unidadesCost,
-                  costoAnterior: prevCost,
-                  costoNuevo: costoInput,
-                },
-              );
-              notify('success', '📊', 'Ajuste de costo', 'Registrado en CXP del proveedor.');
-            } catch (eAjuste) {
-              notify('warning', '⚠️', 'Ajuste de costo', eAjuste.message || String(eAjuste));
-            }
-          }
-        }
-
-        // ===== Deuda proveedor: detectar transición no-deuda -> deuda (idempotente) =====
-        const esCredito = (t) =>
-          typeof window.esMercanciaCredito === 'function'
-            ? window.esMercanciaCredito(t)
-            : String(t || '').trim().toLowerCase() === 'credito';
-        const elig = (a) => {
-          const pc = parseFloat(a?.precioCompra ?? a?.cost ?? 0) || 0;
-          const st = parseFloat(a?.stock ?? 0) || 0;
-          const provOk = !!(a?.proveedorId || a?.proveedor_id);
-          return !!(esCredito(a?.tituloMercancia || a?.titulo_mercancia) && provOk && pc > 0 && st > 0);
-        };
-        const beforeEligible = elig(prevArt);
-        const afterEligible = elig(artLocal);
-        const transitionToDebt = !beforeEligible && afterEligible;
-        if (
-          transitionToDebt &&
-          !pagosProvModuleWritesBlocked() &&
-          window.AppTreasuryModule?.logRegistroDeudaArticulo
-        ) {
-          try {
-            await window.AppTreasuryModule.logRegistroDeudaArticulo({
-              state,
-              supabaseClient,
-              uid,
-              dbId,
-              artLocal,
-              reason: existingId ? 'edit_transition' : 'create_transition'
-            });
-          } catch (e) {
-            console.warn('libro proveedor:', e);
-          }
-        }
-
         closeModal();
         renderArticulos();
         showLoadingOverlay('hide');
@@ -5838,23 +5604,6 @@ async function eliminarAjuste(id) {
         art.stock = newStock;
       }
     }
-    if (a.tipo === 'devolucion' && pagosProvModuleWritesBlocked() && window.AppComprasCxp?.anularDevolucionPorAjuste) {
-      await window.AppComprasCxp.anularDevolucionPorAjuste({ state, supabaseClient }, a.id);
-    } else if (a.tipo === 'devolucion' && !pagosProvModuleWritesBlocked()) {
-      const dv = (state.tes_devoluciones_prov||[]).find(x => String(x.invAjusteId) === String(a.id));
-      if (dv) {
-        if (window.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
-          await window.AppTreasuryModule.deleteCxpMirrorDevolucion(state, supabaseClient, dv.id);
-        }
-        await supabaseClient.from('tes_devoluciones_prov').delete().eq('id', dv.id);
-        state.tes_devoluciones_prov = (state.tes_devoluciones_prov||[]).filter(x => x.id !== dv.id);
-      }
-    }
-
-    if (window.AppInventoryModule?.removeAbonoInvEntradaIfAny) {
-      await window.AppInventoryModule.removeAbonoInvEntradaIfAny(state, supabaseClient, id);
-    }
-
     // 2. Borrar de inv_ajustes en Supabase
     await supabaseClient.from('inv_ajustes').delete().eq('id', id);
 
@@ -5865,10 +5614,7 @@ async function eliminarAjuste(id) {
     if(movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
 
     renderInvAjustes();
-    if(art?.tituloMercancia === 'credito' || a.tipo === 'devolucion') {
-      if (typeof renderTesPagosProv === 'function') renderTesPagosProv();
-      updateNavBadges();
-    }
+    updateNavBadges();
     notify('success','🗑️','Ajuste eliminado',`Stock de ${art?.nombre||''} revertido.`,{duration:3000});
 
   } catch(err) {
@@ -5943,146 +5689,6 @@ async function saveAjusteInv() {
       product.stock = newStock;
     }
 
-    const notaDvCore = `Devolución inventario · ${product.nombre||artId} · ${motivo}`;
-    if (
-      tipo === 'devolucion' &&
-      product.proveedorId &&
-      pagosProvModuleWritesBlocked() &&
-      window.AppComprasCxp?.registrarDevolucion &&
-      (product.tituloMercancia === 'credito' ||
-        (typeof window.esMercanciaCredito === 'function' && window.esMercanciaCredito(product.tituloMercancia)))
-    ) {
-      const prov = (state.usu_proveedores||[]).find(p => String(p.id) === String(product.proveedorId));
-      const provNombre = prov?.nombre || product.proveedorNombre || '';
-      const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
-      await window.AppComprasCxp.registrarDevolucion(
-        { state, supabaseClient, dbId, today },
-        {
-          proveedorId: product.proveedorId,
-          proveedorNombre: provNombre,
-          lineas: [{ articuloId: artId, articuloNombre: product.nombre || '', cantidad: cant, costoUnitario: costoUnit, bodegaId }],
-          motivo: notaDvCore,
-          fecha: today(),
-          invAjusteId: ajuste.id,
-          omitirAjusteStock: true,
-        },
-      );
-    } else if (
-      tipo === 'devolucion' &&
-      product.tituloMercancia === 'credito' &&
-      product.proveedorId &&
-      !pagosProvModuleWritesBlocked()
-    ) {
-      const prov = (state.usu_proveedores||[]).find(p => String(p.id) === String(product.proveedorId));
-      const provNombre = prov?.nombre || product.proveedorNombre || '';
-      const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
-      const valorCosto = costoUnit * cant;
-      const devId = dbId();
-      const notaDv = notaDvCore;
-      const fh = new Date().toISOString();
-      const { error: dInsErr } = await supabaseClient.from('tes_devoluciones_prov').insert({
-        id: devId, proveedor_id: product.proveedorId, proveedor_nombre: provNombre,
-        articulo_id: artId, cantidad: cant, valor_costo: valorCosto,
-        inv_ajuste_id: ajuste.id, nota: notaDv, fecha: today(), fecha_hora: fh
-      });
-      if (!dInsErr) {
-        if (!state.tes_devoluciones_prov) state.tes_devoluciones_prov = [];
-        state.tes_devoluciones_prov.unshift({
-          id: devId, proveedorId: product.proveedorId, proveedorNombre: provNombre, articuloId: artId,
-          cantidad, valorCosto, invAjusteId: ajuste.id, nota: notaDv, fecha: today(), fechaHora: fh
-        });
-        if (window.AppTreasuryModule?.mirrorDevolucionToCxp) {
-          const m = await window.AppTreasuryModule.mirrorDevolucionToCxp(state, supabaseClient, {
-            devolucionId: devId,
-            proveedorId: product.proveedorId,
-            proveedorNombre: provNombre,
-            valorCosto,
-            fecha: today(),
-            nota: notaDv,
-            fechaHora: fh,
-            lineas: [
-              {
-                articulo_id: artId,
-                articulo_nombre: product.nombre || '',
-                cantidad: cant,
-                costo_unitario: cant > 0 ? valorCosto / cant : 0
-              }
-            ]
-          });
-          if (!m.ok) console.warn('[CXP devolución]', m.error);
-        }
-      }
-    }
-
-    // Bloqueado durante rebuild de Pagos proveedores — sin RPC CXP ni tes_abonos_prov.
-    if (
-      tipo === 'entrada' &&
-      product.proveedorId &&
-      !pagosProvModuleWritesBlocked() &&
-      (typeof window.esMercanciaCredito === 'function'
-        ? window.esMercanciaCredito(product.tituloMercancia)
-        : String(product.tituloMercancia || '').trim().toLowerCase() === 'credito')
-    ) {
-      const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
-      if (costoUnit > 0) {
-        const isRpcMissing =
-          typeof window.AppTreasuryModule?.isRpcMissingError === 'function'
-            ? window.AppTreasuryModule.isRpcMissingError
-            : (err) => {
-                const c = err?.code;
-                const m = String(err?.message || err?.error_description || '');
-                return (
-                  c === '42883' ||
-                  c === 'PGRST202' ||
-                  /does not exist|function.*not found|no existe la funci/i.test(m)
-                );
-              };
-        /** Espejo CXP vía RPC (idempotente con trigger `trg_inv_ajustes_cxp_cargo` en BD reciente). */
-        const { error: cxpRpcErr } = await supabaseClient.rpc('tes_cxp_upsert_cargo_inv_ajuste', {
-          p_inv_ajuste_id: String(ajuste.id),
-        });
-        if (cxpRpcErr) {
-          if (isRpcMissing(cxpRpcErr)) {
-            const marker = window.AppTreasuryModule?.CXPIV_ABONO_MARKER || '[cxp:inv_entrada]';
-            const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
-            const provNombre = prov?.nombre || product.proveedorNombre || '';
-            const valorNeg = -(costoUnit * cant);
-            const abonoInvId = dbId();
-            const fhAb = new Date().toISOString();
-            const notaAb = `${marker} inv_ajuste_id:${ajuste.id} · Entrada inventario crédito · ${product.nombre || artId} · ${motivo}`;
-            const { error: abInsErr } = await supabaseClient.from('tes_abonos_prov').insert({
-              id: abonoInvId,
-              proveedor_id: product.proveedorId,
-              proveedor_nombre: provNombre,
-              valor: valorNeg,
-              metodo: 'inv_entrada_credito',
-              fecha: today(),
-              nota: notaAb,
-              fecha_hora: fhAb,
-            });
-            if (!abInsErr) {
-              if (!state.tes_abonos_prov) state.tes_abonos_prov = [];
-              state.tes_abonos_prov.unshift({
-                id: abonoInvId,
-                proveedorId: product.proveedorId,
-                proveedorNombre: provNombre,
-                valor: valorNeg,
-                metodo: 'inv_entrada_credito',
-                fecha: today(),
-                nota: notaAb,
-                fechaCreacion: today(),
-                fechaHora: fhAb,
-              });
-            } else {
-              console.warn('[tes_abonos_prov inv entrada fallback]', abInsErr.message);
-            }
-          } else {
-            console.warn('[tes_cxp_upsert_cargo_inv_ajuste]', cxpRpcErr.message || cxpRpcErr);
-          }
-        }
-      }
-    }
-
     // 3. Actualizar estado local
     if(!state.inv_ajustes) state.inv_ajustes = [];
     state.inv_ajustes.push(ajuste);
@@ -6098,30 +5704,16 @@ async function saveAjusteInv() {
     closeModal();
     renderInvAjustes();
     if(document.getElementById('art-tbody')) renderArticulosList();
-
-    if(product?.tituloMercancia === 'credito' || tipo === 'devolucion') {
-      if (typeof renderTesPagosProv === 'function') renderTesPagosProv();
-      updateNavBadges();
-    }
+    updateNavBadges();
 
     showLoadingOverlay('hide');
     notify('success','✅','Ajuste guardado',
-      `${tipo==='entrada'||tipo==='devolucion'?'+':'−'}${cant} uds · Stock: ${product?.stock||0}${tipo==='devolucion'&&product.tituloMercancia==='credito'&&product.proveedorId?' · Deuda proveedor actualizada':''}`,
+      `${tipo==='entrada'||tipo==='devolucion'?'+':'−'}${cant} uds · Stock: ${product?.stock||0}`,
       {duration:3500});
     if (_sbConnected && typeof refreshCriticalSlice === 'function') {
       try {
         const rr = await refreshCriticalSlice('inventario');
-        const needTes =
-          tipo === 'entrada' &&
-          product?.proveedorId &&
-          (typeof window.esMercanciaCredito === 'function'
-            ? window.esMercanciaCredito(product.tituloMercancia)
-            : String(product.tituloMercancia || '').trim().toLowerCase() === 'credito');
-        let rr2 = rr;
-        if (needTes) {
-          rr2 = await refreshCriticalSlice('tes_prov');
-        }
-        if (!rr.ok || (needTes && !rr2.ok)) {
+        if (!rr.ok) {
           notify(
             'warning',
             '📡',
@@ -8145,199 +7737,8 @@ function treasuryFn(name) {
   return f;
 }
 
-/** KPI deuda / alertas: exige `calcDeudaProveedor` publicado por treasury-module. */
-function isTreasuryModuleValidForCalc() {
-  const m = window.AppTreasuryModule;
-  if (m && typeof m.isTreasuryModuleValidForCalc === 'function') return m.isTreasuryModuleValidForCalc();
-  return !!(m && typeof m.calcDeudaProveedor === 'function');
-}
-
-/** Pantallas tesorería (pagos, listas simples): además de cálculo. */
-function isTreasuryModuleValidForUi() {
-  const m = window.AppTreasuryModule;
-  if (m && typeof m.isTreasuryModuleValidForUi === 'function') return m.isTreasuryModuleValidForUi();
-  return !!(
-    m &&
-    typeof m.calcDeudaProveedor === 'function' &&
-    typeof m.renderTesPagosProv === 'function' &&
-    typeof m.renderSimpleCollection === 'function'
-  );
-}
-
-function emptyCalcDeudaProveedor() {
-  return {
-    valorInventarioCosto: 0,
-    valorInventarioCostoNeto: 0,
-    invEntradaCredAbonoDedup: 0,
-    costoVendidoHist: 0,
-    unidadesVendidasHist: 0,
-    costoVendidoPosMoves: 0,
-    udsVendidasPosMoves: 0,
-    costoVendidoPosFacturaSinMove: 0,
-    udsVendidasPosFacturaSinMove: 0,
-    vendidoDesdeUltimoAbono: 0,
-    unidadesVendidasDesdeUltimoAbono: 0,
-    costoVendidoUltAbPosMoves: 0,
-    udsVendidasUltAbPosMoves: 0,
-    costoVendidoUltAbFacturaSinMove: 0,
-    udsVendidasUltAbFacturaSinMove: 0,
-    fechaUltimoAbonoLabel: null,
-    vendidoDesdeUltimoAbonoAlcanzaSaldo: false,
-    refOperativaTotal: 0,
-    compromisoReconocido: 0,
-    compromisoTotal: 0,
-    deudaBruta: 0,
-    ajusteUnidadesCosto: 0,
-    unidadesAjusteModulo: 0,
-    abonos: 0,
-    abonosPagados: 0,
-    abonosRegistroNegativo: 0,
-    devolucionesDeuda: 0,
-    devolucionesNcCxpSinEspejoInv: 0,
-    devolucionesOperativa: 0,
-    saldo: 0,
-    saldoLibro: 0,
-    saldoOperativoEstimado: 0,
-    topePagoRespaldadoVentas: 0,
-    pendienteSinRespaldoVentaCosto: 0,
-    cxpCargo: 0,
-    cxpCredito: 0,
-    saldoOficialCxp: 0,
-    usaCxp: false,
-    difEstimVsCxp: null,
-    articulos: [],
-    ajustesSalidaCosto: 0,
-    ajustesSalidaUds: 0,
-    ajustesEntradaCosto: 0,
-    ajustesEntradaUds: 0,
-    ajustesInvNeto: 0,
-    _erpTreasuryStub: true
-  };
-}
-
-/**
- * Deuda por proveedor: delega a `AppTreasuryModule.calcDeudaProveedor` (única fuente de verdad).
- * Convención: no llamar sin `isTreasuryModuleValidForCalc()` en lógica de negocio/KPIs; si el retorno trae `_erpTreasuryStub`, no es dato real.
- */
-function calcDeudaProveedor(provId) {
-  const fn = treasuryFn('calcDeudaProveedor');
-  if (!fn) return emptyCalcDeudaProveedor();
-  return fn(state, provId);
-}
-
-/** Consola: `__erpAuditVendidoProv('uuid-proveedor')` — desglose moves vs factura (Pagos proveedores). */
-try {
-  window.__erpAuditVendidoProv = function (provId) {
-    const m = window.AppTreasuryModule;
-    if (m && typeof m.logAuditVendidoProveedor === 'function') return m.logAuditVendidoProveedor(state, provId);
-    console.warn('AppTreasuryModule.logAuditVendidoProveedor no disponible');
-    return null;
-  };
-} catch (e) {}
-
-/** Consola: `__cxpGoLiveCheck()` — smoke test Compras/CXP (oleada 5 go-live). */
-try {
-  window.__cxpGoLiveCheck = async function () {
-    const Svc = window.AppComprasCxp;
-    if (!Svc?.goLiveSmokeCheck) {
-      console.warn('[CXP Go-live] AppComprasCxp.goLiveSmokeCheck no disponible');
-      return null;
-    }
-    const result = await Svc.goLiveSmokeCheck({
-      state,
-      supabaseClient,
-      dbId,
-      fmt,
-      today,
-    });
-    if (typeof Svc.logGoLiveSmokeCheck === 'function') Svc.logGoLiveSmokeCheck(result);
-    return result;
-  };
-} catch (e) {}
-
-/** Alertas de tesorería/proveedores (anexar siempre al resultado de buildAlerts base). */
-function appendBuildAlertsTreasuryProveedor() {
-  const extra = [];
-  if (!isTreasuryModuleValidForCalc()) {
-    treasuryFn('calcDeudaProveedor');
-    extra.push({
-      type: 'urgent',
-      icon: '🏧',
-      title: 'Tesorería no cargada',
-      desc: 'Falta AppTreasuryModule operativo (treasury-module.js). No se calculan alertas de deuda a proveedores hasta recargar.',
-      action: 'location.reload()',
-      actionLabel: 'Recargar'
-    });
-    return extra;
-  }
-  if (!isTreasuryModuleValidForUi()) {
-    extra.push({
-      type: 'warning',
-      icon: '⚙️',
-      title: 'Tesorería incompleta',
-      desc: 'El módulo expone cálculo pero faltan piezas de UI (pagos proveedores o listas). Revisa la consola y recarga.',
-      action: "showPage('tes_pagos_prov')",
-      actionLabel: 'Pagos proveedores'
-    });
-  }
-  const _buildProvList = () => {
-    const list = (state.usu_proveedores || []).map((p) => {
-      const d = calcDeudaProveedor(p.id);
-      const fechasComp = (state.tes_compromisos_prov || [])
-        .filter((c) => c.proveedorId === p.id)
-        .map((c) => c.fecha)
-        .filter(Boolean)
-        .sort();
-      const fechasArt = (d.articulos || []).map((a) => a.fechaCompra || a.createdAt || '').filter(Boolean).sort();
-      const fechas = fechasComp.length ? fechasComp : fechasArt;
-      const diasDeuda = fechas.length ? Math.round((new Date() - new Date(fechas[0])) / 86400000) : 0;
-      return { ...p, saldo: d.saldo, diasDeuda, artCredito: d.articulos };
-    }).filter((p) => p.saldo > 0);
-    return list;
-  };
-  const provConDeuda = _buildProvList();
-  const totalDeuda = provConDeuda.reduce((s, p) => s + p.saldo, 0);
-  if (provConDeuda.length > 0) {
-    const urgente = provConDeuda.filter((p) => p.diasDeuda >= 30);
-    extra.push({
-      type: urgente.length > 0 ? 'urgent' : 'warning',
-      icon: '🏭',
-      title: `Deuda con proveedores: ${fmt(totalDeuda)}`,
-      desc: provConDeuda
-        .map((p) => `${p.nombre}: ${fmt(p.saldo)}${p.diasDeuda > 0 ? ` (${p.diasDeuda}d)` : ''}`)
-        .join(' · '),
-      action: "showPage('tes_pagos_prov')",
-      actionLabel: 'Ver pagos proveedores'
-    });
-    urgente.forEach((p) => {
-      extra.push({
-        type: 'urgent',
-        icon: '⚠️',
-        title: `${p.nombre} — ${p.diasDeuda} días sin pagar`,
-        desc: `Saldo pendiente: ${fmt(p.saldo)}. Esta deuda lleva más de 30 días acumulándose.`,
-        action: "showPage('tes_pagos_prov')",
-        actionLabel: 'Abonar ahora'
-      });
-    });
-  }
-  return extra;
-}
-
-function pagosProvRebuildBlockedCore() {
-  if (!window.__PAGOS_PROV_REBUILD__) return false;
-  if (typeof notify === 'function') {
-    notify('warning', '🔧', 'Pagos proveedores', 'Módulo en reconstrucción. Operación no disponible.', { duration: 4500 });
-  }
-  return true;
-}
-
-function pagosProvModuleWritesBlocked() {
-  return window.AppTreasuryModule?.pagosProvModuleWritesBlocked?.() ?? !!window.__PAGOS_PROV_REBUILD__;
-}
-
-/** Una sola vez: stock_moves desde facturas POS históricas (deuda proveedor / columna vendido). */
+/** Una sola vez: stock_moves desde facturas POS históricas (columna vendido / trazabilidad). */
 async function backfillStockMovesVentaPos(skipConfirm) {
-  if (pagosProvRebuildBlockedCore()) return;
   if (
     !skipConfirm &&
     !confirm(
@@ -8401,214 +7802,16 @@ async function backfillSaleItemsVentaPos(skipConfirm) {
 }
 window.backfillSaleItemsVentaPos = backfillSaleItemsVentaPos;
 
+/** Placeholder: el módulo CXP Proveedores fue retirado; pantalla lista para reconstruir. */
 function renderTesPagosProv() {
-  const fn = treasuryFn('renderTesPagosProv');
-  if (fn) return fn({ state, fmt, formatDate });
   const el = document.getElementById('tes_pagos_prov-content');
   if (el) {
     el.innerHTML =
-      '<div class="card" style="padding:20px;color:var(--red)">No se cargó <b>treasury-module.js</b>. Pagos a proveedores no disponibles hasta recargar.</div>';
-  }
-}
-
-function renderCompras() {
-  if (window.AppPurchases?.render) {
-    return window.AppPurchases.render({ state, fmt, formatDate });
-  }
-  const el = document.getElementById('compras-content');
-  if (el) {
-    el.innerHTML =
-      '<div class="card" style="padding:20px;color:var(--red)">Cargue purchases-module.js y compras-cxp-service.js.</div>';
-  }
-}
-
-function openCompromisoProvModal(provId = '', provNombre = '') {
-  const fn = treasuryFn('openCompromisoProvModal');
-  if (fn) return fn({ state, provId, provNombre, fmt, openModal, notify, today });
-}
-
-async function guardarCompromisoProv() {
-  const fn = treasuryFn('guardarCompromisoProv');
-  if (fn) {
-    return fn({
-      state, uid, dbId, today, showLoadingOverlay, supabaseClient, closeModal, renderTesPagosProv, notify, fmt
-    });
-  }
-}
-
-async function eliminarCompromisoProv(id) {
-  const fn = treasuryFn('eliminarCompromisoProv');
-  if (fn) return fn({ state, id, confirm, supabaseClient, renderTesPagosProv, notify });
-}
-
-function verCompromisosProv(provId, provNombre) {
-  const fn = treasuryFn('verCompromisosProv');
-  if (fn) return fn({ state, provId, provNombre, fmt, formatDate, openModal });
-}
-
-async function importarEstimacionCompromisosProv() {
-  const fn = treasuryFn('importarEstimacionCompromisosProv');
-  if (fn) {
-    return fn({
-      state, uid, dbId, today, showLoadingOverlay, supabaseClient, renderTesPagosProv, notify, fmt, confirm
-    });
-  }
-}
-
-function openCargoCxpModal(provId = '', provNombre = '') {
-  const fn = treasuryFn('openCargoCxpModal');
-  if (fn) return fn({ state, provId, provNombre, openModal, notify, today, fmt });
-}
-
-function openNotaCreditoCxpModal(provId = '', provNombre = '') {
-  const fn = treasuryFn('openNotaCreditoCxpModal');
-  if (fn) return fn({ state, provId, provNombre, openModal, notify, today });
-}
-
-async function guardarCargoCxpMov() {
-  const fn = treasuryFn('guardarCargoCxpMov');
-  if (fn) {
-    return fn({
-      state, uid, dbId, today, showLoadingOverlay, supabaseClient, closeModal, renderTesPagosProv, notify, fmt
-    });
-  }
-}
-
-async function guardarNotaCreditoCxpMov() {
-  const fn = treasuryFn('guardarNotaCreditoCxpMov');
-  if (fn) {
-    return fn({
-      state, uid, dbId, today, showLoadingOverlay, supabaseClient, closeModal, renderTesPagosProv, notify, fmt
-    });
-  }
-}
-
-function verLibroCxpModal(provId, provNombre) {
-  const fn = treasuryFn('verLibroCxpModal');
-  if (fn) return fn({ state, provId, provNombre, fmt, formatDate, openModal });
-}
-
-async function eliminarCxpMovimiento(id) {
-  const fn = treasuryFn('eliminarCxpMovimiento');
-  if (fn) {
-    return fn({
-      state, id, confirm, supabaseClient, renderTesPagosProv, notify, closeModal
-    });
-  }
-}
-
-async function alinearCxpEstimacionProv(provId) {
-  const fn = treasuryFn('alinearCxpEstimacionProv');
-  if (fn) {
-    return fn({
-      state, provId, supabaseClient, dbId, uid, today, showLoadingOverlay, renderTesPagosProv, notify, fmt, confirm
-    });
-  }
-}
-
-function openAbonoProvModal(provId = '', provNombre = '') {
-  const fn = treasuryFn('openAbonoProvModal');
-  if (fn) return fn({ state, provId, provNombre, fmt, openModal, notify, today });
-}
-
-function updateSaldoPendiente() {
-  const fn = treasuryFn('updateSaldoPendiente');
-  if (fn) return fn({ fmt, state });
-}
-
-function validateAbono() {
-  const fn = treasuryFn('validateAbono');
-  if (fn) return fn({ fmt, state });
-}
-
-function abonoUsarMontoVendidoSugerido() {
-  const fn = treasuryFn('abonoUsarMontoVendidoSugerido');
-  if (fn) return fn({ fmt, state });
-}
-
-async function guardarAbonoProv() {
-  const fn = treasuryFn('guardarAbonoProv');
-  if (fn) {
-    return fn({ state, uid, dbId, today, showLoadingOverlay, supabaseClient, saveRecord, closeModal, renderTesPagosProv, notify, fmt, renderTesCajas });
-  }
-}
-
-function verLibroProveedorModal(provId, provNombre) {
-  const fn = treasuryFn('verLibroProveedorModal');
-  if (fn) return fn({ state, provId, provNombre, fmt, formatDate, openModal });
-}
-
-function quitarCreditoArticuloProveedorFromPagos(artId) {
-  const fn = treasuryFn('quitarCreditoArticuloProveedor');
-  if (fn) {
-    return fn({
-      state,
-      artId,
-      confirm,
-      supabaseClient,
-      showLoadingOverlay,
-      renderTesPagosProv,
-      notify,
-      fmt,
-      dbId,
-      uid,
-      renderArticulosList,
-      renderArticulos,
-      updateNavBadges
-    });
-  }
-}
-
-function openAjusteUnidadesProvModal(provId, artId) {
-  const fn = treasuryFn('openAjusteUnidadesProvModal');
-  if (fn) return fn({ state, provId, artId, fmt, openModal, notify });
-}
-
-function guardarAjusteUnidadesProv(provId, artId) {
-  const fn = treasuryFn('guardarAjusteUnidadesProv');
-  if (fn) {
-    return fn({
-      state,
-      provId,
-      artId,
-      uid,
-      dbId,
-      showLoadingOverlay,
-      supabaseClient,
-      closeModal,
-      renderTesPagosProv,
-      notify,
-      fmt,
-      saveRecord
-    });
-  }
-}
-
-function eliminarAjusteUnidadesProv(id, provId, artId) {
-  const fn = treasuryFn('eliminarAjusteUnidadesProv');
-  if (fn) {
-    return fn({
-      state,
-      id,
-      confirm,
-      supabaseClient,
-      renderTesPagosProv,
-      notify,
-      closeModal,
-      reopen: provId && artId ? () => openAjusteUnidadesProvModal(provId, artId) : null
-    });
-  }
-}
-
-function verAbonosProv(provId, provNombre) {
-  const fn = treasuryFn('verAbonosProv');
-  if (fn) return fn({ state, provId, provNombre, fmt, formatDate, openModal });
-}
-
-async function eliminarAbonoProv(id) {
-  const fn = treasuryFn('eliminarAbonoProv');
-  if (fn) {
-    return fn({ state, id, confirm, supabaseClient, saveRecord, renderTesPagosProv, notify, renderTesCajas });
+      '<div class="card" style="padding:24px;text-align:center;color:var(--text-soft,#888)">' +
+      '<div style="font-size:32px;margin-bottom:8px">🏭</div>' +
+      '<div style="font-size:16px;font-weight:600;margin-bottom:4px">CXP Proveedores</div>' +
+      '<div>Módulo en construcción.</div>' +
+      '</div>';
   }
 }
 
@@ -8893,7 +8096,6 @@ function buildAlerts() {
       });
     }
   }
-  alerts.push(...appendBuildAlertsTreasuryProveedor());
   return alerts;
 }
 
@@ -9304,7 +8506,6 @@ async function repararStockProductosPosVenta(id) {
 
 /** Todas las facturas POS: recuperar movimientos faltantes y descuentos pendientes en products. */
 async function repararStockProductosPosMasivo(opts) {
-  if (pagosProvRebuildBlockedCore()) return;
   const skipConfirm = opts && opts.skipConfirm;
   if (
     !skipConfirm &&
@@ -9350,7 +8551,6 @@ async function repararStockProductosPosMasivo(opts) {
 
 /** Rellenar stock_moves (histórico) y luego sincronizar products. Orden recomendado para datos viejos. */
 async function sincronizarPosInventarioCompleto() {
-  if (pagosProvRebuildBlockedCore()) return;
   if (
     !confirm(
       'Paso 1: crear stock_moves POS faltantes desde facturas. Paso 2: sincronizar stock en productos (products). ¿Ejecutar ambos?',

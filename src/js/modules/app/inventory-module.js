@@ -2,10 +2,6 @@
 (function initInventoryModule(global) {
   let _invTrFilt = { desde: null, hasta: null, artId: '', provId: '', bodegaId: '', tipo: '' };
 
-  function skipPagosProvMirror() {
-    return global.AppTreasuryModule?.pagosProvModuleWritesBlocked?.() ?? !!global.__PAGOS_PROV_REBUILD__;
-  }
-
   /** Delta firmado: positivo → increment_stock, negativo → decrement_stock. Retorna nuevo stock o null si delta 0. */
   async function syncStockViaRpc(supabaseClient, productId, signedDelta) {
     const n = parseInt(signedDelta, 10) || 0;
@@ -223,17 +219,16 @@
   }
 
   async function eliminarAjusteLote(ctx) {
-    const { state, loteId, confirm, supabaseClient, renderInvAjustes, renderTesPagosProv, updateNavBadges, notify } = ctx;
+    const { state, loteId, confirm, supabaseClient, renderInvAjustes, updateNavBadges, notify } = ctx;
     const lines = (state.inv_ajustes || []).filter((x) => String(x.loteId) === String(loteId));
     if (lines.length === 0) return;
     if (
       !confirm(
-        `¿Eliminar todo el lote (${lines.length} línea${lines.length === 1 ? '' : 's'})? El stock y las devoluciones asociadas se revertirán.`
+        `¿Eliminar todo el lote (${lines.length} línea${lines.length === 1 ? '' : 's'})? El stock se revertirá.`
       )
     ) {
       return;
     }
-    let anyCreditoOrDev = false;
     try {
       for (const a of lines) {
         const art = state.articulos.find((x) => String(x.id) === String(a.articuloId));
@@ -242,33 +237,17 @@
           const newStock = await syncStockViaRpc(supabaseClient, a.articuloId, revert);
           if (newStock != null) art.stock = newStock;
         }
-        if (a.tipo === 'devolucion' && skipPagosProvMirror() && global.AppComprasCxp?.anularDevolucionPorAjuste) {
-          await global.AppComprasCxp.anularDevolucionPorAjuste({ state, supabaseClient }, a.id);
-        } else if (a.tipo === 'devolucion' && !skipPagosProvMirror()) {
-          const dv = (state.tes_devoluciones_prov || []).find((x) => String(x.invAjusteId) === String(a.id));
-          if (dv) {
-            if (global.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
-              await global.AppTreasuryModule.deleteCxpMirrorDevolucion(state, supabaseClient, dv.id);
-            }
-            await supabaseClient.from('tes_devoluciones_prov').delete().eq('id', dv.id);
-            state.tes_devoluciones_prov = (state.tes_devoluciones_prov || []).filter((x) => x.id !== dv.id);
-          }
-        }
         const movIndex = state.inv_movimientos.findIndex(
           (m) => m.articuloId === a.articuloId && m.tipo === 'ajuste_' + a.tipo && m.nota === a.motivo
         );
         if (movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
-        if (artEsMercanciaCredito(art) || a.tipo === 'devolucion') anyCreditoOrDev = true;
       }
       await supabaseClient.from('inv_ajustes').delete().eq('lote_id', loteId);
       await supabaseClient.from('inv_ajustes_lotes').delete().eq('id', loteId);
       state.inv_ajustes = (state.inv_ajustes || []).filter((x) => String(x.loteId) !== String(loteId));
       state.inv_ajustes_lotes = (state.inv_ajustes_lotes || []).filter((x) => String(x.id) !== String(loteId));
       renderInvAjustes();
-      if (anyCreditoOrDev) {
-        if (document.getElementById('tes_pagos_prov-content')) renderTesPagosProv();
-        updateNavBadges();
-      }
+      updateNavBadges();
       notify('success', '🗑️', 'Lote eliminado', 'Ajustes y stock revertidos.', { duration: 3500 });
     } catch (err) {
       notify('danger', '⚠️', 'Error al eliminar lote', err.message, { duration: 5000 });
@@ -277,11 +256,11 @@
   }
 
   async function eliminarAjuste(ctx) {
-    const { state, id, confirm, supabaseClient, renderInvAjustes, renderTesPagosProv, updateNavBadges, notify } = ctx;
+    const { state, id, confirm, supabaseClient, renderInvAjustes, updateNavBadges, notify } = ctx;
     const a = state.inv_ajustes.find((x) => x.id === id);
     if (!a) return;
     if (a.loteId) {
-      return eliminarAjusteLote({ state, loteId: a.loteId, confirm, supabaseClient, renderInvAjustes, renderTesPagosProv, updateNavBadges, notify });
+      return eliminarAjusteLote({ state, loteId: a.loteId, confirm, supabaseClient, renderInvAjustes, updateNavBadges, notify });
     }
     if (!confirm('¿Eliminar este ajuste? El stock se revertirá automáticamente.')) return;
     try {
@@ -291,27 +270,12 @@
         const newStock = await syncStockViaRpc(supabaseClient, a.articuloId, revert);
         if (newStock != null) art.stock = newStock;
       }
-      if (a.tipo === 'devolucion' && skipPagosProvMirror() && global.AppComprasCxp?.anularDevolucionPorAjuste) {
-        await global.AppComprasCxp.anularDevolucionPorAjuste({ state, supabaseClient }, a.id);
-      } else if (a.tipo === 'devolucion' && !skipPagosProvMirror()) {
-        const dv = (state.tes_devoluciones_prov || []).find((x) => String(x.invAjusteId) === String(a.id));
-        if (dv) {
-          if (global.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
-            await global.AppTreasuryModule.deleteCxpMirrorDevolucion(state, supabaseClient, dv.id);
-          }
-          await supabaseClient.from('tes_devoluciones_prov').delete().eq('id', dv.id);
-          state.tes_devoluciones_prov = (state.tes_devoluciones_prov || []).filter((x) => x.id !== dv.id);
-        }
-      }
       await supabaseClient.from('inv_ajustes').delete().eq('id', id);
       state.inv_ajustes = state.inv_ajustes.filter((x) => x.id !== id);
       const movIndex = state.inv_movimientos.findIndex((m) => m.articuloId === a.articuloId && m.tipo === 'ajuste_' + a.tipo && m.nota === a.motivo);
       if (movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
       renderInvAjustes();
-      if (artEsMercanciaCredito(art) || a.tipo === 'devolucion') {
-        if (document.getElementById('tes_pagos_prov-content')) renderTesPagosProv();
-        updateNavBadges();
-      }
+      updateNavBadges();
       notify('success', '🗑️', 'Ajuste eliminado', `Stock de ${art?.nombre || ''} revertido.`, { duration: 3000 });
     } catch (err) {
       notify('danger', '⚠️', 'Error al eliminar', err.message, { duration: 5000 });
@@ -501,7 +465,7 @@
   }
 
   async function saveAjusteInv(ctx) {
-    const { state, notify, showLoadingOverlay, supabaseClient, uid, dbId, today, closeModal, renderInvAjustes, renderArticulosList, renderTesPagosProv, updateNavBadges } = ctx;
+    const { state, notify, showLoadingOverlay, supabaseClient, uid, dbId, today, closeModal, renderInvAjustes, renderArticulosList, updateNavBadges } = ctx;
     const nextId = typeof dbId === 'function' ? dbId : uid;
     const doc = global.document;
     const bodegaId = doc.getElementById('m-aj-bod')?.value || 'bodega_main';
@@ -541,29 +505,17 @@
       if (!ad.ok) return;
     }
 
-    let anyCreditoOrDev = false;
     const fechaStr = today();
     const loteId = nextId();
 
     async function rollbackLoteSave(completed) {
       for (let i = completed.length - 1; i >= 0; i--) {
         const c = completed[i];
-        const { product, artId, tipo, cant, devId } = c;
+        const { product, artId, tipo, cant } = c;
         if (product) {
           const revert = tipo === 'entrada' || tipo === 'devolucion' ? -cant : cant;
           const newStock = await syncStockViaRpc(supabaseClient, artId, revert);
           if (newStock != null) product.stock = newStock;
-        }
-        if (devId && !skipPagosProvMirror()) {
-          if (global.AppTreasuryModule?.deleteCxpMirrorDevolucion) {
-            try {
-              await global.AppTreasuryModule.deleteCxpMirrorDevolucion(state, supabaseClient, devId);
-            } catch (_) { /* noop */ }
-          }
-          try {
-            await supabaseClient.from('tes_devoluciones_prov').delete().eq('id', devId);
-          } catch (_) { /* noop */ }
-          state.tes_devoluciones_prov = (state.tes_devoluciones_prov || []).filter((x) => x.id !== devId);
         }
       }
       try {
@@ -597,7 +549,6 @@
         }
         const qtyFinal = tipo === 'entrada' || tipo === 'devolucion' ? cant : -cant;
         const ajuste = { id: nextId(), articuloId: artId, bodegaId, tipo, cantidad: cant, motivo, fecha: fechaStr, loteId };
-        let devId = null;
         const { error: ajErr } = await supabaseClient.from('inv_ajustes').insert({
           id: ajuste.id,
           articulo_id: artId,
@@ -621,160 +572,7 @@
         }
         if (newStock != null) product.stock = newStock;
 
-        const notaDvLinea =
-          tipo === 'devolucion'
-            ? `Devolución inventario · ${product.nombre || artId} · ${motivo}`
-            : motivo;
-
-        if (
-          tipo === 'entrada' &&
-          artEsMercanciaCredito(product) &&
-          product.proveedorId &&
-          skipPagosProvMirror() &&
-          global.AppComprasCxp?.guardarCompra
-        ) {
-          const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
-          const provNombre = prov?.nombre || product.proveedorNombre || '';
-          const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
-          try {
-            await global.AppComprasCxp.guardarCompra(
-              {
-                state,
-                supabaseClient,
-                dbId: nextId,
-                today: () => fechaStr,
-              },
-              {
-                proveedorId: product.proveedorId,
-                proveedorNombre: provNombre,
-                tipoCompra: 'credito',
-                fecha: fechaStr,
-                facturaProveedor: `AJ-INV-${String(ajuste.id).slice(0, 20)}`,
-                nota: `Ajuste inventario entrada · ${motivo} · inv:${ajuste.id}`,
-                origenSistema: 'ajuste_inv_entrada',
-                lineas: [
-                  {
-                    articuloId: artId,
-                    articuloNombre: product.nombre || '',
-                    cantidad: cant,
-                    costoUnitario: costoUnit,
-                    bodegaId,
-                  },
-                ],
-                omitirAjusteStock: true,
-              },
-            );
-          } catch (cxpErr) {
-            await rollbackLoteSave(completed);
-            throw cxpErr;
-          }
-        } else if (
-          tipo === 'devolucion' &&
-          artEsMercanciaCredito(product) &&
-          product.proveedorId &&
-          skipPagosProvMirror() &&
-          global.AppComprasCxp?.registrarDevolucion
-        ) {
-          const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
-          const provNombre = prov?.nombre || product.proveedorNombre || '';
-          const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
-          try {
-            await global.AppComprasCxp.registrarDevolucion(
-              {
-                state,
-                supabaseClient,
-                dbId: nextId,
-                today: () => fechaStr,
-              },
-              {
-                proveedorId: product.proveedorId,
-                proveedorNombre: provNombre,
-                lineas: [
-                  {
-                    articuloId: artId,
-                    articuloNombre: product.nombre || '',
-                    cantidad: cant,
-                    costoUnitario: costoUnit,
-                    bodegaId,
-                  },
-                ],
-                motivo: notaDvLinea,
-                fecha: fechaStr,
-                invAjusteId: ajuste.id,
-                omitirAjusteStock: true,
-              },
-            );
-          } catch (cxpErr) {
-            await rollbackLoteSave(completed);
-            throw cxpErr;
-          }
-        } else if (
-          tipo === 'devolucion' &&
-          artEsMercanciaCredito(product) &&
-          product.proveedorId &&
-          !skipPagosProvMirror()
-        ) {
-          const prov = (state.usu_proveedores || []).find((p) => String(p.id) === String(product.proveedorId));
-          const provNombre = prov?.nombre || product.proveedorNombre || '';
-          const costoUnit = parseFloat(product.precioCompra) || parseFloat(product.cost) || 0;
-          const valorCosto = costoUnit * cant;
-          devId = nextId();
-          const notaDv = `Devolución inventario · ${product.nombre || artId} · ${motivo}`;
-          const fh = new Date().toISOString();
-          const { error: dErr } = await supabaseClient.from('tes_devoluciones_prov').insert({
-            id: devId,
-            proveedor_id: product.proveedorId,
-            proveedor_nombre: provNombre,
-            articulo_id: artId,
-            cantidad: cant,
-            valor_costo: valorCosto,
-            inv_ajuste_id: ajuste.id,
-            nota: notaDv,
-            fecha: fechaStr,
-            fecha_hora: fh
-          });
-          if (dErr) {
-            console.warn('[devoluciones_prov]', dErr.message);
-            devId = null;
-          } else {
-            if (!state.tes_devoluciones_prov) state.tes_devoluciones_prov = [];
-            state.tes_devoluciones_prov.unshift({
-              id: devId,
-              proveedorId: product.proveedorId,
-              proveedorNombre: provNombre,
-              articuloId: artId,
-              cantidad: cant,
-              valorCosto: valorCosto,
-              invAjusteId: ajuste.id,
-              nota: notaDv,
-              fecha: fechaStr,
-              fechaHora: fh
-            });
-            if (global.AppTreasuryModule?.mirrorDevolucionToCxp) {
-              const m = await global.AppTreasuryModule.mirrorDevolucionToCxp(state, supabaseClient, {
-                devolucionId: devId,
-                proveedorId: product.proveedorId,
-                proveedorNombre: provNombre,
-                valorCosto,
-                fecha: fechaStr,
-                nota: notaDv,
-                fechaHora: fh,
-                lineas: [
-                  {
-                    articulo_id: artId,
-                    articulo_nombre: product.nombre || '',
-                    cantidad: cant,
-                    costo_unitario: cant > 0 ? valorCosto / cant : 0
-                  }
-                ]
-              });
-              if (!m.ok) console.warn('[CXP devolución]', m.error);
-            }
-          }
-        }
-        if (artEsMercanciaCredito(product) || tipo === 'devolucion') anyCreditoOrDev = true;
-
-        completed.push({ product, artId, tipo, cant, devId });
+        completed.push({ product, artId, tipo, cant });
         pendingAjustes.push(ajuste);
         pendingMovs.push({
           id: nextId(),
@@ -799,10 +597,7 @@
       closeModal();
       renderInvAjustes();
       if (document.getElementById('art-tbody')) renderArticulosList();
-      if (anyCreditoOrDev) {
-        if (document.getElementById('tes_pagos_prov-content')) renderTesPagosProv();
-        updateNavBadges();
-      }
+      updateNavBadges();
       showLoadingOverlay('hide');
       notify(
         'success',
