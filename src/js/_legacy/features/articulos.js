@@ -334,6 +334,23 @@ async function saveArticulo(existingId) {
     const tituloMercancia = document.getElementById('m-art-titulo-mercancia')?.value || '';
     const proveedorId = document.getElementById('m-art-proveedor')?.value || null;
     const proveedorObj = proveedorId ? (state.usu_proveedores||[]).find(p=>p.id===proveedorId) : null;
+    const prevArt = existingId ? (state.articulos || []).find((a) => a.id === existingId) : null;
+    const priceVal = parseFloat(document.getElementById('m-art-pv').value) || 0;
+    const visibleVal = document.getElementById('art-mostrar-web').checked;
+    const stockVal = existingId
+      ? (prevArt?.stock || 0)
+      : (parseInt(document.getElementById('m-art-stock0').value, 10) || 0);
+    const isNewProduct = !existingId;
+    const mediaChanged = !!window._galeriaModificada || isNewProduct;
+    const notifyHints = {
+      is_new: isNewProduct,
+      media_changed: mediaChanged,
+      price_changed: prevArt
+        ? Number(prevArt.price ?? prevArt.precioVenta ?? 0) !== priceVal
+        : isNewProduct,
+      stock_changed: prevArt ? Number(prevArt.stock ?? 0) !== stockVal : stockVal > 0,
+      visible_changed: prevArt ? !!prevArt.mostrarEnWeb !== visibleVal : visibleVal,
+    };
 
     const productData = {
         id: existingId || crypto.randomUUID(),
@@ -342,15 +359,11 @@ async function saveArticulo(existingId) {
         seccion: document.getElementById('m-art-seccion').value,
         categoria: document.getElementById('m-art-cat').value,
         description: document.getElementById('m-art-desc').value.trim(),
-        price: parseFloat(document.getElementById('m-art-pv').value) || 0,
+        price: priceVal,
         cost: parseFloat(document.getElementById('m-art-pc').value) || 0,
-        // Nuevo producto: usa el stock inicial del formulario
-        // Producto existente: mantiene el stock actual (no sobreescribir)
-        stock: existingId
-          ? ((state.articulos||[]).find(a=>a.id===existingId)?.stock || 0)
-          : (parseInt(document.getElementById('m-art-stock0').value) || 0),
+        stock: stockVal,
         active: true,
-        visible: document.getElementById('art-mostrar-web').checked,
+        visible: visibleVal,
         titulo_mercancia: tituloMercancia || null,
         proveedor_id: proveedorId || null,
         proveedor_nombre: proveedorObj?.nombre || null,
@@ -503,9 +516,9 @@ async function saveArticulo(existingId) {
                 updated_at: productData.updated_at,
               },
               images: (window._galeriaModificada || !existingId) ? _tempGaleria : (artLocal.images || _tempGaleria),
+              notifyHints,
               notifyTitle: 'Nueva Colección 🌊',
               notifyBody: `"${productData.name}" ya está disponible en el catálogo.`,
-              notifyLink: window.location.origin + window.location.pathname,
               notifyImage: ((window._galeriaModificada || !existingId) ? (_tempGaleria[_portadaIndex] || _tempGaleria[0] || '') : (artLocal.imagen || '')),
             });
             if (!res?.ok) {
