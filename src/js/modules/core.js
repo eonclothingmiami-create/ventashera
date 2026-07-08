@@ -4681,6 +4681,16 @@ async function deleteArticulo(id){
     showLoadingOverlay('connecting');
 
     if (_sbConnected) {
+      if (typeof window.requestWooCommerceDeleteProduct === 'function') {
+        try {
+          const wooRes = await window.requestWooCommerceDeleteProduct(id);
+          if (wooRes && wooRes.ok === false && !wooRes.skipped) {
+            console.warn('[woo-delete]', wooRes.error || wooRes);
+          }
+        } catch (wooErr) {
+          console.warn('[woo-delete]', wooErr);
+        }
+      }
       if (!supabaseClient || typeof supabaseClient.rpc !== 'function') {
         throw new Error('Supabase client no disponible para RPC delete_product_full');
       }
