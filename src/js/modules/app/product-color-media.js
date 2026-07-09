@@ -15,8 +15,20 @@
     return VIDEO_EXT.test(String(url || '').split('?')[0]);
   }
 
+  function getEditingArt() {
+    const artId = global._editingArticuloId;
+    if (!artId || !global.state?.articulos) return null;
+    return global.state.articulos.find((a) => a.id === artId) || null;
+  }
+
   function imageUrlsFromGallery() {
-    return (global._tempGaleria || []).filter((u) => u && !isVideoUrl(u));
+    const fromTemp = (global._tempGaleria || []).filter((u) => u && !isVideoUrl(u));
+    if (fromTemp.length) return fromTemp;
+    const art = getEditingArt();
+    const fromState = (art?.images || art?.galeria || []).filter((u) => u && !isVideoUrl(u));
+    if (fromState.length) return fromState;
+    if (art?.imagen && !isVideoUrl(art.imagen)) return [art.imagen];
+    return [];
   }
 
   function getGlobalCoverUrl() {
@@ -26,11 +38,8 @@
     if (cover && !isVideoUrl(cover)) return cover;
     const fromGallery = imageUrlsFromGallery()[0] || '';
     if (fromGallery) return fromGallery;
-    const artId = global._editingArticuloId;
-    if (artId && global.state?.articulos) {
-      const art = global.state.articulos.find((a) => a.id === artId);
-      if (art?.imagen && !isVideoUrl(art.imagen)) return art.imagen;
-    }
+    const art = getEditingArt();
+    if (art?.imagen && !isVideoUrl(art.imagen)) return art.imagen;
     return '';
   }
 
@@ -120,16 +129,60 @@
     return out;
   }
 
-  function pickFromGallery(colorLabel) {
-    if (!imageUrlsFromGallery().length) {
+  async function ensureGalleryLoaded() {
+    if (imageUrlsFromGallery().length) return imageUrlsFromGallery();
+    const artId = global._editingArticuloId;
+    if (!artId || !global.supabaseClient) return [];
+    try {
+      const { data } = await global.supabaseClient
+        .from('product_media')
+        .select('url,is_cover')
+        .eq('product_id', artId);
+      if (data && data.length > 0) {
+        global._tempGaleria = data
+          .sort((a, b) => (b.is_cover ? 1 : 0) - (a.is_cover ? 1 : 0))
+          .map((m) => m.url);
+        const coverIdx = data.findIndex((m) => m.is_cover);
+        global._portadaIndex = coverIdx >= 0 ? coverIdx : 0;
+        if (typeof global.renderGaleriaVisual === 'function') global.renderGaleriaVisual();
+        const art = getEditingArt();
+        if (art) {
+          art.images = global._tempGaleria;
+          art.imagen = global._tempGaleria[global._portadaIndex] || global._tempGaleria[0] || '';
+        }
+      }
+    } catch (e) {
+      console.warn('[ProductColorMedia] ensureGalleryLoaded:', e?.message || e);
+    }
+    return imageUrlsFromGallery();
+  }
+
+  async function pickFromGallery(colorLabel) {
+    const gallery = await ensureGalleryLoaded();
+    if (!gallery.length) {
       if (typeof global.notify === 'function') {
-        global.notify('warning', '📸', 'Galería', 'Sube fotos a la galería primero.');
+        global.notify(
+          'warning',
+          '📸',
+          'Sin fotos en galería',
+          'Sube imágenes en la sección «Galería multimedia» (arriba en este modal) y vuelve a pulsar Elegir.',
+          { duration: 9000 },
+        );
       }
       return;
     }
     global._colorCoverPickerFor =
       global._colorCoverPickerFor === colorLabel ? null : colorLabel;
     renderPanel();
+    if (global._colorCoverPickerFor === colorLabel) {
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`[data-pcm-pick="${escAttr(colorLabel)}"]`);
+        row?.closest('div')?.parentElement?.querySelector('[data-pcm-set]')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
+    }
   }
 
   function setCover(colorLabel, url) {
@@ -205,7 +258,9 @@
       </div>`;
 
     wrap.querySelectorAll('[data-pcm-pick]').forEach((btn) => {
-      btn.addEventListener('click', () => pickFromGallery(btn.getAttribute('data-pcm-pick')));
+      btn.addEventListener('click', () => {
+        pickFromGallery(btn.getAttribute('data-pcm-pick'));
+      });
     });
     wrap.querySelectorAll('[data-pcm-global]').forEach((btn) => {
       btn.addEventListener('click', () => useGlobalCover(btn.getAttribute('data-pcm-global')));
