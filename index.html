@@ -44,6 +44,7 @@
     window.HERA_CATALOG_BASE_URL = window.HERA_CATALOG_BASE_URL || 'https://eonclothingonline.com/mayoristas/';
     /** Rollback flag: desactiva push, conserva sync */
     window.CATALOG_PUSH_ENABLED = window.CATALOG_PUSH_ENABLED ?? true;
+    window.CATALOG_CONTENT_PUBLISH_ENDPOINT = window.CATALOG_CONTENT_PUBLISH_ENDPOINT || 'https://niilaxdeetuzutycvdkz.supabase.co/functions/v1/catalog-content-publish';
     /**
      * stock_moves: `qty` es la columna CANÓNICA (producción NOT NULL). Dual-write espeja el mismo valor en
      * `cantidad` solo mientras exista la columna legacy en BD; luego poner false y migrar BD.
@@ -68,6 +69,8 @@
 <script defer src="./src/js/integrations/rappi.js?v=1"></script>
 <script defer src="./src/js/integrations/falabella.js?v=20260327falprof2"></script>
 <script defer src="./src/js/integrations/mayoristas-catalog.js?v=20260709metrics1"></script>
+<script defer src="./src/js/integrations/social-content-api.js?v=20260710content1"></script>
+<script defer src="./src/js/modules/app/social-content-module.js?v=20260710content1"></script>
 <script defer src="./src/js/integrations/woocommerce-catalog.js?v=20260708woo1"></script>
 <script defer src="./src/js/modules/app/id-utils.js?v=20260327caja1"></script>
 <script defer src="./src/js/modules/app/caja-logic.js?v=20260328legacycaja"></script>
@@ -92,8 +95,8 @@
 <script defer src="./src/js/modules/app/pos-receipt-print.js?v=20260517pos80"></script>
 <script defer src="./src/js/modules/app/sync-guard.js?v=20260327antids1"></script>
 <script defer src="./src/js/modules/app/falabella-maquetador.js?v=20260327falmoda1"></script>
-<script defer src="./src/js/modules/app/product-color-media.js?v=20260709colcov2"></script>
-<script defer src="./src/js/modules/core.js?v=20260709colcov1"></script>
+<script defer src="./src/js/modules/app/product-color-media.js?v=20260709colcov3"></script>
+<script defer src="./src/js/modules/core.js?v=20260709colcov3"></script>
 <script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
 
 </head>
@@ -231,6 +234,9 @@
     <div class="nav-item" onclick="showPage('tes_comp_egreso')"><span class="nav-icon">📤</span>Comp. Egreso</div>
     <div class="nav-item" onclick="showPage('tes_transferencias')"><span class="nav-icon">🔄</span>Transferencias</div>
 
+    <div class="nav-section">REDES SOCIALES</div>
+    <div class="nav-item" onclick="showPage('social_contenido')"><span class="nav-icon">📱</span>Contenido</div>
+
     <div class="nav-section">CATÁLOGO WEB</div>
     <a href="https://eonclothingonline.com/mayoristas/?admin=true" target="_blank" class="nav-item"><span class="nav-icon">🛠</span>Gestión Mayorista</a>
     <a href="https://eonclothingonline.com/mayoristas/?type=showroom" target="_blank" class="nav-item"><span class="nav-icon">🏢</span>Vista Showroom</a>
@@ -298,6 +304,7 @@
   <div class="page" id="page-alertas"><div class="page-title">Alertas</div><div id="alertas-content"></div></div>
   <div class="page" id="page-historial"><div class="page-title">Historial de Ventas</div><div id="historial-content"></div></div>
   <div class="page" id="page-config"><div class="page-title">Configuración</div><div id="config-content"></div></div>
+  <div class="page" id="page-social_contenido"><div class="page-title">Contenido — Push PWA</div><div id="social_contenido-content"></div></div>
 </main>
 </div>
 

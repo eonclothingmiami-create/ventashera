@@ -3341,12 +3341,33 @@ function renderPage(id){
     tes_comp_egreso:renderTesCompEgreso, tes_transferencias:renderTesTransferencias,
     juego:renderGamePage, recompensas:renderRewards,
     alertas:renderAlertas, historial:renderHistorial, config:renderConfig, separados:renderSeparados,
-    ventas_consolidado:renderVentasConsolidado
+    ventas_consolidado:renderVentasConsolidado,
+    social_contenido:renderSocialContenido
   };
   if(renderers[id])renderers[id]();
 }
 
 /** Bridge SOLO LECTURA hacia ventas-consolidado-module.js (consolidado por líneas, sale_items). */
+function renderSocialContenido(){
+  const M = window.AppSocialContentModule;
+  const el = document.getElementById('social_contenido-content');
+  if (!M || typeof M.renderSocialContenido !== 'function') {
+    if (el) el.innerHTML = '<div class="card"><div class="card-title">Contenido</div><div style="color:var(--text2);padding:16px">No se cargó social-content-module.js. Recarga la página.</div></div>';
+    return;
+  }
+  M.renderSocialContenido({
+    state,
+    fmt,
+    fmtN,
+    formatDate,
+    today,
+    notify: (msg, ok = true) => {
+      if (typeof notify === 'function') notify(ok ? 'success' : 'error', ok ? '✓' : '!', ok ? 'Contenido' : 'Error', msg);
+      else alert(msg);
+    },
+  });
+}
+
 function renderVentasConsolidado(){
   const M = window.AppVentasConsolidadoModule;
   const el = document.getElementById('ventas_consolidado-content');
@@ -4832,16 +4853,23 @@ async function aplicarEntradaStockArticulo(productId, cantidad, bodegaId, motivo
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
     // Cargar imágenes existentes del artículo en la galería temporal
-    // Load images: from state first, then from product_media if empty
-    _tempGaleria = art ? [...(art.images || art.galeria || [])] : [];
-    // If existing article has no images in state, try to fetch from product_media
-    if(art && _tempGaleria.length === 0) {
+    _tempGaleria = art ? [...(art.images || art.galeria || [])].filter(Boolean) : [];
+    if (art && _tempGaleria.length === 0 && art.imagen) {
+      _tempGaleria = [art.imagen];
+    }
+    // Siempre hidratar galería completa desde product_media al editar
+    if (art && art.id) {
       supabaseClient.from('product_media').select('url,is_cover').eq('product_id', art.id)
         .then(({data}) => {
           if(data && data.length > 0) {
             _tempGaleria = data.sort((a,b)=>(b.is_cover?1:0)-(a.is_cover?1:0)).map(m=>m.url);
+            const coverIdx = data.findIndex((m) => m.is_cover);
+            _portadaIndex = coverIdx >= 0 ? coverIdx : 0;
             const artInState = state.articulos.find(a=>a.id===art.id);
-            if(artInState) { artInState.images = _tempGaleria; artInState.imagen = _tempGaleria[0]||''; }
+            if(artInState) {
+              artInState.images = _tempGaleria;
+              artInState.imagen = _tempGaleria[_portadaIndex] || _tempGaleria[0] || '';
+            }
             renderGaleriaVisual();
             if (window.ProductColorMedia) window.ProductColorMedia.onGalleryChanged();
           }
