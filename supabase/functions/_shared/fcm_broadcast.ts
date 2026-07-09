@@ -17,15 +17,6 @@ type ServiceAccount = {
   project_id: string;
 };
 
-export type FcmBroadcastOpts = {
-  title: string;
-  body: string;
-  link?: string;
-  image?: string;
-  exclude_token?: string;
-  data?: Record<string, string>;
-};
-
 let cachedAccessToken: { token: string; exp: number } | null = null;
 
 async function getAccessToken(sa: ServiceAccount): Promise<string> {
@@ -83,7 +74,7 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
 export async function broadcastFcm(
   supabaseUrl: string,
   serviceKey: string,
-  opts: FcmBroadcastOpts,
+  opts: { title: string; body: string; link?: string; exclude_token?: string },
 ): Promise<FcmBroadcastResult> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
   if (!saRaw) throw new Error("FIREBASE_SERVICE_ACCOUNT not set");
@@ -109,31 +100,18 @@ export async function broadcastFcm(
   const sample_errors: string[] = [];
 
   const link = opts.link || "";
-  const image = opts.image ? String(opts.image).trim() : "";
-  const notification: Record<string, string> = {
-    title: opts.title,
-    body: opts.body,
-  };
-  if (image) notification.image = image;
-
-  const webNotification: Record<string, string> = { ...notification };
-  const dataPayload = opts.data || {};
-
   for (let i = 0; i < tokens.length; i += 25) {
     const chunk = tokens.slice(i, i + 25);
     await Promise.all(
       chunk.map(async (token) => {
         const message: Record<string, unknown> = {
           token,
-          notification,
+          notification: { title: opts.title, body: opts.body },
           webpush: {
             fcm_options: { link },
-            notification: webNotification,
+            notification: { title: opts.title, body: opts.body },
           },
         };
-        if (Object.keys(dataPayload).length > 0) {
-          message.data = dataPayload;
-        }
         const res = await fetch(
           `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
           {

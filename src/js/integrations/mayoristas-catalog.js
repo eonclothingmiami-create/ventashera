@@ -134,16 +134,6 @@
     return { ok: resp.ok && json?.ok !== false, status: resp.status, ...json };
   }
 
-  async function broadcastFcmFallback(access, pushEndpoint, payload) {
-    const resp = await fetch(pushEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access}` },
-      body: JSON.stringify(payload),
-    });
-    const json = await resp.json().catch(() => ({}));
-    return { ok: resp.ok && json?.ok !== false, status: resp.status, ...json };
-  }
-
   /**
    * Publica en catálogo mayoristas y encola/envía push FCM.
    * Returns { ok, sync, push? }.
@@ -160,7 +150,6 @@
   }) {
     const pushEnabled = global.CATALOG_PUSH_ENABLED !== false;
     const syncEndpoint = endpointOrDefault('MAYORISTAS_CATALOG_SYNC_ENDPOINT', 'catalog-sync-product');
-    const pushEndpoint = endpointOrDefault('MAYORISTAS_CATALOG_PUSH_ENDPOINT', 'catalog-fcm-broadcast');
 
     const p = pickProductPayload(product);
     const img = normImages(images);
@@ -214,12 +203,9 @@
       return { ok: false, error: syncJson?.error || 'sync_failed', sync: syncJson };
     }
 
-    const serverNotify =
-      !!syncJson.changedRelevant &&
-      (syncJson.action === 'created' || syncJson.action === 'updated');
-    const shouldNotify = pushEnabled && (clientNotify || serverNotify || !!syncJson.pushEnqueued);
+    const shouldDispatch = pushEnabled && !!syncJson.pushEnqueued;
 
-    if (!shouldNotify) {
+    if (!shouldDispatch) {
       return {
         ok: true,
         sync: syncJson,
@@ -227,79 +213,56 @@
       };
     }
 
-    if (syncJson.pushEnqueued) {
+    console.log(
+      JSON.stringify({
+        event: 'notify_dispatch_start',
+        ts: new Date().toISOString(),
+        event_id: eventId,
+        product_id: p.id,
+        push_enqueued: !!syncJson.pushEnqueued,
+      }),
+    );
+    const dispatchJson = await triggerPushDispatch(access);
+    if (dispatchJson.ok) {
+      const sent = Number(
+        dispatchJson?.digests > 0 || dispatchJson?.singles > 0
+          ? (dispatchJson.results || []).reduce(
+              (acc, r) => acc + (Number(r?.fcm?.sent) || 0),
+              0,
+            ) || dispatchJson.singles || 0
+          : 0,
+      );
       console.log(
         JSON.stringify({
-          event: 'notify_dispatch_start',
+          event: 'notify_sent',
           ts: new Date().toISOString(),
           event_id: eventId,
           product_id: p.id,
+          mode: 'dispatch',
+          sent,
         }),
       );
-      const dispatchJson = await triggerPushDispatch(access);
-      if (dispatchJson.ok) {
-        const sent = Number(dispatchJson?.results?.[0]?.fcm?.sent ?? dispatchJson?.singles ?? 0);
-        console.log(
-          JSON.stringify({
-            event: 'notify_sent',
-            ts: new Date().toISOString(),
-            event_id: eventId,
-            product_id: p.id,
-            mode: 'dispatch',
-            sent,
-          }),
-        );
-        return { ok: true, sync: syncJson, push: { mode: 'dispatch', ...dispatchJson } };
-      }
-      console.log(
-        JSON.stringify({
-          event: 'notify_dispatch_fail',
-          ts: new Date().toISOString(),
-          event_id: eventId,
-          product_id: p.id,
-          error: dispatchJson?.error || 'dispatch_failed',
-        }),
-      );
+      return { ok: true, sync: syncJson, push: { mode: 'dispatch', ...dispatchJson } };
     }
 
     console.log(
       JSON.stringify({
-        event: 'notify_broadcast_start',
+        event: 'notify_dispatch_fail',
         ts: new Date().toISOString(),
         event_id: eventId,
         product_id: p.id,
+        error: dispatchJson?.error || 'dispatch_failed',
       }),
     );
-    const pushJson = await broadcastFcmFallback(access, pushEndpoint, {
-      title,
-      body,
-      link,
-      exclude_token: '',
-    });
-    if (!pushJson.ok) {
-      console.log(
-        JSON.stringify({
-          event: 'notify_fail',
-          ts: new Date().toISOString(),
-          event_id: eventId,
-          product_id: p.id,
-          error: pushJson?.error || 'push_failed',
-        }),
-      );
-      return { ok: false, error: pushJson?.error || 'push_failed', sync: syncJson, push: pushJson };
-    }
-
-    console.log(
-      JSON.stringify({
-        event: 'notify_sent',
-        ts: new Date().toISOString(),
-        event_id: eventId,
-        product_id: p.id,
-        mode: 'broadcast',
-        sent: pushJson?.sent || 0,
-        invalid: pushJson?.failed ?? pushJson?.invalid ?? 0,
-      }),
-    );
-    return { ok: true, sync: syncJson, push: { mode: 'broadcast', ...pushJson } };
+    return {
+      ok: true,
+      sync: syncJson,
+      push: {
+        mode: 'dispatch',
+        queued: !!syncJson.pushEnqueued,
+        error: dispatchJson?.error || 'dispatch_failed',
+        ...dispatchJson,
+      },
+    };
   };
 })(window);

@@ -119,6 +119,23 @@ function resolvePushEventType(hints: NotifyHints): string | null {
   return null;
 }
 
+function resolvePushEventTypeFromServer(
+  action: string,
+  changedFields: string[],
+  mediaChanged: boolean,
+  hints: NotifyHints,
+): string | null {
+  const fromHints = resolvePushEventType(hints);
+  if (fromHints) return fromHints;
+  if (action === "created") return "product_created";
+  if (mediaChanged) return "media_added";
+  if (changedFields.includes("price")) return "price_changed";
+  if (changedFields.includes("stock") || changedFields.includes("visible")) {
+    return "product_updated";
+  }
+  return null;
+}
+
 function shouldEnqueueFromHints(hints: NotifyHints, visible: boolean | null): boolean {
   if (visible !== true) return false;
   return !!(
@@ -306,8 +323,17 @@ Deno.serve(async (req) => {
   let pushEnqueued = false;
   let pushEventType: string | null = null;
 
-  if (clientChangedRelevant) {
-    pushEventType = resolvePushEventType(notifyHints);
+  const shouldEnqueue =
+    nextRow.visible === true &&
+    (clientChangedRelevant || serverChangedRelevant);
+
+  if (shouldEnqueue) {
+    pushEventType = resolvePushEventTypeFromServer(
+      action,
+      changedFields,
+      mediaChanged,
+      notifyHints,
+    );
     if (pushEventType) {
       const { data: existingEvent } = await supabase
         .from("catalog_push_events")
