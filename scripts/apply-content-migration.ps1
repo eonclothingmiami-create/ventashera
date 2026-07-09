@@ -1,24 +1,26 @@
-# Aplica migración catalog_content_posts en Supabase SQL Editor
-# (MCP/CLI en modo read-only desde este entorno)
+# Aplica migraciones de Contenido editorial en Supabase SQL Editor
 
 $ErrorActionPreference = 'Stop'
-$sql = Join-Path $PSScriptRoot '..\supabase\migrations\20260710130000_catalog_content_posts.sql'
-if (-not (Test-Path $sql)) { throw "No se encontró: $sql" }
+$migrations = @(
+  '20260710130000_catalog_content_posts.sql',
+  '20260710150000_catalog_content_dual_cta_whatsapp.sql'
+)
 
 Write-Host @"
 
-=== Migración Contenido editorial ===
+=== Migraciones Contenido editorial ===
 
 1. Abre: https://supabase.com/dashboard/project/niilaxdeetuzutycvdkz/sql/new
-2. Pega el contenido de:
-   $sql
-3. Ejecuta (Run)
-
-Verificación:
-  SELECT to_regclass('public.catalog_content_posts');
-  -- debe devolver catalog_content_posts
+2. Ejecuta cada archivo en orden (si la tabla ya existe, solo necesitas el segundo):
 
 "@
 
-Get-Content $sql -Raw | Set-Clipboard
-Write-Host "SQL copiado al portapapeles." -ForegroundColor Green
+foreach ($name in $migrations) {
+  $sql = Join-Path $PSScriptRoot "..\supabase\migrations\$name"
+  if (-not (Test-Path $sql)) { throw "No se encontró: $sql" }
+  Write-Host "  - $name"
+}
+
+$latest = Join-Path $PSScriptRoot "..\supabase\migrations\20260710150000_catalog_content_dual_cta_whatsapp.sql"
+Get-Content $latest -Raw | Set-Clipboard
+Write-Host "`nSQL del CTA dual + WhatsApp copiado al portapapeles." -ForegroundColor Green

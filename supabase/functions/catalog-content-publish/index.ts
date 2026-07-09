@@ -73,8 +73,8 @@ function validatePostMedia(post: PostRow): string | null {
     if (!post.media_url) return "video requires media_url";
     if (!post.thumb_url) return "video requires thumb_url";
   }
-  if (mt === "link" && !post.external_link && post.cta_type !== "catalog" && post.cta_type !== "product") {
-    return "link requires external_link or catalog/product CTA";
+  if (mt === "link" && !post.external_link && post.cta_type !== "catalog" && post.cta_type !== "product" && post.cta_type !== "whatsapp") {
+    return "link requires external_link or catalog/product/whatsapp CTA";
   }
   return null;
 }

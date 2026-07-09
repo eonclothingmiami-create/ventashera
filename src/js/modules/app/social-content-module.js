@@ -3,12 +3,14 @@
  */
 (function initSocialContentModule(global) {
   const Api = () => global.SocialContentApi;
+  const DEFAULT_WA = '573244389873';
   let _ctx = null;
   let _editingId = null;
   let _existingThumbUrl = null;
   let _existingMediaUrl = null;
   let _subscriberCount = 0;
   let _productHits = [];
+  let _productHits2 = [];
 
   function esc(s) {
     return String(s ?? '')
@@ -32,26 +34,92 @@
     else alert(msg);
   }
 
+  function normalizeWa(raw) {
+    return String(raw || '').replace(/\D/g, '');
+  }
+
+  function ctaOptionHtml(selected) {
+    const opts = [
+      ['none', 'Solo ver contenido'],
+      ['catalog', 'Ir al catálogo'],
+      ['product', 'Ir a un producto'],
+      ['whatsapp', 'WhatsApp'],
+      ['external', 'Enlace externo'],
+    ];
+    return opts
+      .map(([v, label]) => `<option value="${v}"${selected === v ? ' selected' : ''}>${label}</option>`)
+      .join('');
+  }
+
+  function readCtaSlot(slot) {
+    const sfx = slot === 2 ? '-2' : '';
+    const ctaType = document.getElementById(`sc-cta-type${sfx}`)?.value || 'none';
+    const productRef = String(document.getElementById(`sc-product-ref${sfx}`)?.value || '').trim();
+    const productId = String(document.getElementById(`sc-product-id${sfx}`)?.value || '').trim();
+    const externalLink = String(document.getElementById(`sc-external-link${sfx}`)?.value || '').trim();
+    const whatsapp = normalizeWa(document.getElementById(`sc-whatsapp${sfx}`)?.value || '');
+
+    return {
+      cta_type: ctaType,
+      cta_product_id: ctaType === 'product' && productId ? productId : null,
+      cta_product_ref: ctaType === 'product' && productRef ? productRef : null,
+      external_link: slot === 1 && ctaType === 'external' ? externalLink || null : undefined,
+      cta_external_link_2: slot === 2 && ctaType === 'external' ? externalLink || null : undefined,
+      cta_whatsapp_number: slot === 1 && ctaType === 'whatsapp' ? whatsapp || null : undefined,
+      cta_whatsapp_number_2: slot === 2 && ctaType === 'whatsapp' ? whatsapp || null : undefined,
+    };
+  }
+
   function readForm() {
     const mediaType = document.getElementById('sc-media-type')?.value || 'text';
-    const ctaType = document.getElementById('sc-cta-type')?.value || 'none';
     const title = String(document.getElementById('sc-title')?.value || '').trim();
     const excerpt = String(document.getElementById('sc-excerpt')?.value || '').trim();
     const bodyHtml = String(document.getElementById('sc-body')?.value || '').trim();
-    const externalLink = String(document.getElementById('sc-external-link')?.value || '').trim();
-    const productRef = String(document.getElementById('sc-product-ref')?.value || '').trim();
-    const productId = String(document.getElementById('sc-product-id')?.value || '').trim();
+    const linkUrl = String(document.getElementById('sc-link-url')?.value || '').trim();
+    const cta1 = readCtaSlot(1);
+    const cta2 = readCtaSlot(2);
 
-    return {
+    const row = {
       title,
       excerpt,
       body_html: bodyHtml || null,
       media_type: mediaType,
-      external_link: externalLink || null,
-      cta_type: ctaType,
-      cta_product_id: ctaType === 'product' && productId ? productId : null,
-      cta_product_ref: ctaType === 'product' && productRef ? productRef : null,
+      cta_type: cta1.cta_type,
+      cta_product_id: cta1.cta_product_id,
+      cta_product_ref: cta1.cta_product_ref,
+      cta_type_2: cta2.cta_type,
+      cta_product_id_2: cta2.cta_product_id,
+      cta_product_ref_2: cta2.cta_product_ref,
     };
+
+    if (mediaType === 'link') row.external_link = linkUrl || null;
+    else if (cta1.cta_type === 'external') row.external_link = cta1.external_link || null;
+    else row.external_link = null;
+
+    row.cta_whatsapp_number = cta1.cta_type === 'whatsapp' ? cta1.cta_whatsapp_number : null;
+    row.cta_whatsapp_number_2 = cta2.cta_type === 'whatsapp' ? cta2.cta_whatsapp_number_2 : null;
+    row.cta_external_link_2 = cta2.cta_type === 'external' ? cta2.cta_external_link_2 || null : null;
+
+    return row;
+  }
+
+  function validateCtaSlot(row, slot) {
+    const sfx = slot === 2 ? ' 2' : '';
+    const type = slot === 2 ? row.cta_type_2 : row.cta_type;
+    if (!type || type === 'none') return null;
+    if (type === 'product') {
+      const pid = slot === 2 ? row.cta_product_id_2 : row.cta_product_id;
+      if (!pid) return `Selecciona un producto para el CTA${sfx}.`;
+    }
+    if (type === 'external') {
+      const url = slot === 2 ? row.cta_external_link_2 : row.external_link;
+      if (!url) return `CTA${sfx} externo requiere URL.`;
+    }
+    if (type === 'whatsapp') {
+      const wa = slot === 2 ? row.cta_whatsapp_number_2 : row.cta_whatsapp_number;
+      if (!normalizeWa(wa)) return `CTA${sfx} WhatsApp requiere número (ej. ${DEFAULT_WA}).`;
+    }
+    return null;
   }
 
   function validateForm(row) {
@@ -69,16 +137,15 @@
         return 'Sube un video o edita una publicación que ya tenga video.';
       }
     }
-    if (row.media_type === 'link' && !row.external_link && row.cta_type === 'none') {
-      return 'Tipo link: indica enlace externo o CTA catálogo/producto.';
+    if (
+      row.media_type === 'link' &&
+      !row.external_link &&
+      row.cta_type === 'none' &&
+      row.cta_type_2 === 'none'
+    ) {
+      return 'Tipo link: indica enlace del contenido o al menos un CTA.';
     }
-    if (row.cta_type === 'product' && !row.cta_product_id) {
-      return 'Selecciona un producto para el CTA.';
-    }
-    if (row.cta_type === 'external' && !row.external_link) {
-      return 'CTA externo requiere URL.';
-    }
-    return null;
+    return validateCtaSlot(row, 1) || validateCtaSlot(row, 2);
   }
 
   async function uploadPendingFiles(postId) {
@@ -170,6 +237,20 @@
     }
   }
 
+  function fillCtaSlot(post, slot) {
+    const sfx = slot === 2 ? '-2' : '';
+    const type = slot === 2 ? post.cta_type_2 : post.cta_type;
+    document.getElementById(`sc-cta-type${sfx}`).value = type || 'none';
+    document.getElementById(`sc-product-id${sfx}`).value =
+      (slot === 2 ? post.cta_product_id_2 : post.cta_product_id) || '';
+    document.getElementById(`sc-product-ref${sfx}`).value =
+      (slot === 2 ? post.cta_product_ref_2 : post.cta_product_ref) || '';
+    document.getElementById(`sc-external-link${sfx}`).value =
+      slot === 2 ? post.cta_external_link_2 || '' : post.cta_type === 'external' ? post.external_link || '' : '';
+    document.getElementById(`sc-whatsapp${sfx}`).value =
+      (slot === 2 ? post.cta_whatsapp_number_2 : post.cta_whatsapp_number) || '';
+  }
+
   async function loadPost(id) {
     const post = await Api().getPost(id);
     if (!post) return;
@@ -180,10 +261,9 @@
     document.getElementById('sc-excerpt').value = post.excerpt || '';
     document.getElementById('sc-body').value = post.body_html || '';
     document.getElementById('sc-media-type').value = post.media_type || 'text';
-    document.getElementById('sc-cta-type').value = post.cta_type || 'none';
-    document.getElementById('sc-external-link').value = post.external_link || '';
-    document.getElementById('sc-product-id').value = post.cta_product_id || '';
-    document.getElementById('sc-product-ref').value = post.cta_product_ref || '';
+    document.getElementById('sc-link-url').value = post.media_type === 'link' ? post.external_link || '' : '';
+    fillCtaSlot(post, 1);
+    fillCtaSlot(post, 2);
     syncMediaFields();
     syncCtaFields();
     updatePreview(post);
@@ -193,14 +273,26 @@
     _editingId = null;
     _existingThumbUrl = null;
     _existingMediaUrl = null;
-    ['sc-title', 'sc-excerpt', 'sc-body', 'sc-external-link', 'sc-product-id', 'sc-product-ref'].forEach(
-      (id) => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-      },
-    );
+    [
+      'sc-title',
+      'sc-excerpt',
+      'sc-body',
+      'sc-link-url',
+      'sc-external-link',
+      'sc-external-link-2',
+      'sc-product-id',
+      'sc-product-ref',
+      'sc-product-id-2',
+      'sc-product-ref-2',
+      'sc-whatsapp',
+      'sc-whatsapp-2',
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
     document.getElementById('sc-media-type').value = 'text';
     document.getElementById('sc-cta-type').value = 'catalog';
+    document.getElementById('sc-cta-type-2').value = 'none';
     syncMediaFields();
     syncCtaFields();
     updatePreview({ title: 'Hera Swimwear', excerpt: 'Tu mensaje aquí…', media_type: 'text' });
@@ -211,17 +303,27 @@
     const imgRow = document.getElementById('sc-row-image');
     const vidRow = document.getElementById('sc-row-video');
     const thumbRow = document.getElementById('sc-row-thumb');
+    const linkRow = document.getElementById('sc-row-link');
     if (imgRow) imgRow.style.display = mt === 'image' ? '' : 'none';
     if (vidRow) vidRow.style.display = mt === 'video' ? '' : 'none';
     if (thumbRow) thumbRow.style.display = mt === 'video' || mt === 'text' ? '' : 'none';
+    if (linkRow) linkRow.style.display = mt === 'link' ? '' : 'none';
+  }
+
+  function syncCtaSlotFields(slot) {
+    const sfx = slot === 2 ? '-2' : '';
+    const ct = document.getElementById(`sc-cta-type${sfx}`)?.value || 'none';
+    const prodRow = document.getElementById(`sc-row-product${sfx}`);
+    const extRow = document.getElementById(`sc-row-external${sfx}`);
+    const waRow = document.getElementById(`sc-row-whatsapp${sfx}`);
+    if (prodRow) prodRow.style.display = ct === 'product' ? '' : 'none';
+    if (extRow) extRow.style.display = ct === 'external' ? '' : 'none';
+    if (waRow) waRow.style.display = ct === 'whatsapp' ? '' : 'none';
   }
 
   function syncCtaFields() {
-    const ct = document.getElementById('sc-cta-type')?.value || 'none';
-    const prodRow = document.getElementById('sc-row-product');
-    const extRow = document.getElementById('sc-row-external');
-    if (prodRow) prodRow.style.display = ct === 'product' ? '' : 'none';
-    if (extRow) extRow.style.display = ct === 'external' || document.getElementById('sc-media-type')?.value === 'link' ? '' : 'none';
+    syncCtaSlotFields(1);
+    syncCtaSlotFields(2);
   }
 
   function updatePreview(post) {
@@ -274,21 +376,24 @@
     }
   }
 
-  async function searchProduct() {
-    const q = document.getElementById('sc-product-search')?.value || '';
-    const box = document.getElementById('sc-product-results');
+  async function searchProduct(slot) {
+    const sfx = slot === 2 ? '-2' : '';
+    const q = document.getElementById(`sc-product-search${sfx}`)?.value || '';
+    const box = document.getElementById(`sc-product-results${sfx}`);
     if (!box) return;
     try {
       const rows = await Api().searchProducts(q);
-      _productHits = rows;
+      if (slot === 2) _productHits2 = rows;
+      else _productHits = rows;
       if (!rows.length) {
         box.innerHTML = '<div style="font-size:11px;color:var(--text2)">Sin resultados</div>';
         return;
       }
+      const pickFn = slot === 2 ? 'scPickProduct2' : 'scPickProduct';
       box.innerHTML = rows
         .map(
           (p) =>
-            `<button type="button" class="btn btn-secondary btn-sm" style="margin:2px" onclick="scPickProduct('${p.id}')">${esc(p.ref)} — ${esc(p.name)}</button>`,
+            `<button type="button" class="btn btn-secondary btn-sm" style="margin:2px" onclick="${pickFn}('${p.id}')">${esc(p.ref)} — ${esc(p.name)}</button>`,
         )
         .join('');
     } catch (e) {
@@ -338,24 +443,57 @@
             <label class="form-label">Miniatura (obligatoria para video; opcional para texto)</label>
             <input type="file" id="sc-file-thumb" accept="image/*" class="form-input">
           </div>
-          <label class="form-label" style="margin-top:12px">CTA al abrir la publicación</label>
-          <select id="sc-cta-type" class="form-input" onchange="scSyncCta()">
-            <option value="none">Solo ver contenido</option>
-            <option value="catalog">Ir al catálogo</option>
-            <option value="product">Ir a un producto</option>
-            <option value="external">Enlace externo</option>
-          </select>
-          <div id="sc-row-product" style="display:none;margin-top:8px">
-            <label class="form-label">Buscar producto</label>
-            <input id="sc-product-search" class="form-input" placeholder="Ref o nombre" oninput="scSearchProduct()">
-            <input type="hidden" id="sc-product-id">
-            <input type="hidden" id="sc-product-ref">
-            <div id="sc-product-results" style="margin-top:6px"></div>
+          <div id="sc-row-link" style="display:none;margin-top:8px">
+            <label class="form-label">URL del enlace destacado</label>
+            <input id="sc-link-url" class="form-input" placeholder="https://instagram.com/...">
           </div>
-          <div id="sc-row-external" style="margin-top:8px">
-            <label class="form-label">URL externa</label>
-            <input id="sc-external-link" class="form-input" placeholder="https://instagram.com/...">
+
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <label class="form-label">CTA 1 al abrir la publicación</label>
+            <select id="sc-cta-type" class="form-input" onchange="scSyncCta()">
+              ${ctaOptionHtml('catalog')}
+            </select>
+            <div id="sc-row-product" style="display:none;margin-top:8px">
+              <label class="form-label">Buscar producto (CTA 1)</label>
+              <input id="sc-product-search" class="form-input" placeholder="Ref o nombre" oninput="scSearchProduct()">
+              <input type="hidden" id="sc-product-id">
+              <input type="hidden" id="sc-product-ref">
+              <div id="sc-product-results" style="margin-top:6px"></div>
+            </div>
+            <div id="sc-row-external" style="display:none;margin-top:8px">
+              <label class="form-label">URL externa (CTA 1)</label>
+              <input id="sc-external-link" class="form-input" placeholder="https://...">
+            </div>
+            <div id="sc-row-whatsapp" style="display:none;margin-top:8px">
+              <label class="form-label">WhatsApp (CTA 1)</label>
+              <input id="sc-whatsapp" class="form-input" inputmode="tel" placeholder="Ej: ${DEFAULT_WA}">
+              <p style="font-size:11px;color:var(--text2);margin:4px 0 0">Solo dígitos con código de país (57 para Colombia).</p>
+            </div>
           </div>
+
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <label class="form-label">CTA 2 (opcional)</label>
+            <select id="sc-cta-type-2" class="form-input" onchange="scSyncCta()">
+              ${ctaOptionHtml('none')}
+            </select>
+            <div id="sc-row-product-2" style="display:none;margin-top:8px">
+              <label class="form-label">Buscar producto (CTA 2)</label>
+              <input id="sc-product-search-2" class="form-input" placeholder="Ref o nombre" oninput="scSearchProduct2()">
+              <input type="hidden" id="sc-product-id-2">
+              <input type="hidden" id="sc-product-ref-2">
+              <div id="sc-product-results-2" style="margin-top:6px"></div>
+            </div>
+            <div id="sc-row-external-2" style="display:none;margin-top:8px">
+              <label class="form-label">URL externa (CTA 2)</label>
+              <input id="sc-external-link-2" class="form-input" placeholder="https://...">
+            </div>
+            <div id="sc-row-whatsapp-2" style="display:none;margin-top:8px">
+              <label class="form-label">WhatsApp (CTA 2)</label>
+              <input id="sc-whatsapp-2" class="form-input" inputmode="tel" placeholder="Ej: ${DEFAULT_WA}">
+              <p style="font-size:11px;color:var(--text2);margin:4px 0 0">Puede ser otra línea distinta a la del CTA 1.</p>
+            </div>
+          </div>
+
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
             <button type="button" class="btn btn-secondary" onclick="scSaveDraft()">Guardar borrador</button>
             <button type="button" class="btn btn-secondary" onclick="scPublishOnly()">Publicar sin push</button>
@@ -396,6 +534,16 @@
     renderList();
   }
 
+  function pickProduct(slot, id) {
+    const sfx = slot === 2 ? '-2' : '';
+    const hits = slot === 2 ? _productHits2 : _productHits;
+    const p = hits.find((x) => x.id === id);
+    document.getElementById(`sc-product-id${sfx}`).value = id;
+    document.getElementById(`sc-product-ref${sfx}`).value = p?.ref || '';
+    document.getElementById(`sc-product-results${sfx}`).innerHTML =
+      `<span style="font-size:11px">Seleccionado: ${esc(p?.ref || id)}</span>`;
+  }
+
   global.scSyncMedia = syncMediaFields;
   global.scSyncCta = syncCtaFields;
   global.scSaveDraft = saveDraft;
@@ -403,13 +551,10 @@
   global.scPublishPush = publishAndPush;
   global.scNewPost = newPost;
   global.scEditPost = (id) => loadPost(id);
-  global.scSearchProduct = searchProduct;
-  global.scPickProduct = (id) => {
-    const p = _productHits.find((x) => x.id === id);
-    document.getElementById('sc-product-id').value = id;
-    document.getElementById('sc-product-ref').value = p?.ref || '';
-    document.getElementById('sc-product-results').innerHTML = `<span style="font-size:11px">Seleccionado: ${esc(p?.ref || id)}</span>`;
-  };
+  global.scSearchProduct = () => searchProduct(1);
+  global.scSearchProduct2 = () => searchProduct(2);
+  global.scPickProduct = (id) => pickProduct(1, id);
+  global.scPickProduct2 = (id) => pickProduct(2, id);
 
   global.AppSocialContentModule = { renderSocialContenido };
 })(window);
