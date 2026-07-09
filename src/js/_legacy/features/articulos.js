@@ -517,8 +517,6 @@ async function saveArticulo(existingId) {
               },
               images: (window._galeriaModificada || !existingId) ? _tempGaleria : (artLocal.images || _tempGaleria),
               notifyHints,
-              notifyTitle: 'Nueva Colección 🌊',
-              notifyBody: `"${productData.name}" ya está disponible en el catálogo.`,
               notifyImage: ((window._galeriaModificada || !existingId) ? (_tempGaleria[_portadaIndex] || _tempGaleria[0] || '') : (artLocal.imagen || '')),
             });
             if (!res?.ok) {

@@ -12,8 +12,8 @@ SELECT
   p.ref,
   'media_added',
   'pending',
-  'Nueva Colección 🌊',
-  format('"%s" ya está disponible en el catálogo.', coalesce(p.name, p.ref)),
+  '🔥 Nuevo en Hera — ¡te lo vas a querer!',
+  format('%s acaba de llegar. Es de esos que se agotan rápido… ¿lo ves antes que se acabe?', coalesce(p.name, p.ref)),
   'https://eonclothingonline.com/mayoristas/',
   jsonb_build_object('replay', true, 'replay_date', '2026-07-07', 'product_ref', p.ref),
   0, 0, 0

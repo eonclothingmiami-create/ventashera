@@ -77,36 +77,56 @@ function windowBounds(iso: string, windowMinutes: number): { start: Date; end: D
   return { start, end, key };
 }
 
-function defaultTitle(type: string): string {
-  switch (type) {
-    case "product_created":
-      return "Nueva referencia en Hera";
+function detailLabel(name: string, ref: string): string {
+  const n = String(name || "").trim();
+  const r = String(ref || "").trim();
+  if (n) return n;
+  return r || "este modelo";
+}
+
+function salesPushCopy(
+  eventType: string,
+  name: string,
+  ref: string,
+): { title: string; body: string } {
+  const label = detailLabel(name, ref);
+  switch (eventType) {
     case "price_changed":
-      return "Precio actualizado";
+      return {
+        title: "💝 Oferta por tiempo limitado",
+        body: `${label} con precio especial. Llévalo hoy y ahorra antes de que vuelva a subir.`,
+      };
     case "media_added":
-      return "Nuevas fotos en el catálogo";
+      return {
+        title: "✨ Así te vas a ver increíble",
+        body: `Nuevas fotos de ${label} — míralo, enamórate y pide el tuyo antes que se agote.`,
+      };
     case "product_updated":
-      return "Producto actualizado";
+      return {
+        title: "⚡ ¡Volvió! Corre por el tuyo",
+        body: `${label} está disponible otra vez. Unidades limitadas — si lo dejas pasar, te arrepientes.`,
+      };
+    case "product_created":
     default:
-      return "Novedades en Hera Swimwear";
+      return {
+        title: "🔥 Nuevo en Hera — ¡te lo vas a querer!",
+        body: `${label} acaba de llegar. Es de esos que se agotan rápido… ¿lo ves antes que se acabe?`,
+      };
   }
+}
+
+function defaultTitle(type: string): string {
+  return salesPushCopy(type, "", "").title;
 }
 
 function defaultBody(ev: PushEvent): string {
   const ref = ev.product_ref || (ev.payload?.product_ref as string) || "";
-  const name = (ev.payload?.product_name as string) || ref || "una referencia";
-  switch (ev.event_type) {
-    case "product_created":
-      return ref ? `"${name}" (${ref}) ya está en el catálogo.` : `"${name}" ya está en el catálogo.`;
-    case "price_changed":
-      return ref ? `Precio ajustado en ${ref}.` : `Precio ajustado en ${name}.`;
-    case "media_added":
-      return ref ? `Nuevas fotos en ${ref}.` : `Nuevas fotos en ${name}.`;
-    case "product_updated":
-      return ref ? `Actualización en ${ref}.` : `Actualización en ${name}.`;
-    default:
-      return `Cambio en ${name}.`;
-  }
+  const name =
+    (ev.payload?.product_name as string) ||
+    (ev.payload?.product as { name?: string })?.name ||
+    ref ||
+    "esta referencia";
+  return salesPushCopy(ev.event_type, name, ref).body;
 }
 
 function eventMessage(ev: PushEvent, baseUrl: string): { title: string; body: string; link: string } {
@@ -146,15 +166,15 @@ function buildDigestBody(events: PushEvent[]): string {
 
   const total = refs.size > 0 ? refs.size : events.length;
   const parts: string[] = [];
-  if (created > 0) parts.push(`${created} nueva${created === 1 ? "" : "s"}`);
-  if (price > 0) parts.push(`${price} con precio ajustado`);
-  if (media > 0) parts.push(`${media} con nuevas fotos`);
-  if (updated > 0) parts.push(`${updated} actualizada${updated === 1 ? "" : "s"}`);
+  if (created > 0) parts.push(`✨ ${created} novedad${created === 1 ? "" : "es"}`);
+  if (price > 0) parts.push(`💝 ${price} en oferta`);
+  if (media > 0) parts.push(`📸 ${media} look${media === 1 ? "" : "s"} renovado${media === 1 ? "" : "s"}`);
+  if (updated > 0) parts.push(`⚡ ${updated} de vuelta en stock`);
 
   if (parts.length === 0) {
-    return `Se actualizaron ${total} referencia${total === 1 ? "" : "s"} en el catálogo.`;
+    return `${total} novedad${total === 1 ? "" : "es"} esperándote en Hera. Entra ya y encuentra tu próximo favorito.`;
   }
-  return `Se actualizaron ${total} referencia${total === 1 ? "" : "s"}: ${parts.join(", ")}.`;
+  return `${total} razones para entrar hoy: ${parts.join(" · ")}. Tu próximo favorito puede estar aquí — no te lo pierdas.`;
 }
 
 async function loadSettings(supabase: ReturnType<typeof createClient>): Promise<DigestSettings> {
@@ -332,7 +352,7 @@ Deno.serve(async (req) => {
       }
 
       const batchId = crypto.randomUUID();
-      const title = "Novedades en Hera Swimwear";
+      const title = "🛍️ Novedades de hoy en Hera";
       const body = buildDigestBody(group);
       const link = settings.catalog_base_url;
 

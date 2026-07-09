@@ -5623,8 +5623,6 @@ async function saveArticulo(existingId, options) {
                 ? window.ProductColorMedia.collectColorCoversForSync()
                 : [],
               notifyHints,
-              notifyTitle: 'Nueva Colección 🌊',
-              notifyBody: `"${nombre}" ya está disponible en el catálogo.`,
               notifyImage: imagesForPublish[_portadaIndex] || imagesForPublish[0] || '',
             });
             if (!res?.ok) {

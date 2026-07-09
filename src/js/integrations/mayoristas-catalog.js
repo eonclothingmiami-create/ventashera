@@ -56,7 +56,16 @@
     return out;
   }
 
-  function b64url(bytes) {
+  function defaultProductCreatedCopy(name, ref) {
+    const n = String(name || '').trim();
+    const r = String(ref || '').trim();
+    const label = n || r || 'este modelo';
+    return {
+      title: '🔥 Nuevo en Hera — ¡te lo vas a querer!',
+      body: `${label} acaba de llegar. Es de esos que se agotan rápido… ¿lo ves antes que se acabe?`,
+    };
+  }
+
     const bin = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
     return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   }
@@ -164,8 +173,9 @@
     if (!access) return { ok: false, error: 'missing_session' };
 
     const link = withPushUtm(notifyLink || catalogBaseUrl(), eventId);
-    const title = notifyTitle || 'Nueva Colección 🌊';
-    const body = notifyBody || `"${p.name || p.ref || 'Producto'}" ya está disponible en el catálogo.`;
+    const sales = defaultProductCreatedCopy(p.name, p.ref);
+    const title = notifyTitle || sales.title;
+    const body = notifyBody || sales.body;
     const clientNotify = shouldNotifyFromHints(hints, p.visible);
 
     console.log(

@@ -18,6 +18,44 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
+function detailLabel(name: string, ref: string): string {
+  const n = String(name || "").trim();
+  const r = String(ref || "").trim();
+  if (n) return n;
+  return r || "este modelo";
+}
+
+function salesPushCopy(
+  eventType: string,
+  name: string,
+  ref: string,
+): { title: string; body: string } {
+  const label = detailLabel(name, ref);
+  switch (eventType) {
+    case "price_changed":
+      return {
+        title: "💝 Oferta por tiempo limitado",
+        body: `${label} con precio especial. Llévalo hoy y ahorra antes de que vuelva a subir.`,
+      };
+    case "media_added":
+      return {
+        title: "✨ Así te vas a ver increíble",
+        body: `Nuevas fotos de ${label} — míralo, enamórate y pide el tuyo antes que se agote.`,
+      };
+    case "product_updated":
+      return {
+        title: "⚡ ¡Volvió! Corre por el tuyo",
+        body: `${label} está disponible otra vez. Unidades limitadas — si lo dejas pasar, te arrepientes.`,
+      };
+    case "product_created":
+    default:
+      return {
+        title: "🔥 Nuevo en Hera — ¡te lo vas a querer!",
+        body: `${label} acaba de llegar. Es de esos que se agotan rápido… ¿lo ves antes que se acabe?`,
+      };
+  }
+}
+
 type ProductIn = {
   id: string;
   ref?: string | null;
@@ -342,10 +380,13 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!existingEvent || existingEvent.status === "error") {
-        const title = String(body?.notify_title || "Nueva Colección 🌊").slice(0, 200);
-        const notifyBody = String(
-          body?.notify_body || `"${nextRow.name || nextRow.ref || "Producto"}" ya está en el catálogo.`,
-        ).slice(0, 500);
+        const sales = salesPushCopy(
+          pushEventType,
+          String(nextRow.name || ""),
+          String(nextRow.ref || ""),
+        );
+        const title = sales.title.slice(0, 200);
+        const notifyBody = sales.body.slice(0, 500);
         const link = String(body?.notify_link || "").trim() || null;
 
         const row = {
