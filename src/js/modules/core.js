@@ -4843,6 +4843,7 @@ function openArticuloModal(id){
             const artInState = state.articulos.find(a=>a.id===art.id);
             if(artInState) { artInState.images = _tempGaleria; artInState.imagen = _tempGaleria[0]||''; }
             renderGaleriaVisual();
+            if (window.ProductColorMedia) window.ProductColorMedia.onGalleryChanged();
           }
         }).catch(()=>{});
     }

@@ -12,6 +12,19 @@
     return DEFAULT_CATALOG_URL;
   }
 
+  function withPushUtm(link, campaignId) {
+    const base = catalogBaseUrl();
+    try {
+      const u = new URL(String(link || '').trim() || base, base);
+      u.searchParams.set('utm_source', 'push');
+      u.searchParams.set('utm_medium', 'fcm');
+      if (campaignId) u.searchParams.set('utm_campaign', String(campaignId));
+      return u.toString();
+    } catch (_) {
+      return base;
+    }
+  }
+
   function endpointOrDefault(key, fnName) {
     const v = (global[key] || '').trim();
     if (v) return v;
@@ -157,7 +170,7 @@
     const access = await getAccessToken();
     if (!access) return { ok: false, error: 'missing_session' };
 
-    const link = notifyLink || catalogBaseUrl();
+    const link = withPushUtm(notifyLink || catalogBaseUrl(), eventId);
     const title = notifyTitle || 'Nueva Colección 🌊';
     const body = notifyBody || `"${p.name || p.ref || 'Producto'}" ya está disponible en el catálogo.`;
     const clientNotify = shouldNotifyFromHints(hints, p.visible);
