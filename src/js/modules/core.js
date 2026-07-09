@@ -17,10 +17,12 @@ var supabaseClient = window.AppRepository?.supabaseClient;
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
     if (window.AppRepository) window.AppRepository.supabaseClient = supabaseClient;
+    window.supabaseClient = supabaseClient;
   } catch(e) {
     console.error('Supabase init error:', e);
   }
 })();
+if (supabaseClient && !window.supabaseClient) window.supabaseClient = supabaseClient;
 
 // Variables de control
 let isFirstLoad = true;
@@ -1845,28 +1847,40 @@ function getArticuloStock(artId, bodegaId) {
 
 
 // Carga paginada usando REST directo (evita DataCloneError del SDK)
-async function fetchAllRows(table, select = '*') {
+async function erpRestFetch(url) {
+  if (window.AppRepository?.fetchWithAuth) {
+    return window.AppRepository.fetchWithAuth(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   let bearer = SUPABASE_ANON_KEY;
   try {
-    if (supabaseClient?.auth?.getSession) {
+    if (window.AuthSession?.getAuthBearer && supabaseClient) {
+      bearer = await window.AuthSession.getAuthBearer(supabaseClient, SUPABASE_ANON_KEY);
+    } else if (supabaseClient?.auth?.getSession) {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session?.access_token) bearer = session.access_token;
     }
   } catch (_) { /* noop */ }
+  return fetch(url, {
+    method: 'GET',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${bearer}`,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+async function fetchAllRows(table, select = '*') {
   const PAGE = 1000;
   let page = 0;
   let all = [];
   while(true) {
     const from = page * PAGE;
-    const to = (page + 1) * PAGE - 1;
     const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&limit=${PAGE}&offset=${from}`;
-    const resp = await fetch(url, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${bearer}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    const resp = await erpRestFetch(url);
     if(!resp.ok) {
       const errText = await resp.text();
       throw new Error(`[${table}] ${resp.status}: ${errText}`);
@@ -1882,33 +1896,15 @@ async function fetchAllRows(table, select = '*') {
 
 /** Igual que fetchAllRows pero con filtros PostgREST (misma sesión JWT que tes_movimientos — alinea con RLS). */
 async function fetchAllRowsFiltered(table, select, filterQuery) {
-  let bearer = SUPABASE_ANON_KEY;
-  try {
-    if (supabaseClient?.auth?.getSession) {
-      const { data: { session } } = await supabaseClient.auth.getSession();
-      if (session?.access_token) bearer = session.access_token;
-    }
-  } catch (_) {
-    /* noop */
-  }
   const PAGE = 1000;
   let page = 0;
   let all = [];
   const fq = String(filterQuery || '').replace(/^&/, '');
   while (true) {
     const from = page * PAGE;
-    const q =
-      `?select=${encodeURIComponent(select)}` +
-      (fq ? `&${fq}` : '') +
-      `&limit=${PAGE}&offset=${from}`;
-    const url = `${SUPABASE_URL}/rest/v1/${table}${q}`;
-    const resp = await fetch(url, {
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${bearer}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const base = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`;
+    const url = fq ? `${base}&${fq}&limit=${PAGE}&offset=${from}` : `${base}&limit=${PAGE}&offset=${from}`;
+    const resp = await erpRestFetch(url);
     if (!resp.ok) {
       const errText = await resp.text();
       throw new Error(`[${table}] ${resp.status}: ${errText}`);
@@ -3152,6 +3148,10 @@ async function loadState() {
     _sbConnected = false;
     ['fb-status-dot','fb-status-dot-mobile'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.background='#f87171';el.title='Sin conexión: '+errMsg;}});
     showLoadingOverlay('hide');
+    if (window.AuthSession?.isAuthErrorMessage?.(errMsg)) {
+      erpForceReauth('load_state');
+      return;
+    }
     renderAll();
     notify('warning','📡','Error BD',errMsg,{duration:8000});
   }
@@ -9623,6 +9623,76 @@ let _erpSessionBootstrapped = false;
 /** True mientras el usuario debe definir contraseña nueva (enlace “Olvidé mi contraseña”). */
 let _erpRecoveryPending = false;
 
+const ERP_REAUTH_MESSAGES = {
+  load_state: 'Tu sesión expiró. Inicia sesión de nuevo para continuar.',
+  refresh_failed: 'No se pudo renovar la sesión. Inicia sesión o limpia la sesión guardada.',
+  proactive_refresh_failed: 'La sesión dejó de ser válida. Vuelve a iniciar sesión.',
+  http_401: 'Acceso denegado (sesión expirada). Inicia sesión de nuevo.',
+  http_403: 'No tienes permiso o la sesión ya no es válida.',
+  signed_out: 'Sesión cerrada.',
+  cleared: 'Sesión local eliminada. Puedes iniciar sesión de nuevo.',
+  invalid: 'Sesión no válida. Inicia sesión de nuevo.',
+};
+
+function erpAuthSessionMessage(reason) {
+  return ERP_REAUTH_MESSAGES[reason] || ERP_REAUTH_MESSAGES.invalid;
+}
+
+function erpOnAuthSessionReady() {
+  window.AuthSession?.resetInvalidGate?.();
+  window.AuthSession?.scheduleProactiveRefresh?.(supabaseClient);
+}
+
+function erpOnAuthSessionEnded() {
+  window.AuthSession?.stopProactiveRefresh?.();
+}
+
+/** Muestra overlay de login sin recargar la página (evita bucles). */
+function erpForceReauth(reason) {
+  if (_erpRecoveryPending) return;
+  _erpSessionBootstrapped = false;
+  _sbConnected = false;
+  erpOnAuthSessionEnded();
+  showLoadingOverlay('hide');
+  const rec = document.getElementById('erp-recovery-overlay');
+  if (rec) rec.style.display = 'none';
+  const overlay = document.getElementById('erp-login-overlay');
+  const loginView = document.getElementById('erp-login-view');
+  const forgotView = document.getElementById('erp-forgot-view');
+  const errEl = document.getElementById('erp-login-error');
+  if (loginView) loginView.style.display = 'block';
+  if (forgotView) forgotView.style.display = 'none';
+  if (overlay) overlay.style.display = 'flex';
+  if (errEl) {
+    errEl.textContent = erpAuthSessionMessage(reason);
+    errEl.style.display = 'block';
+  }
+  ['fb-status-dot', 'fb-status-dot-mobile'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.background = '#f87171';
+      el.title = 'Sesión expirada';
+    }
+  });
+}
+
+async function erpClearLocalSession() {
+  _erpSessionBootstrapped = false;
+  _sbConnected = false;
+  erpOnAuthSessionEnded();
+  try {
+    await supabaseClient.auth.signOut({ scope: 'local' });
+  } catch (e) {
+    console.warn('[ERP] signOut local:', e);
+  }
+  const email = document.getElementById('erp-login-email');
+  const pass = document.getElementById('erp-login-password');
+  if (email) email.value = '';
+  if (pass) pass.value = '';
+  erpForceReauth('cleared');
+}
+window.erpClearLocalSession = erpClearLocalSession;
+
 function erpShowRecoveryUi() {
   _erpRecoveryPending = true;
   const rec = document.getElementById('erp-recovery-overlay');
@@ -9649,17 +9719,21 @@ async function erpFinishRecoveryAndLoad() {
   if (overlay) overlay.style.display = 'none';
   if (!_erpSessionBootstrapped) {
     _erpSessionBootstrapped = true;
+    erpOnAuthSessionReady();
     await loadState();
   }
 }
 
 async function erpSignOut() {
+  _erpSessionBootstrapped = false;
+  _sbConnected = false;
+  erpOnAuthSessionEnded();
   try {
-    await supabaseClient.auth.signOut();
+    await supabaseClient.auth.signOut({ scope: 'local' });
   } catch (e) {
     console.error(e);
   }
-  location.reload();
+  erpForceReauth('signed_out');
 }
 window.erpSignOut = erpSignOut;
 
@@ -9709,6 +9783,14 @@ window.onload = async () => {
   const recoveryForm = document.getElementById('erp-recovery-form');
   const recoveryErr = document.getElementById('erp-recovery-error');
   const recoverySubmit = document.getElementById('erp-recovery-submit');
+
+  window.AuthSession?.setOnSessionInvalid?.((reason) => {
+    if (!_erpRecoveryPending) erpForceReauth(reason);
+  });
+
+  document.getElementById('erp-clear-session')?.addEventListener('click', () => {
+    erpClearLocalSession();
+  });
 
   try {
     if (window.__HERA_RECOVERY_PENDING === true) _erpRecoveryPending = true;
@@ -9787,8 +9869,12 @@ window.onload = async () => {
   }
 
   supabaseClient.auth.onAuthStateChange(async (event, sess) => {
-    if (event === 'SIGNED_OUT') {
-      location.reload();
+    if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESH_FAILED') {
+      if (!_erpRecoveryPending) erpForceReauth(event === 'SIGNED_OUT' ? 'signed_out' : 'refresh_failed');
+      return;
+    }
+    if (event === 'TOKEN_REFRESHED' && sess) {
+      window.AuthSession?.resetInvalidGate?.();
       return;
     }
     if (event === 'PASSWORD_RECOVERY') {
@@ -9807,6 +9893,7 @@ window.onload = async () => {
       if (!_erpSessionBootstrapped && !_erpRecoveryPending) {
         _erpSessionBootstrapped = true;
         if (overlay) overlay.style.display = 'none';
+        erpOnAuthSessionReady();
         await loadState();
       }
     }
@@ -9871,6 +9958,7 @@ window.onload = async () => {
       if (overlay) overlay.style.display = 'none';
       if (!_erpSessionBootstrapped) {
         _erpSessionBootstrapped = true;
+        erpOnAuthSessionReady();
         await loadState();
       }
     });
@@ -9898,6 +9986,7 @@ window.onload = async () => {
   if (session) {
     if (overlay) overlay.style.display = 'none';
     _erpSessionBootstrapped = true;
+    erpOnAuthSessionReady();
     await loadState();
   } else {
     if (overlay) overlay.style.display = 'flex';

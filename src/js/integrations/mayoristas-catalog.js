@@ -117,8 +117,12 @@
   }
 
   async function getAccessToken() {
-    if (!global.supabaseClient?.auth?.getSession) return '';
-    const { data } = await global.supabaseClient.auth.getSession();
+    const client = global.supabaseClient || global.AppRepository?.supabaseClient;
+    if (global.AuthSession?.getValidAccessToken && client) {
+      return (await global.AuthSession.getValidAccessToken(client)) || '';
+    }
+    if (!client?.auth?.getSession) return '';
+    const { data } = await client.auth.getSession();
     return data?.session?.access_token || '';
   }
 

@@ -60,7 +60,8 @@
  <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./src/styles/main.css?v=20260503invcombo">
 
-<script defer src="./src/js/modules/app/repository.js?v=20260328qtynorm"></script>
+<script defer src="./src/js/modules/app/auth-session.js?v=20260709authsess1"></script>
+<script defer src="./src/js/modules/app/repository.js?v=20260709authsess1"></script>
 <script defer src="./src/js/integrations/mercadolibre.js?v=2"></script>
 <script defer src="./src/js/integrations/meta-commerce.js?v=1"></script>
 <script defer src="./src/js/integrations/google-merchant.js?v=2"></script>
@@ -96,7 +97,7 @@
 <script defer src="./src/js/modules/app/sync-guard.js?v=20260327antids1"></script>
 <script defer src="./src/js/modules/app/falabella-maquetador.js?v=20260327falmoda1"></script>
 <script defer src="./src/js/modules/app/product-color-media.js?v=20260709colcov4"></script>
-<script defer src="./src/js/modules/core.js?v=20260709colcov4"></script>
+<script defer src="./src/js/modules/core.js?v=20260709authsess1"></script>
 <script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
 
 </head>
@@ -131,6 +132,9 @@
       </form>
       <p style="margin-top:14px;text-align:center">
         <button type="button" class="erp-forgot-link" id="erp-forgot-show">¿Olvidaste tu contraseña?</button>
+      </p>
+      <p style="margin-top:10px;text-align:center">
+        <button type="button" class="erp-forgot-link" id="erp-clear-session" title="Útil si la sesión quedó corrupta o el sistema no responde">Limpiar sesión guardada</button>
       </p>
     </div>
     <div id="erp-forgot-view" style="display:none">

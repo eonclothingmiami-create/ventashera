@@ -3,6 +3,8 @@
   const SUPABASE_URL = 'https://niilaxdeetuzutycvdkz.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5paWxheGRlZXR1enV0eWN2ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNjc0NjIsImV4cCI6MjA4ODk0MzQ2Mn0.GI8E7vRzxi5NumN_f4T432Lx4BcmgGLZo81BR9h3h8c';
 
+  const auth = global.AuthSession;
+
   let supabaseClient = null;
   try {
     if (global.supabase && typeof global.supabase.createClient === 'function') {
@@ -10,9 +12,10 @@
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true
-        }
+          detectSessionInUrl: true,
+        },
       });
+      global.supabaseClient = supabaseClient;
     }
   } catch (e) {
     console.error('Supabase init error:', e);
@@ -21,7 +24,9 @@
   async function restHeaders() {
     let token = SUPABASE_ANON_KEY;
     try {
-      if (supabaseClient && typeof supabaseClient.auth?.getSession === 'function') {
+      if (auth?.getAuthBearer && supabaseClient) {
+        token = await auth.getAuthBearer(supabaseClient, SUPABASE_ANON_KEY);
+      } else if (supabaseClient?.auth?.getSession) {
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session?.access_token) token = session.access_token;
       }
@@ -32,19 +37,21 @@
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=representation'
+      Prefer: 'return=representation',
     };
   }
 
   /**
    * Cabeceras para invocar Edge Functions (fetch directo).
-   * Usa JWT de sesión si hay usuario logueado; si el gateway devuelve 401, el cliente puede reintentar solo con anon.
+   * Usa JWT de sesión renovado si hay usuario logueado.
    */
   async function getSupabaseEdgeHeaders() {
     const apikey = SUPABASE_ANON_KEY;
     let bearer = apikey;
     try {
-      if (supabaseClient && typeof supabaseClient.auth?.getSession === 'function') {
+      if (auth?.getAuthBearer && supabaseClient) {
+        bearer = await auth.getAuthBearer(supabaseClient, SUPABASE_ANON_KEY);
+      } else if (supabaseClient?.auth?.getSession) {
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session?.access_token) bearer = session.access_token;
       }
@@ -58,10 +65,20 @@
     };
   }
 
+  async function fetchWithAuth(url, init) {
+    if (auth?.fetchWithAuth && supabaseClient) {
+      return auth.fetchWithAuth(supabaseClient, SUPABASE_ANON_KEY, url, init || {});
+    }
+    const headers = await restHeaders();
+    return fetch(url, {
+      ...(init || {}),
+      headers: { ...headers, ...((init && init.headers) || {}) },
+    });
+  }
+
   async function supabaseCall(method, table, data = null, id = null, filters = null) {
     try {
       let url = `${SUPABASE_URL}/rest/v1/${table}`;
-      const headers = await restHeaders();
 
       if (method === 'GET') {
         if (id) url += `?id=eq.${id}`;
@@ -69,13 +86,17 @@
           const filterStr = Object.entries(filters).map(([k, v]) => `${k}=eq.${v}`).join('&');
           url += `?${filterStr}`;
         }
-        const resp = await fetch(url, { method: 'GET', headers });
+        const resp = await fetchWithAuth(url, { method: 'GET' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.json();
       }
 
       if (method === 'POST') {
-        const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(data) });
+        const resp = await fetchWithAuth(url, {
+          method: 'POST',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify(data),
+        });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.json();
       }
@@ -83,7 +104,11 @@
       if (method === 'PATCH') {
         if (!id) throw new Error('ID required for PATCH');
         url += `?id=eq.${id}`;
-        const resp = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(data) });
+        const resp = await fetchWithAuth(url, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify(data),
+        });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.json();
       }
@@ -91,7 +116,7 @@
       if (method === 'DELETE') {
         if (!id) throw new Error('ID required for DELETE');
         url += `?id=eq.${id}`;
-        const resp = await fetch(url, { method: 'DELETE', headers });
+        const resp = await fetchWithAuth(url, { method: 'DELETE' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return { success: true };
       }
@@ -109,6 +134,11 @@
     supabaseClient,
     supabaseCall,
     getSupabaseEdgeHeaders,
+    fetchWithAuth,
+    getValidAccessToken: (opts) =>
+      auth?.getValidAccessToken
+        ? auth.getValidAccessToken(supabaseClient, opts)
+        : Promise.resolve(null),
   };
 
   /**
