@@ -4948,8 +4948,9 @@ function openArticuloModal(id){
 
             <div class="form-row">
                 <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas || (art ? '' : 'S, M, L, XL')}"></div>
-                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art ? (art.colores||art.colors?.join(', ')||'') : ''}"></div>
+                <div class="form-group"><label class="form-label">COLORES</label><input class="form-control" id="m-art-colores" value="${art ? (art.colores||art.colors?.join(', ')||'') : ''}" oninput="ProductColorMedia&&ProductColorMedia.onColorsInputChanged()"></div>
             </div>
+            <div id="m-art-color-covers-wrap" style="display:none;margin-bottom:16px;"></div>
 
             <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
                     <select class="form-control" id="m-art-titulo-mercancia">
@@ -5075,6 +5076,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
   }, 10);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
+    if (window.ProductColorMedia) window.ProductColorMedia.initForModal(art?.id || null);
 }
 
 function removeMainImg(){
@@ -5096,6 +5098,7 @@ function renderGaleriaVisual(){
                 <div style="position:absolute; bottom:2px; left:2px; background:${idx === _portadaIndex ? 'var(--accent)' : 'rgba(0,0,0,0.5)'}; color:#000; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:10px;">⭐</div>
             </div>`;
     }).join('');
+    if (window.ProductColorMedia) window.ProductColorMedia.onGalleryChanged();
 }
 
 function actualizarCatsERP(selectedCat){
@@ -5276,6 +5279,25 @@ async function saveArticulo(existingId, options) {
 
     const productId = productData.id;
 
+    const prevArtForNotify = existingId
+      ? (state.articulos || []).find((a) => a.id === existingId)
+      : null;
+    const isNewProduct = !existingId;
+    const notifyHints = {
+      is_new: isNewProduct,
+      media_changed: isNewProduct || !!window._galeriaModificada,
+      color_covers_changed: isNewProduct || !!window._colorCoversModificada,
+      price_changed: prevArtForNotify
+        ? Number(prevArtForNotify.price ?? prevArtForNotify.precioVenta ?? 0) !== productData.price
+        : isNewProduct,
+      stock_changed: prevArtForNotify
+        ? Number(prevArtForNotify.stock ?? 0) !== productData.stock
+        : productData.stock > 0,
+      visible_changed: prevArtForNotify
+        ? normalizeVisibleFlag(prevArtForNotify.mostrarEnWeb) !== catalogVisibleBool
+        : catalogVisibleBool,
+    };
+
     try {
         showLoadingOverlay('connecting');
         
@@ -5417,6 +5439,12 @@ async function saveArticulo(existingId, options) {
           }
         }
 
+        if (window._colorCoversModificada || !existingId) {
+          if (window.ProductColorMedia) {
+            await window.ProductColorMedia.persist(productId, coloresStr);
+          }
+        }
+
         if (opts.draftOnly) {
           window.__suppressFalabellaSyncThisSave = true;
         } else if (
@@ -5541,10 +5569,51 @@ async function saveArticulo(existingId, options) {
         if(artIdx >= 0) state.articulos[artIdx] = artLocal;
         else state.articulos.push(artLocal);
 
+        let pushNote = '';
+        try {
+          if (catalogVisibleBool && typeof window.mayoristasPublishCatalogProduct === 'function') {
+            const imagesForPublish = (window._galeriaModificada || !existingId)
+              ? _tempGaleria
+              : (artLocal.images || _tempGaleria);
+            const res = await window.mayoristasPublishCatalogProduct({
+              product: {
+                id: productId,
+                ref: refID,
+                name: nombre,
+                description: productData.description,
+                price: productData.price,
+                stock: productData.stock,
+                seccion: productData.seccion,
+                categoria: productData.categoria,
+                visible: !!catalogVisibleBool,
+                active: productData.active !== false,
+                updated_at: productData.updated_at,
+              },
+              images: imagesForPublish,
+              color_covers: window.ProductColorMedia
+                ? window.ProductColorMedia.collectColorCoversForSync()
+                : [],
+              notifyHints,
+              notifyTitle: 'Nueva Colección 🌊',
+              notifyBody: `"${nombre}" ya está disponible en el catálogo.`,
+              notifyImage: imagesForPublish[_portadaIndex] || imagesForPublish[0] || '',
+            });
+            if (!res?.ok) {
+              console.warn('[Mayoristas publish]', res?.error || 'unknown_error', res);
+            } else if (res.push && !res.push.skipped) {
+              const sent = Number(res.push?.sent ?? res.push?.results?.[0]?.fcm?.sent ?? 0);
+              if (sent > 0) pushNote = ` Push FCM: ${sent} enviados.`;
+              else if (res.push.mode === 'dispatch') pushNote = ' Push encolado.';
+            }
+          }
+        } catch (publishErr) {
+          console.warn('[Mayoristas publish] exception:', publishErr?.message || String(publishErr));
+        }
+
         closeModal();
         renderArticulos();
         showLoadingOverlay('hide');
-        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${dropiNote}${rappiNote}${falabellaNote}`);
+        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${dropiNote}${rappiNote}${falabellaNote}${pushNote}`);
 
     } catch(e) {
         showLoadingOverlay('hide');

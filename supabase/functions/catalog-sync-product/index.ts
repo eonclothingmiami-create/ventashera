@@ -49,10 +49,13 @@ type ProductRow = {
 type NotifyHints = {
   is_new?: boolean;
   media_changed?: boolean;
+  color_covers_changed?: boolean;
   price_changed?: boolean;
   stock_changed?: boolean;
   visible_changed?: boolean;
 };
+
+type ColorCoverIn = { color?: string; url?: string };
 
 const RELEVANT_FIELDS = new Set(["price", "stock", "visible", "active"]);
 
@@ -79,6 +82,19 @@ function uniqStrings(xs: unknown): string[] {
     const s = String(v ?? "").trim();
     if (!s) continue;
     if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+function normColorCovers(xs: unknown): Array<{ color: string; url: string }> {
+  const arr = Array.isArray(xs) ? xs : [];
+  const out: Array<{ color: string; url: string }> = [];
+  for (const row of arr) {
+    const color = String((row as ColorCoverIn)?.color ?? "").trim();
+    const url = String((row as ColorCoverIn)?.url ?? "").trim();
+    if (!color || !url) continue;
+    if (out.some((x) => x.color === color)) continue;
+    out.push({ color, url });
   }
   return out;
 }
@@ -214,6 +230,53 @@ Deno.serve(async (req) => {
       if (insErr) {
         log("sync_fail", { event_id: eventId, product_id: productId, stage: "media_insert", error: insErr.message });
         return json({ ok: false, error: insErr.message }, 500);
+      }
+    }
+  }
+
+  const colorCovers = normColorCovers(body?.color_covers);
+  let colorCoversChanged = false;
+  if (!colorCovers.length && notifyHints.color_covers_changed) {
+    await supabase.from("product_color_media").delete().eq("product_id", productId);
+    colorCoversChanged = true;
+  } else if (colorCovers.length) {
+    const { data: prevCovers, error: pcErr } = await supabase
+      .from("product_color_media")
+      .select("color_id, url, colors(label)")
+      .eq("product_id", productId);
+    if (pcErr) {
+      log("sync_fail", { event_id: eventId, product_id: productId, stage: "color_covers_fetch", error: pcErr.message });
+      return json({ ok: false, error: pcErr.message }, 500);
+    }
+    const prevMap = new Map<string, string>();
+    for (const row of prevCovers || []) {
+      const label = String((row as { colors?: { label?: string } }).colors?.label || "").trim();
+      const url = String((row as { url?: string }).url || "").trim();
+      if (label) prevMap.set(label, url);
+    }
+    const nextMap = new Map(colorCovers.map((c) => [c.color, c.url]));
+    colorCoversChanged =
+      prevMap.size !== nextMap.size ||
+      [...nextMap.entries()].some(([k, v]) => prevMap.get(k) !== v);
+
+    if (colorCoversChanged || !!notifyHints.color_covers_changed) {
+      await supabase.from("product_color_media").delete().eq("product_id", productId);
+      for (const cover of colorCovers) {
+        const { data: colorRow } = await supabase
+          .from("colors")
+          .select("id")
+          .eq("label", cover.color)
+          .maybeSingle();
+        if (!colorRow?.id) continue;
+        const { error: insCoverErr } = await supabase.from("product_color_media").insert({
+          product_id: productId,
+          color_id: colorRow.id,
+          url: cover.url,
+        });
+        if (insCoverErr) {
+          log("sync_fail", { event_id: eventId, product_id: productId, stage: "color_covers_insert", error: insCoverErr.message });
+          return json({ ok: false, error: insCoverErr.message }, 500);
+        }
       }
     }
   }

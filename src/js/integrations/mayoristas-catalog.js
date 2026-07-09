@@ -30,6 +30,19 @@
     return out;
   }
 
+  function normColorCovers(colorCovers) {
+    if (!Array.isArray(colorCovers)) return [];
+    const out = [];
+    for (const row of colorCovers) {
+      const color = String(row?.color || '').trim();
+      const url = String(row?.url || '').trim();
+      if (!color || !url) continue;
+      if (out.some((x) => x.color === color)) continue;
+      out.push({ color, url });
+    }
+    return out;
+  }
+
   function b64url(bytes) {
     const bin = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
     return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
@@ -41,9 +54,10 @@
     return b64url(bytes).slice(0, 22);
   }
 
-  async function buildEventId(product, hints, images) {
+  async function buildEventId(product, hints, images, colorCovers) {
     const pid = String(product?.id || '').trim();
     const img = normImages(images);
+    const covers = normColorCovers(colorCovers);
     const relevant = {
       price: Number(product?.price ?? 0),
       stock: Number(product?.stock ?? 0),
@@ -51,7 +65,11 @@
       active: product?.active !== false,
       is_new: !!hints?.is_new,
       media_changed: !!hints?.media_changed,
+      color_covers_changed: !!hints?.color_covers_changed,
       image_sig: img.length ? await sha256Base64UrlShort(img.join('|')) : '',
+      color_covers_sig: covers.length
+        ? await sha256Base64UrlShort(covers.map((c) => `${c.color}:${c.url}`).join('|'))
+        : '',
     };
     const versionHash = await sha256Base64UrlShort(JSON.stringify(relevant));
     return `catalog-publish-${pid}-${versionHash}`;
@@ -78,6 +96,7 @@
     return !!(
       hints.is_new ||
       hints.media_changed ||
+      hints.color_covers_changed ||
       hints.price_changed ||
       hints.stock_changed ||
       hints.visible_changed
@@ -119,6 +138,7 @@
   global.mayoristasPublishCatalogProduct = async function ({
     product,
     images,
+    color_covers,
     notifyHints,
     notifyTitle,
     notifyBody,
@@ -131,8 +151,9 @@
 
     const p = pickProductPayload(product);
     const img = normImages(images);
+    const covers = normColorCovers(color_covers);
     const hints = notifyHints || {};
-    const eventId = await buildEventId(p, hints, img);
+    const eventId = await buildEventId(p, hints, img, covers);
     const access = await getAccessToken();
     if (!access) return { ok: false, error: 'missing_session' };
 
@@ -159,6 +180,7 @@
         event_id: eventId,
         product: p,
         images: img,
+        color_covers: covers,
         notify_hints: hints,
         notify_title: title,
         notify_body: body,
