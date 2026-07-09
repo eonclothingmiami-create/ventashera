@@ -261,16 +261,31 @@ Deno.serve(async (req) => {
 
     if (colorCoversChanged || !!notifyHints.color_covers_changed) {
       await supabase.from("product_color_media").delete().eq("product_id", productId);
+      const { data: productColorRows } = await supabase
+        .from("product_colors")
+        .select("color_id, colors(label)")
+        .eq("product_id", productId);
+      const colorIdByLabel = new Map<string, string>();
+      for (const row of productColorRows || []) {
+        const label = String((row as { colors?: { label?: string } }).colors?.label || "").trim();
+        const cid = String((row as { color_id?: string }).color_id || "").trim();
+        if (label && cid) colorIdByLabel.set(label, cid);
+      }
       for (const cover of colorCovers) {
-        const { data: colorRow } = await supabase
-          .from("colors")
-          .select("id")
-          .eq("label", cover.color)
-          .maybeSingle();
-        if (!colorRow?.id) continue;
+        const label = String(cover.color || "").trim();
+        const colorId = colorIdByLabel.get(label);
+        if (!colorId) {
+          log("color_cover_skip", {
+            event_id: eventId,
+            product_id: productId,
+            color: label,
+            reason: "not_in_product_colors",
+          });
+          continue;
+        }
         const { error: insCoverErr } = await supabase.from("product_color_media").insert({
           product_id: productId,
-          color_id: colorRow.id,
+          color_id: colorId,
           url: cover.url,
         });
         if (insCoverErr) {

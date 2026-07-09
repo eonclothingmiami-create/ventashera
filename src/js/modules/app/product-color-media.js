@@ -1,13 +1,19 @@
 /**
  * Mapeo foto portada por color en el maquetador ERP.
+ * Tallas (product_sizes) y colores (product_colors) son independientes;
+ * Woo recibe talla×color como variaciones pero la imagen es por color únicamente.
  */
 (function initProductColorMedia(global) {
   const VIDEO_EXT = /\.(mp4|mov|webm|avi)$/i;
 
+  function normColorLabel(label) {
+    return String(label || '').trim();
+  }
+
   function parseColors(raw) {
     return String(raw || '')
       .split(',')
-      .map((c) => c.trim())
+      .map((c) => normColorLabel(c))
       .filter(Boolean);
   }
 
@@ -124,7 +130,9 @@
     const map = collectCoverMap();
     const out = [];
     Object.keys(map).forEach((color) => {
-      if (map[color]) out.push({ color, url: map[color] });
+      const label = normColorLabel(color);
+      const url = String(map[color] || '').trim();
+      if (label && url) out.push({ color: label, url });
     });
     return out;
   }
@@ -304,9 +312,17 @@
     }
 
     for (const label of colors) {
-      const url = map[label];
+      const url = map[label] ? String(map[label]).trim() : '';
       const colorId = await resolveColorId(label);
       if (!colorId) continue;
+
+      const { data: linked } = await global.supabaseClient
+        .from('product_colors')
+        .select('color_id')
+        .eq('product_id', productId)
+        .eq('color_id', colorId)
+        .maybeSingle();
+      if (!linked) continue;
 
       if (!url) {
         await global.supabaseClient
