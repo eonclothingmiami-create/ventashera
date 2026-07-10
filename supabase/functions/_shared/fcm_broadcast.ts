@@ -74,7 +74,14 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
 export async function broadcastFcm(
   supabaseUrl: string,
   serviceKey: string,
-  opts: { title: string; body: string; link?: string; exclude_token?: string },
+  opts: {
+    title: string;
+    body: string;
+    link?: string;
+    image?: string;
+    exclude_token?: string;
+    data?: Record<string, string>;
+  },
 ): Promise<FcmBroadcastResult> {
   const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
   if (!saRaw) throw new Error("FIREBASE_SERVICE_ACCOUNT not set");
@@ -100,18 +107,35 @@ export async function broadcastFcm(
   const sample_errors: string[] = [];
 
   const link = opts.link || "";
+  const image = opts.image?.trim() || "";
   for (let i = 0; i < tokens.length; i += 25) {
     const chunk = tokens.slice(i, i + 25);
     await Promise.all(
       chunk.map(async (token) => {
+        const notification: Record<string, string> = {
+          title: opts.title,
+          body: opts.body,
+        };
+        const webpushNotification: Record<string, string> = {
+          title: opts.title,
+          body: opts.body,
+        };
+        if (image) {
+          notification.image = image;
+          webpushNotification.image = image;
+        }
+
         const message: Record<string, unknown> = {
           token,
-          notification: { title: opts.title, body: opts.body },
+          notification,
           webpush: {
             fcm_options: { link },
-            notification: { title: opts.title, body: opts.body },
+            notification: webpushNotification,
           },
         };
+        if (opts.data && Object.keys(opts.data).length > 0) {
+          message.data = opts.data;
+        }
         const res = await fetch(
           `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
           {
