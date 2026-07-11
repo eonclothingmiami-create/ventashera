@@ -115,6 +115,55 @@
     ).join('');
   }
 
+  async function reconcileWompiOrders(ctx) {
+    const { notify, renderVentasCatalogo: rerender } = ctx;
+    const endpoint = global.getCatalogOrderStatusEndpoint?.() || '';
+    if (!endpoint) {
+      notify('warning', '🔄', 'Wompi', 'Endpoint catalog-order-status no configurado.', { duration: 4000 });
+      return;
+    }
+    notify('info', '🔄', 'Reconciliando Wompi…', 'Consultando transacciones en pasarela', { duration: 2500 });
+    try {
+      const token = global.AuthSession?.getValidAccessToken
+        ? await global.AuthSession.getValidAccessToken(global.supabaseClient)
+        : (await global.supabaseClient?.auth?.getSession())?.data?.session?.access_token;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const anon = global.AppRepository?.SUPABASE_ANON_KEY;
+      if (anon) headers.apikey = anon;
+      const resRevert = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'revert_auto_abandoned' }),
+      });
+      const revertData = await resRevert.json().catch(() => ({}));
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'reconcile_wompi_batch', limit: 30 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        const reverted = revertData.reverted ?? 0;
+        notify(
+          'success',
+          '✅',
+          'Wompi reconciliado',
+          `${data.paid ?? 0} pago(s) exitoso(s) de ${data.checked ?? 0} revisados` +
+            (reverted ? ` · ${reverted} abandonado(s) revertido(s) a pendiente` : ''),
+          { duration: 5500 },
+        );
+        if (typeof global.refreshCriticalSlice === 'function') await global.refreshCriticalSlice('ventas_catalogo');
+        rerender();
+      } else {
+        notify('warning', '🔄', 'Wompi', data.error || 'Error al reconciliar', { duration: 7000 });
+      }
+    } catch (e) {
+      console.warn('[ventas_catalogo] reconcile_wompi', e);
+      notify('warning', '🔄', 'Wompi', 'Error de red al reconciliar', { duration: 5000 });
+    }
+  }
+
   async function expireStaleOrders(ctx) {
     const { notify, renderVentasCatalogo: rerender } = ctx;
     const endpoint = global.getCatalogOrderStatusEndpoint?.() || '';
@@ -133,7 +182,7 @@
       const res = await fetch(endpoint, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ action: 'expire_stale', hours: 24 }),
+        body: JSON.stringify({ action: 'expire_stale', hours: 168 }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
@@ -364,8 +413,6 @@
     const el = document.getElementById('vcatalog-content');
     if (!el) return;
 
-    void expireStaleOrders(ctx);
-
     const q = (document.getElementById('vcatalog-search')?.value || '').toLowerCase().trim();
     const filtroEstado = document.getElementById('vcatalog-estado')?.value || '';
     const filtroOrigen = document.getElementById('vcatalog-origen')?.value || '';
@@ -470,7 +517,8 @@
         </select>
       </div>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-woo" style="margin-bottom:2px" title="Importar pedidos WooCommerce">🛒 Sync WooCommerce</button>
-      <button type="button" class="btn btn-secondary" id="vcatalog-btn-expire" style="margin-bottom:2px" title="Pendientes &gt;24h → checkout abandonado">⏳ Expirar pendientes</button>
+      <button type="button" class="btn btn-secondary" id="vcatalog-btn-wompi" style="margin-bottom:2px" title="Consultar Wompi por referencia HERA-*">🔄 Reconciliar Wompi</button>
+      <button type="button" class="btn btn-secondary" id="vcatalog-btn-expire" style="margin-bottom:2px" title="Pendientes &gt;7 días sin pasarela → checkout abandonado">⏳ Expirar pendientes</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-reg" style="margin-bottom:2px">＋ Registrar venta externa</button>
       <span style="font-size:12px;color:var(--text2)">${rows.length} pedido(s)</span>
     </div>
@@ -510,6 +558,8 @@
     }
     const btnWoo = document.getElementById('vcatalog-btn-woo');
     if (btnWoo) btnWoo.onclick = () => syncWooCommerceOrders(ctx);
+    const btnWompi = document.getElementById('vcatalog-btn-wompi');
+    if (btnWompi) btnWompi.onclick = () => reconcileWompiOrders(ctx);
     const btnExpire = document.getElementById('vcatalog-btn-expire');
     if (btnExpire) btnExpire.onclick = () => expireStaleOrders(ctx);
 

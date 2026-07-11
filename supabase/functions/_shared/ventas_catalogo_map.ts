@@ -16,6 +16,13 @@ const APPROVED = new Set([
   "AUTHORIZED",
   "FINISHED",
   "PAID",
+  // Addi (crédito)
+  "FUNDED",
+  "DISBURSED",
+  "PRE_APPROVED",
+  "PREAPPROVED",
+  "ACTIVE",
+  "APPROVED_BY_ADDI",
 ]);
 
 const FAILED = new Set([

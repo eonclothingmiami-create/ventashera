@@ -2,12 +2,18 @@
  * Actualiza estado de pago de un pedido catálogo (retorno Wompi/Addi, webhook, mantenimiento).
  * POST { reference, status|estado_pago, proveedor_ref?, payment_status_raw?, action? }
  * action=expire_stale → marca pendientes > N horas como checkout_abandonado
+ * action=resolve_wompi_return → consulta Wompi por transaction_id o reference
+ * action=reconcile_wompi_batch → reconcilia pedidos Wompi pendientes/abandonados
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   mapGatewayStatus,
   type EstadoPago,
 } from "../_shared/ventas_catalogo_map.ts";
+import {
+  fetchWompiTransactionById,
+  fetchWompiTransactionByReference,
+} from "../_shared/wompi_client.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +35,11 @@ function authOk(req: Request): boolean {
   return hdr === secret;
 }
 
+function erpAuthOk(req: Request): boolean {
+  const auth = req.headers.get("authorization") || "";
+  return auth.startsWith("Bearer ");
+}
+
 function resolveEstado(body: Record<string, unknown>): EstadoPago | null {
   const direct = String(body.estado_pago ?? body.estadoPago ?? "").trim();
   const allowed = [
@@ -45,6 +56,67 @@ function resolveEstado(body: Record<string, unknown>): EstadoPago | null {
     body.payment_status_raw ?? body.status ?? body.transaction_status ?? "",
   ).trim();
   return mapGatewayStatus(raw);
+}
+
+async function patchOrder(
+  sb: ReturnType<typeof createClient>,
+  row: Record<string, unknown>,
+  nuevoEstado: EstadoPago,
+  opts: {
+    proveedorRef?: string;
+    paymentRaw?: string;
+    source?: string;
+    extraMeta?: Record<string, unknown>;
+  },
+) {
+  if (
+    row.estado_pago === "pago_exitoso" &&
+    nuevoEstado !== "pago_exitoso" &&
+    nuevoEstado !== "cancelada"
+  ) {
+    return {
+      skipped: true,
+      reason: "already_paid",
+      estado_pago: row.estado_pago,
+    };
+  }
+
+  const proveedorRef = opts.proveedorRef || row.proveedor_ref;
+  const paymentRaw = opts.paymentRaw || row.payment_status_raw;
+  const now = new Date().toISOString();
+  const prevMeta = row.tracking_meta && typeof row.tracking_meta === "object"
+    ? row.tracking_meta as Record<string, unknown>
+    : {};
+
+  const patch: Record<string, unknown> = {
+    estado_pago: nuevoEstado,
+    proveedor_ref: proveedorRef,
+    payment_status_raw: paymentRaw,
+    payment_updated_at: now,
+    updated_at: now,
+    tracking_meta: {
+      ...prevMeta,
+      last_status_update: now,
+      last_status_source: opts.source || "catalog-order-status",
+      ...(opts.extraMeta || {}),
+    },
+  };
+
+  if (nuevoEstado === "pago_exitoso") {
+    patch.pagado_at = row.pagado_at || now;
+  }
+  if (nuevoEstado === "cancelada" || nuevoEstado === "pago_fallido") {
+    patch.pagado_at = null;
+  }
+
+  const { data: updated, error: updErr } = await sb.from("ventas_catalogo")
+    .update(patch)
+    .eq("id", row.id)
+    .select("id, reference, estado_pago, pagado_at, payment_status_raw, proveedor_ref")
+    .single();
+
+  if (updErr) throw new Error(updErr.message);
+  return { order: updated };
 }
 
 Deno.serve(async (req) => {
@@ -67,16 +139,171 @@ Deno.serve(async (req) => {
     const action = String(body.action || "").trim();
 
     if (action === "expire_stale") {
-      const auth = req.headers.get("authorization") || "";
-      if (!auth.startsWith("Bearer ")) {
+      if (!erpAuthOk(req)) {
         return json({ ok: false, error: "Authorization required" }, 401);
       }
-      const hours = Math.max(1, Number(body.hours) || 24);
+      const hours = Math.max(1, Number(body.hours) || 168);
       const { data, error } = await sb.rpc("expire_stale_catalog_orders", {
         p_hours: hours,
       });
       if (error) return json({ ok: false, error: error.message }, 500);
       return json({ ok: true, expired: data ?? 0, hours });
+    }
+
+    if (action === "resolve_wompi_return") {
+      if (!authOk(req)) {
+        return json({ ok: false, error: "Unauthorized" }, 401);
+      }
+
+      const transactionId = String(
+        body.transaction_id ?? body.transactionId ?? body.id ?? "",
+      ).trim();
+      let reference = String(body.reference || "").trim();
+
+      try {
+        let tx = transactionId
+          ? await fetchWompiTransactionById(transactionId)
+          : null;
+        if (!tx && reference) {
+          tx = await fetchWompiTransactionByReference(reference);
+        }
+        if (!tx) {
+          return json({ ok: false, error: "Wompi transaction not found" }, 404);
+        }
+
+        reference = reference || tx.reference;
+        if (!reference) {
+          return json({ ok: false, error: "Could not resolve order reference" }, 400);
+        }
+
+        const nuevoEstado = mapGatewayStatus(tx.status);
+        if (!nuevoEstado) {
+          return json({
+            ok: false,
+            error: `Unknown Wompi status: ${tx.status}`,
+            wompi_status: tx.status,
+          }, 400);
+        }
+
+        const { data: row, error: fetchErr } = await sb.from("ventas_catalogo")
+          .select("*")
+          .eq("reference", reference)
+          .maybeSingle();
+
+        if (fetchErr) return json({ ok: false, error: fetchErr.message }, 500);
+        if (!row) {
+          return json({ ok: false, error: "Order not found", reference }, 404);
+        }
+
+        const result = await patchOrder(sb, row, nuevoEstado, {
+          proveedorRef: tx.id,
+          paymentRaw: tx.status,
+          source: "wompi_return",
+          extraMeta: { wompi_reconciled_at: new Date().toISOString() },
+        });
+
+        return json({ ok: true, wompi: tx, ...result });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return json({ ok: false, error: msg }, 500);
+      }
+    }
+
+    if (action === "revert_auto_abandoned") {
+      if (!erpAuthOk(req)) {
+        return json({ ok: false, error: "Authorization required" }, 401);
+      }
+      const { data: rows, error } = await sb.from("ventas_catalogo")
+        .select("id, reference")
+        .eq("estado_pago", "checkout_abandonado")
+        .is("payment_status_raw", null)
+        .filter("tracking_meta->auto_abandoned_at", "not.is", null);
+      if (error) return json({ ok: false, error: error.message }, 500);
+
+      const now = new Date().toISOString();
+      let reverted = 0;
+      for (const row of rows || []) {
+        const { data: current } = await sb.from("ventas_catalogo")
+          .select("tracking_meta")
+          .eq("id", row.id)
+          .maybeSingle();
+        const prevMeta = current?.tracking_meta && typeof current.tracking_meta === "object"
+          ? current.tracking_meta as Record<string, unknown>
+          : {};
+        const { auto_abandoned_at: _a, auto_abandoned_reason: _r, ...rest } = prevMeta;
+        const { error: updErr } = await sb.from("ventas_catalogo")
+          .update({
+            estado_pago: "pendiente",
+            payment_updated_at: now,
+            updated_at: now,
+            tracking_meta: {
+              ...rest,
+              reverted_auto_abandon_at: now,
+              reverted_auto_abandon_reason:
+                "sin payment_status_raw; requiere reconciliación pasarela",
+            },
+          })
+          .eq("id", row.id);
+        if (!updErr) reverted += 1;
+      }
+      return json({ ok: true, reverted, candidates: rows?.length ?? 0 });
+    }
+
+    if (action === "reconcile_wompi_batch") {
+      if (!erpAuthOk(req)) {
+        return json({ ok: false, error: "Authorization required" }, 401);
+      }
+
+      const limit = Math.min(50, Math.max(1, Number(body.limit) || 25));
+      const { data: rows, error: listErr } = await sb.from("ventas_catalogo")
+        .select("*")
+        .eq("canal_pago", "wompi")
+        .in("estado_pago", ["pendiente", "checkout_abandonado"])
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (listErr) return json({ ok: false, error: listErr.message }, 500);
+
+      const results: Record<string, unknown>[] = [];
+      for (const row of rows || []) {
+        const ref = String(row.reference || "").trim();
+        if (!ref) continue;
+        try {
+          const tx = await fetchWompiTransactionByReference(ref);
+          if (!tx) {
+            results.push({ reference: ref, skipped: true, reason: "no_wompi_tx" });
+            continue;
+          }
+          const nuevoEstado = mapGatewayStatus(tx.status);
+          if (!nuevoEstado) {
+            results.push({
+              reference: ref,
+              skipped: true,
+              reason: "unknown_status",
+              wompi_status: tx.status,
+            });
+            continue;
+          }
+          const patched = await patchOrder(sb, row, nuevoEstado, {
+            proveedorRef: tx.id,
+            paymentRaw: tx.status,
+            source: "wompi_batch_reconcile",
+            extraMeta: { wompi_reconciled_at: new Date().toISOString() },
+          });
+          results.push({ reference: ref, wompi_status: tx.status, ...patched });
+        } catch (e) {
+          results.push({
+            reference: ref,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+
+      const paid = results.filter((r) =>
+        (r.order as Record<string, unknown> | undefined)?.estado_pago ===
+          "pago_exitoso"
+      ).length;
+      return json({ ok: true, checked: results.length, paid, results });
     }
 
     if (!authOk(req)) {
@@ -101,57 +328,21 @@ Deno.serve(async (req) => {
     if (fetchErr) return json({ ok: false, error: fetchErr.message }, 500);
     if (!row) return json({ ok: false, error: "Order not found" }, 404);
 
-    if (
-      row.estado_pago === "pago_exitoso" &&
-      nuevoEstado !== "pago_exitoso" &&
-      nuevoEstado !== "cancelada"
-    ) {
-      return json({
-        ok: true,
-        skipped: true,
-        reason: "already_paid",
-        estado_pago: row.estado_pago,
+    try {
+      const result = await patchOrder(sb, row, nuevoEstado, {
+        proveedorRef: String(
+          body.proveedor_ref ?? body.proveedorRef ?? body.transaction_id ?? "",
+        ).trim() || undefined,
+        paymentRaw: String(
+          body.payment_status_raw ?? body.status ?? "",
+        ).trim() || undefined,
+        source: String(body.source || "catalog-order-status"),
       });
+      return json({ ok: true, ...result });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return json({ ok: false, error: msg }, 500);
     }
-
-    const proveedorRef = String(
-      body.proveedor_ref ?? body.proveedorRef ?? body.transaction_id ?? "",
-    ).trim() || row.proveedor_ref;
-    const paymentRaw = String(
-      body.payment_status_raw ?? body.status ?? "",
-    ).trim() || row.payment_status_raw;
-    const now = new Date().toISOString();
-
-    const patch: Record<string, unknown> = {
-      estado_pago: nuevoEstado,
-      proveedor_ref: proveedorRef,
-      payment_status_raw: paymentRaw,
-      payment_updated_at: now,
-      updated_at: now,
-      tracking_meta: {
-        ...(row.tracking_meta && typeof row.tracking_meta === "object"
-          ? row.tracking_meta
-          : {}),
-        last_status_update: now,
-        last_status_source: body.source || "catalog-order-status",
-      },
-    };
-
-    if (nuevoEstado === "pago_exitoso") {
-      patch.pagado_at = row.pagado_at || now;
-    }
-    if (nuevoEstado === "cancelada" || nuevoEstado === "pago_fallido") {
-      patch.pagado_at = null;
-    }
-
-    const { data: updated, error: updErr } = await sb.from("ventas_catalogo")
-      .update(patch)
-      .eq("id", row.id)
-      .select("id, reference, estado_pago, pagado_at")
-      .single();
-
-    if (updErr) return json({ ok: false, error: updErr.message }, 500);
-    return json({ ok: true, order: updated });
   }
 
   return json({ ok: false, error: "Method not allowed" }, 405);
