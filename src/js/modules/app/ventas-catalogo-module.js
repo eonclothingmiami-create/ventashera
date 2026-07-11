@@ -20,12 +20,25 @@
   const LABEL_ESTADO = {
     pendiente: 'Pendiente',
     pago_exitoso: 'Pago exitoso',
+    pago_fallido: 'Pago fallido',
+    checkout_abandonado: 'Checkout abandonado',
+    expirado: 'Expirado',
     cancelada: 'Cancelada',
   };
+
+  const ESTADO_OPTIONS = [
+    ['pendiente', LABEL_ESTADO.pendiente],
+    ['pago_exitoso', LABEL_ESTADO.pago_exitoso],
+    ['pago_fallido', LABEL_ESTADO.pago_fallido],
+    ['checkout_abandonado', LABEL_ESTADO.checkout_abandonado],
+    ['expirado', LABEL_ESTADO.expirado],
+    ['cancelada', LABEL_ESTADO.cancelada],
+  ];
 
   /** Origen del pedido (columna origen_canal en BD). */
   const LABEL_ORIGEN = {
     catalogo_web: 'Catálogo web',
+    woocommerce: 'WooCommerce',
     mercadolibre: 'Mercado Libre',
     falabella: 'Falabella',
     meta_commerce: 'Meta (FB/IG)',
@@ -40,6 +53,7 @@
 
   const ORIGEN_OPTIONS = [
     ['catalogo_web', LABEL_ORIGEN.catalogo_web],
+    ['woocommerce', LABEL_ORIGEN.woocommerce],
     ['mercadolibre', LABEL_ORIGEN.mercadolibre],
     ['falabella', LABEL_ORIGEN.falabella],
     ['meta_commerce', LABEL_ORIGEN.meta_commerce],
@@ -90,8 +104,90 @@
 
   function badgeClass(estado) {
     if (estado === 'pago_exitoso') return 'badge-ok';
-    if (estado === 'cancelada') return 'badge-pend';
+    if (estado === 'cancelada' || estado === 'expirado') return 'badge-pend';
+    if (estado === 'pago_fallido' || estado === 'checkout_abandonado') return 'badge-warn';
     return 'badge-warn';
+  }
+
+  function estadoSelectOptions(selected) {
+    return ESTADO_OPTIONS.map(
+      ([v, l]) => `<option value="${esc(v)}" ${selected === v ? 'selected' : ''}>${esc(l)}</option>`,
+    ).join('');
+  }
+
+  async function expireStaleOrders(ctx) {
+    const { notify, renderVentasCatalogo: rerender } = ctx;
+    const endpoint = global.getCatalogOrderStatusEndpoint?.() || '';
+    if (!endpoint) {
+      notify('warning', '⏳', 'Mantenimiento', 'Endpoint catalog-order-status no configurado.', { duration: 4000 });
+      return;
+    }
+    try {
+      const token = global.AuthSession?.getValidAccessToken
+        ? await global.AuthSession.getValidAccessToken(global.supabaseClient)
+        : (await global.supabaseClient?.auth?.getSession())?.data?.session?.access_token;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const anon = global.AppRepository?.SUPABASE_ANON_KEY;
+      if (anon) headers.apikey = anon;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'expire_stale', hours: 24 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        if (data.expired > 0) {
+          notify('success', '⏳', 'Pedidos expirados', `${data.expired} pendiente(s) → checkout abandonado`, { duration: 4500 });
+          if (typeof global.refreshCriticalSlice === 'function') await global.refreshCriticalSlice('ventas_catalogo');
+        }
+        rerender();
+      }
+    } catch (e) {
+      console.warn('[ventas_catalogo] expire_stale', e);
+    }
+  }
+
+  async function syncWooCommerceOrders(ctx) {
+    const { notify, renderVentasCatalogo: rerender } = ctx;
+    if (typeof global.requestWooCommerceSyncRecentOrders !== 'function') {
+      notify('warning', '🛒', 'WooCommerce', 'Integración de pedidos no cargada.', { duration: 4000 });
+      return;
+    }
+    notify('info', '🛒', 'Sincronizando…', 'Importando pedidos WooCommerce', { duration: 2500 });
+    const res = await global.requestWooCommerceSyncRecentOrders(30);
+    if (res.ok) {
+      const n = res.data?.synced ?? res.data?.results?.length ?? 0;
+      notify('success', '✅', 'WooCommerce', `${n} pedido(s) sincronizados`, { duration: 4500 });
+      if (typeof global.refreshCriticalSlice === 'function') await global.refreshCriticalSlice('ventas_catalogo');
+      rerender();
+    } else {
+      notify('warning', '🛒', 'WooCommerce', res.error || res.reason || 'Error al sincronizar', { duration: 7000 });
+    }
+  }
+
+  function renderAbandonedCartsPanel(state, fmt) {
+    const carts = (state.catalogCartSnapshots || [])
+      .filter((c) => ['abandoned', 'recovery_sent', 'active'].includes(String(c.status || '')))
+      .slice(0, 15);
+    if (!carts.length) return '';
+    const rows = carts.map((c) => {
+      const st = c.status || '—';
+      const badge = st === 'abandoned' || st === 'recovery_sent' ? 'badge-warn' : 'badge-info';
+      return `<tr>
+        <td style="font-size:11px;white-space:nowrap">${fmtTs(c.abandoned_at || c.last_activity_at || c.updated_at)}</td>
+        <td style="font-size:11px">${esc(st)}</td>
+        <td style="font-weight:700">${c.item_count ?? '—'}</td>
+        <td style="color:var(--accent);font-weight:700">${fmt(c.total_cop || 0)}</td>
+        <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.hero_product_name || '')}">${esc(c.hero_product_name || '—')}</td>
+        <td><span class="badge ${badge}" style="font-size:9px">${esc(st)}</span></td>
+      </tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:16px">
+      <div class="card-title">🛒 Carritos abandonados / activos (${carts.length})</div>
+      <p style="font-size:11px;color:var(--text2);margin:0 0 10px">Antes del checkout. Los pedidos con checkout iniciado aparecen abajo con estado <b>checkout abandonado</b>.</p>
+      <div class="table-wrap"><table><thead><tr><th>Última actividad</th><th>Estado</th><th>Ítems</th><th>Total</th><th>Producto</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
   }
 
   function itemsSearchBlob(r) {
@@ -143,11 +239,7 @@
         <div class="form-group"><label class="form-label">Total (COP) *</label>
           <input type="number" id="vc-reg-monto" class="form-control" min="0" step="1" value="0"></div>
         <div class="form-group"><label class="form-label">Estado *</label>
-          <select id="vc-reg-estado" class="form-control">
-            <option value="pendiente">Pendiente</option>
-            <option value="pago_exitoso">Pago exitoso</option>
-            <option value="cancelada">Cancelada</option>
-          </select></div>
+          <select id="vc-reg-estado" class="form-control">${estadoSelectOptions('pendiente')}</select></div>
       </div>
       <div class="form-group"><label class="form-label">Cliente</label>
         <input type="text" id="vc-reg-nombre" class="form-control" placeholder="Nombre"></div>
@@ -272,6 +364,8 @@
     const el = document.getElementById('vcatalog-content');
     if (!el) return;
 
+    void expireStaleOrders(ctx);
+
     const q = (document.getElementById('vcatalog-search')?.value || '').toLowerCase().trim();
     const filtroEstado = document.getElementById('vcatalog-estado')?.value || '';
     const filtroOrigen = document.getElementById('vcatalog-origen')?.value || '';
@@ -346,9 +440,7 @@
           ${posExtra}
           <button type="button" class="btn btn-xs btn-secondary" data-vcat-detail="${r.id}">Ver</button>
           <select class="form-control" style="max-width:130px;padding:4px 8px;font-size:11px;display:inline-block;width:auto" data-vcat-estado="${r.id}">
-            <option value="pendiente" ${est === 'pendiente' ? 'selected' : ''}>Pendiente</option>
-            <option value="pago_exitoso" ${est === 'pago_exitoso' ? 'selected' : ''}>Pago exitoso</option>
-            <option value="cancelada" ${est === 'cancelada' ? 'selected' : ''}>Cancelada</option>
+            ${estadoSelectOptions(est)}
           </select>
           <button type="button" class="btn btn-xs btn-primary" data-vcat-save="${r.id}">Guardar</button>
         </div>
@@ -372,23 +464,23 @@
       </div>
       <div>
         <label class="form-label" style="font-size:9px;color:var(--text2);display:block;margin-bottom:3px">Estado</label>
-        <select id="vcatalog-estado" class="form-control" style="width:160px" onchange="renderVentasCatalogo()">
+        <select id="vcatalog-estado" class="form-control" style="width:180px" onchange="renderVentasCatalogo()">
           <option value="" ${filtroEstado === '' ? 'selected' : ''}>Todos</option>
-          <option value="pendiente" ${filtroEstado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
-          <option value="pago_exitoso" ${filtroEstado === 'pago_exitoso' ? 'selected' : ''}>Pago exitoso</option>
-          <option value="cancelada" ${filtroEstado === 'cancelada' ? 'selected' : ''}>Cancelada</option>
+          ${ESTADO_OPTIONS.map(([v, l]) => `<option value="${esc(v)}" ${filtroEstado === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}
         </select>
       </div>
+      <button type="button" class="btn btn-secondary" id="vcatalog-btn-woo" style="margin-bottom:2px" title="Importar pedidos WooCommerce">🛒 Sync WooCommerce</button>
+      <button type="button" class="btn btn-secondary" id="vcatalog-btn-expire" style="margin-bottom:2px" title="Pendientes &gt;24h → checkout abandonado">⏳ Expirar pendientes</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-reg" style="margin-bottom:2px">＋ Registrar venta externa</button>
       <span style="font-size:12px;color:var(--text2)">${rows.length} pedido(s)</span>
     </div>
     <div class="card">
       <div class="card-title">Ventas por canal (catálogo + integraciones)</div>
       <p style="font-size:12px;color:var(--text2);margin:0 0 14px;line-height:1.45">
-        Listado unificado: pedidos del <b>catálogo web</b> (Wompi/Addi) y ventas de <b>otros canales</b> que registres aquí.
-        La columna <b>Despacho</b> (revisar marketplace / preparar envío) aplica a <b>Mercado Libre</b>, <b>Falabella</b>, etc.;
-        los pedidos solo catálogo web no la usan — su pasarela ya estaba bien integrada.
+        Listado unificado: catálogo web (Wompi/Addi), <b>WooCommerce</b>, marketplaces y registros manuales.
+        Estados: pendiente → pago exitoso / fallido / checkout abandonado / cancelada.
       </p>
+      ${renderAbandonedCartsPanel(state, fmt)}
       <div class="table-wrap">
         <table>
           <thead>
@@ -416,6 +508,10 @@
       btnReg.onclick = () =>
         openRegistrarExternoModal({ saveRecord, notify, renderVentasCatalogo: rerender, state, nextId, openModal });
     }
+    const btnWoo = document.getElementById('vcatalog-btn-woo');
+    if (btnWoo) btnWoo.onclick = () => syncWooCommerceOrders(ctx);
+    const btnExpire = document.getElementById('vcatalog-btn-expire');
+    if (btnExpire) btnExpire.onclick = () => expireStaleOrders(ctx);
 
     rows.forEach((r) => {
       const btnPos = document.querySelector(`[data-vcat-topos="${r.id}"]`);
@@ -517,7 +613,7 @@
       <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">
         <div><b>Creado:</b> ${esc(fmtTs(r.createdAt))}</div>
         <div><b>Origen:</b> ${esc(origenLabel(r))}${r.externalOrderId ? ` · <b>ID externo:</b> ${esc(r.externalOrderId)}` : ''}</div>
-        <div><b>Estado:</b> ${esc(LABEL_ESTADO[r.estadoPago] || r.estadoPago)}</div>
+        <div><b>Estado:</b> ${esc(LABEL_ESTADO[r.estadoPago] || r.estadoPago)}${r.paymentStatusRaw ? ` <span style="color:var(--text2)">(${esc(r.paymentStatusRaw)})</span>` : ''}</div>
         <div><b>Pasarela / medio:</b> ${esc(r.canalPago || '—')} ${r.proveedorRef ? ` · ID ref pago: ${esc(r.proveedorRef)}` : ''}</div>
         ${r.pagadoAt ? `<div><b>Pagado:</b> ${esc(fmtTs(r.pagadoAt))}</div>` : ''}
         ${r.posFacturaId ? `<div style="margin-top:8px;font-size:11px"><b>Venta POS:</b> factura <code>${esc(r.posFacturaId)}</code></div>` : ''}

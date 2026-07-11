@@ -230,6 +230,7 @@ let state = {
   nomina_pagos: [],   
   ventas: [], 
   ventasCatalogo: [],
+  catalogCartSnapshots: [],
   currentMonth: null,
   /** YYYY-MM último mes de gamificación/meta sincronizado (configs.erp_calendar_month). */
   erpCalendarMonth: null,
@@ -2496,6 +2497,9 @@ async function hydrateVentasFacturasTesSliceFromSupabase(opts) {
         catalogType: r.catalog_type || '',
         origenCanal: r.origen_canal || 'catalogo_web',
         externalOrderId: r.external_order_id || '',
+        sessionId: r.session_id || null,
+        paymentStatusRaw: r.payment_status_raw || null,
+        paymentUpdatedAt: r.payment_updated_at || null,
         trackingMeta: r.tracking_meta && typeof r.tracking_meta === 'object' ? r.tracking_meta : {},
         clienteNombre: r.cliente_nombre || '',
         clienteEmail: r.cliente_email || '',
@@ -2864,6 +2868,9 @@ async function loadState() {
         catalogType: r.catalog_type || '',
         origenCanal: r.origen_canal || 'catalogo_web',
         externalOrderId: r.external_order_id || '',
+        sessionId: r.session_id || null,
+        paymentStatusRaw: r.payment_status_raw || null,
+        paymentUpdatedAt: r.payment_updated_at || null,
         trackingMeta: r.tracking_meta && typeof r.tracking_meta === 'object' ? r.tracking_meta : {},
         clienteNombre: r.cliente_nombre || '',
         clienteEmail: r.cliente_email || '',
@@ -3223,7 +3230,7 @@ const COLLECTION_MAP = {
   'inv_traslados':   { table:'inv_traslados', mapFn:(d)=>({id:d.id,articulo_id:d.articuloId||null,origen_id:d.origenId||null,destino_id:d.destinoId||null,cantidad:d.cantidad||0,nota:d.nota||'',fecha:d.fecha||null}) },
   'tes_ajustes_unidades_prov': { table:'tes_ajustes_unidades_prov', mapFn:(d)=>({id:d.id,proveedor_id:d.proveedorId,articulo_id:d.articuloId||null,delta_unidades:parseFloat(d.deltaUnidades)||0,nota:d.nota||'',fecha_hora:d.fechaHora||new Date().toISOString(),proveedor_nombre:d.proveedorNombre||null,articulo_nombre:d.articuloNombre||null}) },
   'tes_cxp_movimientos': { table:'tes_cxp_movimientos', mapFn:(d)=>({id:d.id,proveedor_id:d.proveedorId,proveedor_nombre:d.proveedorNombre||'',tipo:d.tipo||'cargo_compra',naturaleza:d.naturaleza||'cargo',monto:parseFloat(d.monto)||0,fecha:d.fecha||null,referencia:d.referencia||null,nota:d.nota||null,meta:(d.meta&&typeof d.meta==='object')?d.meta:{},lineas:Array.isArray(d.lineas)?d.lineas:[],fecha_hora:d.fechaHora||new Date().toISOString()}) },
-  'ventas_catalogo': { table:'ventas_catalogo', mapFn:(d)=>({id:d.id,reference:d.reference||'',estado_pago:d.estadoPago||'pendiente',canal_pago:d.canalPago||null,catalog_type:d.catalogType||null,origen_canal:d.origenCanal||'catalogo_web',external_order_id:d.externalOrderId||null,tracking_meta:(d.trackingMeta&&typeof d.trackingMeta==='object')?d.trackingMeta:{},cliente_nombre:d.clienteNombre||'',cliente_email:d.clienteEmail||'',cliente_telefono:d.clienteTelefono||'',cliente_documento_tipo:d.clienteDocumentoTipo||'CC',cliente_documento:d.clienteDocumento||'',envio_departamento:d.envioDepartamento||'',envio_ciudad:d.envioCiudad||'',envio_direccion:d.envioDireccion||'',items:Array.isArray(d.items)?d.items:[],totales:(d.totales&&typeof d.totales==='object')?d.totales:{},amount_cop:Number(d.amountCop)||0,proveedor_ref:d.proveedorRef||null,pagado_at:d.pagadoAt||null,pos_factura_id:d.posFacturaId||null}) },
+  'ventas_catalogo': { table:'ventas_catalogo', mapFn:(d)=>({id:d.id,reference:d.reference||'',estado_pago:d.estadoPago||'pendiente',canal_pago:d.canalPago||null,catalog_type:d.catalogType||null,origen_canal:d.origenCanal||'catalogo_web',external_order_id:d.externalOrderId||null,session_id:d.sessionId||null,payment_status_raw:d.paymentStatusRaw||null,payment_updated_at:d.paymentUpdatedAt||null,tracking_meta:(d.trackingMeta&&typeof d.trackingMeta==='object')?d.trackingMeta:{},cliente_nombre:d.clienteNombre||'',cliente_email:d.clienteEmail||'',cliente_telefono:d.clienteTelefono||'',cliente_documento_tipo:d.clienteDocumentoTipo||'CC',cliente_documento:d.clienteDocumento||'',envio_departamento:d.envioDepartamento||'',envio_ciudad:d.envioCiudad||'',envio_direccion:d.envioDireccion||'',items:Array.isArray(d.items)?d.items:[],totales:(d.totales&&typeof d.totales==='object')?d.totales:{},amount_cop:Number(d.amountCop)||0,proveedor_ref:d.proveedorRef||null,pagado_at:d.pagadoAt||null,pos_factura_id:d.posFacturaId||null}) },
   'empleados':       { table:'employees', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo_contrato:d.tipoContrato||d.tipo_contrato||'indefinido',salario_base:parseFloat(d.salarioBase||d.salario_base)||0,cedula:d.cedula||null,celular:d.celular||null,cargo:d.cargo||'',fecha_ingreso:d.fechaIngreso||d.fecha_ingreso||null}) },
   'usu_empleados':   { table:'employees', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',tipo_contrato:d.tipoContrato||d.tipo_contrato||'indefinido',salario_base:parseFloat(d.salarioBase||d.salario_base)||0,cedula:d.cedula||null,celular:d.celular||null,cargo:d.cargo||'',fecha_ingreso:d.fechaIngreso||d.fecha_ingreso||null}) },
   'usu_clientes':    { table:'customers', mapFn:(d)=>({id:d.id,nombre:d.nombre||'',cedula:d.cedula||null,celular:d.celular||null,telefono:d.telefono||null,whatsapp:d.whatsapp||null,ciudad:d.ciudad||null,direccion:d.direccion||null}) },
@@ -9590,15 +9597,41 @@ function _sepSort(arr){
   });
 }
 
+function getCatalogOrderStatusEndpoint() {
+  const custom = (window.CATALOG_ORDER_STATUS_ENDPOINT || '').trim();
+  if (custom) return custom;
+  const base = window.AppRepository?.SUPABASE_URL || '';
+  if (!base) return '';
+  return String(base).replace(/\/$/, '') + '/functions/v1/catalog-order-status';
+}
+try { window.getCatalogOrderStatusEndpoint = getCatalogOrderStatusEndpoint; } catch (e) {}
+
+async function loadCatalogCartSnapshots() {
+  if (!_sbConnected || !supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient
+      .from('catalog_cart_snapshots')
+      .select('id,session_id,status,item_count,total_cop,hero_product_name,abandoned_at,last_activity_at,updated_at')
+      .in('status', ['active', 'abandoned', 'recovery_sent'])
+      .order('last_activity_at', { ascending: false })
+      .limit(30);
+    if (!error && data) state.catalogCartSnapshots = data;
+  } catch (e) {
+    console.warn('[catalog_cart_snapshots]', e?.message || e);
+  }
+}
+
 function renderVentasCatalogo(){
   if (!Array.isArray(state.ventasCatalogo)) state.ventasCatalogo = [];
-  if (window.AppVentasCatalogoModule?.renderVentasCatalogo) {
-    return window.AppVentasCatalogoModule.renderVentasCatalogo({
-      state, fmt, openModal, saveRecord, notify, renderVentasCatalogo, nextId: () => dbId()
-    });
-  }
-  const el = document.getElementById('vcatalog-content');
-  if (el) el.innerHTML = '<div class="card" style="padding:20px;color:var(--text2)">No se cargó ventas-catalogo-module.js</div>';
+  loadCatalogCartSnapshots().finally(() => {
+    if (window.AppVentasCatalogoModule?.renderVentasCatalogo) {
+      return window.AppVentasCatalogoModule.renderVentasCatalogo({
+        state, fmt, openModal, saveRecord, notify, renderVentasCatalogo, nextId: () => dbId()
+      });
+    }
+    const el = document.getElementById('vcatalog-content');
+    if (el) el.innerHTML = '<div class="card" style="padding:20px;color:var(--text2)">No se cargó ventas-catalogo-module.js</div>';
+  });
 }
 
 function renderSeparados(){
