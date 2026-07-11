@@ -126,8 +126,11 @@
       const token = global.AuthSession?.getValidAccessToken
         ? await global.AuthSession.getValidAccessToken(global.supabaseClient)
         : (await global.supabaseClient?.auth?.getSession())?.data?.session?.access_token;
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
+      if (!token) {
+        notify('warning', '⏳', 'Sesión', 'Inicia sesión de nuevo para expirar pendientes.', { duration: 4500 });
+        return;
+      }
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
       const anon = global.AppRepository?.SUPABASE_ANON_KEY;
       if (anon) headers.apikey = anon;
       const res = await fetch(endpoint, {
@@ -142,6 +145,8 @@
           if (typeof global.refreshCriticalSlice === 'function') await global.refreshCriticalSlice('ventas_catalogo');
         }
         rerender();
+      } else if (res.status === 401) {
+        notify('warning', '⏳', 'Sesión', 'No autorizado. Vuelve a iniciar sesión.', { duration: 4500 });
       }
     } catch (e) {
       console.warn('[ventas_catalogo] expire_stale', e);
