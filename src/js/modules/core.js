@@ -7600,6 +7600,7 @@ function renderNominaPreview(r, tipo) {
       ${r.otrosDevengos > 0 ? row('Otros devengos', r.otrosDevengos, 'var(--green)') : ''}
       ${row('TOTAL DEVENGADO', r.totalDevengado, 'var(--green)')}
       <div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">DEDUCCIONES</div>
+      ${r.baseCotizacion != null ? `<div style="font-size:10px;color:var(--text2);margin-bottom:4px">Base cotización salud/pensión (sin aux. transporte): ${fmt(Math.round(r.baseCotizacion))}</div>` : ''}
       ${row('Salud empleado (4%)', r.deducSalud, 'var(--red)')}
       ${row('Pensión empleado (4%)', r.deducPension, 'var(--red)')}
       ${r.anticipos > 0 ? row('Anticipos', r.anticipos, 'var(--red)') : ''}
