@@ -3039,6 +3039,12 @@ async function loadState() {
       // Game config
       const {data: gcfg} = await supabaseClient.from('state_config').select('value').eq('key','cfg_game').maybeSingle();
       if(gcfg?.value) state.cfg_game = {...state.cfg_game, ...(typeof gcfg.value==='string'?JSON.parse(gcfg.value):gcfg.value)};
+      if (window.AppNominaParams?.hydrateRemoteCatalog) {
+        await window.AppNominaParams.hydrateRemoteCatalog(supabaseClient);
+      }
+      if (window.AppNominaParams?.autoSyncCfgGame) {
+        await window.AppNominaParams.autoSyncCfgGame(state, saveConfig, { notify });
+      }
     } catch(e) { console.warn('Config tables not yet created:', e.message); }
 
     // Bodegas y Cajas
@@ -7257,7 +7263,14 @@ function saveConcepto(){
 // ===== NÓMINA COLOMBIA - MÓDULO COMPLETO =====
 // ===================================================================
 
-// Constantes legales Colombia 2026 (Decretos 1469 / 1470; UVT Res. DIAN)
+function getNominaLegalParams() {
+  if (window.AppNominaParams?.getNominaParams) {
+    return window.AppNominaParams.getNominaParams(state);
+  }
+  return { smmlv: 1750905, auxTrans: 249095, year: 2026, decreto: '' };
+}
+
+// Constantes fallback (si nomina-params no cargó)
 const SMMLV_2026 = 1750905;
 const AUX_TRANSPORTE_2026 = 249095;
 const UVT_2026 = 52374;
@@ -7403,13 +7416,14 @@ function renderNomNominas(){
 }
 
 function openLiquidacionModal(tipo){
+  const np = getNominaLegalParams();
   const empleados = state.empleados || [];
   const ausencias = state.nom_ausencias || [];
   const anticiposNom = state.nom_anticipos || [];
   const tipoLabel = {quincenal:'Nómina Quincenal',mensual:'Nómina Mensual',prima:'Liquidación Prima',cesantias:'Cesantías + Intereses',vacaciones:'Liquidación Vacaciones',liquidacion:'Liquidación Contrato'};
 
   const empOptions = empleados.length > 0
-    ? empleados.map(e=>`<option value="${e.id}" data-salario="${e.salarioBase||e.salario_base||SMMLV_2026}">${e.nombre}</option>`).join('')
+    ? empleados.map(e=>`<option value="${e.id}" data-salario="${e.salarioBase||e.salario_base||np.smmlv}">${e.nombre}</option>`).join('')
     : `<option value="">— Primero crea empleados —</option>`;
 
   const hoy = today();
@@ -7482,8 +7496,8 @@ function openLiquidacionModal(tipo){
             <option value="">— Seleccionar —</option>${empOptions}
           </select></div>
         <div class="form-group"><label class="form-label">SALARIO BASE ($)</label>
-          <input type="number" class="form-control" id="nom-salario" value="${SMMLV_2026}" oninput="calcularPreviewNomina()">
-          <span style="font-size:10px;color:var(--text2)">SMMLV 2026: ${fmt(SMMLV_2026)}</span></div>
+          <input type="number" class="form-control" id="nom-salario" value="${np.smmlv}" oninput="calcularPreviewNomina()">
+          <span style="font-size:10px;color:var(--text2)">SMMLV ${np.year}: ${fmt(np.smmlv)}${np.decreto ? ` · ${np.decreto}` : ''}</span></div>
       </div>
 
       <div class="form-row">
@@ -7556,7 +7570,8 @@ function cargarAnticiposEmpleado() {
 
 function calcularPreviewNomina() {
   const tipo = window._nomTipo || 'quincenal';
-  const salario = parseFloat(document.getElementById('nom-salario')?.value) || SMMLV_2026;
+  const np = getNominaLegalParams();
+  const salario = parseFloat(document.getElementById('nom-salario')?.value) || np.smmlv;
   const anticipos = parseFloat(document.getElementById('nom-anticipos-val')?.value) || 0;
   const otrasDeducc = parseFloat(document.getElementById('nom-otras-deducc')?.value) || 0;
   const ausencias = parseFloat(document.getElementById('nom-ausencias')?.value) || 0;
@@ -7675,7 +7690,7 @@ async function guardarNomina(tipo) {
     id: dbId(),
     numero: 'NOM-' + String((state.nom_nominas||[]).length + 1).padStart(4,'0'),
     tipo, empleado: empNombre,
-    periodo, salario: parseFloat(document.getElementById('nom-salario')?.value)||SMMLV_2026,
+    periodo, salario: parseFloat(document.getElementById('nom-salario')?.value)||getNominaLegalParams().smmlv,
     devengado: r.totalDevengado || 0,
     deducciones: r.totalDeducc || 0,
     neto: r.neto || 0,
@@ -7797,7 +7812,7 @@ function imprimirNomina(id) {
     <div class="firma-box"><div class="firma-line">Firma Empleado: ${n.empleado}</div></div>
   </div>
   <div style="margin-top:20px;font-size:9px;color:#999;text-align:center">
-    Generado por VentasHera ERP · ${today()} · SMMLV 2026: $${SMMLV_2026.toLocaleString('es-CO')}
+    Generado por VentasHera ERP · ${today()} · SMMLV ${getNominaLegalParams().year}: $${getNominaLegalParams().smmlv.toLocaleString('es-CO')}
   </div>
   </body></html>`;
 
@@ -9337,16 +9352,24 @@ async function guardarCfgGame() {
 
 async function guardarParamsNomina() {
   if (window.AppConfigModule?.guardarParamsNomina) {
-    return window.AppConfigModule.guardarParamsNomina({ state, saveConfig, notify });
+    return window.AppConfigModule.guardarParamsNomina({ state, saveConfig, notify, renderCfgTab });
   }
   state.cfg_game = {
     ...state.cfg_game,
     smmlv: parseFloat(document.getElementById('cfg-smmlv')?.value)||1750905,
     aux_trans: parseFloat(document.getElementById('cfg-auxtrans')?.value)||249095,
+    nomina_manual_lock: document.getElementById('cfg-nomina-manual-lock')?.checked === true,
   };
   await saveConfig('cfg_game', state.cfg_game);
   notify('success','✅','Parámetros guardados','Se aplicarán en el próximo cálculo.',{duration:3000});
 }
+
+async function aplicarParamsNominaOficiales() {
+  if (window.AppConfigModule?.aplicarParamsNominaOficiales) {
+    return window.AppConfigModule.aplicarParamsNominaOficiales({ state, saveConfig, notify, renderCfgTab });
+  }
+}
+window.aplicarParamsNominaOficiales = aplicarParamsNominaOficiales;
 
 function eliminarConceptoCfg(id) {
   if (window.AppConfigModule?.eliminarConceptoCfg) {

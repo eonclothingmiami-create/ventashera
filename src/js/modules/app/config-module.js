@@ -112,7 +112,15 @@
       el.innerHTML = `<div class="card"><div class="card-title">💰 TARIFAS DE PRECIO<button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_tarifas','Tarifa',['nombre:text:Nombre','porcentaje:number:% Ajuste (negativo=descuento)','descripcion:text:Descripción'])">+ Nueva</button></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>% Ajuste</th><th>Descripción</th><th></th></tr></thead><tbody>${tarifas.map((t) => `<tr><td style="font-weight:700">${t.nombre}</td><td style="color:${t.porcentaje > 0 ? 'var(--green)' : t.porcentaje < 0 ? 'var(--red)' : 'var(--text2)'};font-weight:700">${t.porcentaje > 0 ? '+' : ''}${t.porcentaje}%</td><td style="color:var(--text2);font-size:11px">${t.descripcion || '—'}</td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="abrirEditarCfgItem('cfg_tarifas','Tarifa',['nombre:text:Nombre','porcentaje:number:% Ajuste (negativo=descuento)','descripcion:text:Descripción'],'${t.id}')">Editar</button><button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_tarifas','${t.id}','precios')">✕</button></div></td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:12px">Sin tarifas</td></tr>'}</tbody></table></div></div><div class="card"><div class="card-title">📊 IMPUESTOS Y RETENCIONES<button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_impuestos','Impuesto',['nombre:text:Nombre','porcentaje:number:Porcentaje %','tipo:text:Tipo (venta/retencion)'])">+ Nuevo</button></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>%</th><th>Tipo</th><th>Estado</th><th></th></tr></thead><tbody>${impuestos.map((i) => `<tr><td style="font-weight:700">${i.nombre}</td><td style="font-weight:700;color:var(--accent)">${i.porcentaje}%</td><td><span class="badge badge-info">${i.tipo || 'venta'}</span></td><td><span class="badge ${i.activo !== false ? 'badge-ok' : 'badge-pend'}">${i.activo !== false ? 'Activo' : 'Inactivo'}</span></td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="abrirEditarCfgItem('cfg_impuestos','Impuesto',['nombre:text:Nombre','porcentaje:number:Porcentaje %','tipo:text:Tipo (venta/retencion)'],'${i.id}')">Editar</button><button class="btn btn-xs btn-secondary" onclick="toggleCfgActivo('cfg_impuestos','${i.id}','precios')">${i.activo !== false ? 'Desactivar' : 'Activar'}</button><button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_impuestos','${i.id}','precios')">✕</button></div></td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:12px">Sin impuestos</td></tr>'}</tbody></table></div></div>`;
     } else if (tab === 'nomina') {
       const conceptos = state.nom_conceptos || [];
-      el.innerHTML = `<div class="card"><div class="card-title">📝 CONCEPTOS DE NÓMINA<button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="openConceptoModal()">+ Nuevo</button></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Fórmula</th><th>Valor</th><th></th></tr></thead><tbody>${conceptos.map((c) => `<tr><td style="font-weight:700">${c.nombre}</td><td><span class="badge ${c.tipo === 'devengo' ? 'badge-ok' : 'badge-pend'}">${c.tipo}</span></td><td><span class="badge badge-info">${c.formula}</span></td><td style="font-weight:700">${c.formula === 'porcentaje' ? c.valor + '%' : fmt(c.valor)}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarConceptoCfg('${c.id}')">✕</button></td></tr>`).join('')}</tbody></table></div></div><div class="card"><div class="card-title">📅 PARÁMETROS DE NÓMINA</div><div class="form-row"><div class="form-group"><label class="form-label">SMMLV 2026</label><input type="number" class="form-control" id="cfg-smmlv" value="${state.cfg_game?.smmlv || 1750905}"></div><div class="form-group"><label class="form-label">AUX. TRANSPORTE 2026</label><input type="number" class="form-control" id="cfg-auxtrans" value="${state.cfg_game?.aux_trans || 249095}"></div></div><button class="btn btn-primary" onclick="guardarParamsNomina()">💾 Guardar Parámetros</button></div>`;
+      const g = state.cfg_game || {};
+      const calYear = global.AppNominaParams?.calendarYearBogota?.() || new Date().getFullYear();
+      const vigYear = g.nomina_vigencia_year || calYear;
+      const pending = g.nomina_params_pending === true;
+      const manualLock = g.nomina_manual_lock === true;
+      const statusLine = pending
+        ? `<p style="font-size:11px;color:var(--yellow);margin:0 0 12px">⚠️ Falta publicar SMMLV/auxilio para ${calYear}. Actualiza manualmente o agrega el año en Supabase (<code>nomina_legal_catalog</code>).</p>`
+        : `<p style="font-size:11px;color:var(--text2);margin:0 0 12px">Vigencia ${vigYear}${g.nomina_decreto ? ` · ${g.nomina_decreto}` : ''}${g.nomina_auto_updated_at ? ` · Auto: ${new Date(g.nomina_auto_updated_at).toLocaleDateString('es-CO')}` : ''}</p>`;
+      el.innerHTML = `<div class="card"><div class="card-title">📝 CONCEPTOS DE NÓMINA<button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="openConceptoModal()">+ Nuevo</button></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Fórmula</th><th>Valor</th><th></th></tr></thead><tbody>${conceptos.map((c) => `<tr><td style="font-weight:700">${c.nombre}</td><td><span class="badge ${c.tipo === 'devengo' ? 'badge-ok' : 'badge-pend'}">${c.tipo}</span></td><td><span class="badge badge-info">${c.formula}</span></td><td style="font-weight:700">${c.formula === 'porcentaje' ? c.valor + '%' : fmt(c.valor)}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarConceptoCfg('${c.id}')">✕</button></td></tr>`).join('')}</tbody></table></div></div><div class="card"><div class="card-title">📅 PARÁMETROS DE NÓMINA (${calYear})</div>${statusLine}<p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.45">El ERP intenta aplicar automáticamente el SMMLV y auxilio de transporte cada enero (hora Colombia). Puedes bloquear la auto-actualización si usas valores personalizados.</p><div class="form-row"><div class="form-group"><label class="form-label">SMMLV ${calYear}</label><input type="number" class="form-control" id="cfg-smmlv" value="${g.smmlv || 1750905}"></div><div class="form-group"><label class="form-label">AUX. TRANSPORTE ${calYear}</label><input type="number" class="form-control" id="cfg-auxtrans" value="${g.aux_trans || 249095}"></div></div><label style="display:flex;align-items:center;gap:8px;font-size:12px;margin:8px 0 14px;cursor:pointer"><input type="checkbox" id="cfg-nomina-manual-lock" ${manualLock ? 'checked' : ''}> Bloquear actualización automática anual</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="guardarParamsNomina()">💾 Guardar parámetros</button><button class="btn btn-secondary" onclick="aplicarParamsNominaOficiales()">↻ Aplicar valores oficiales ${calYear}</button></div></div>`;
     } else if (tab === 'bodegas') {
       const bodegas = state.bodegas || [];
       el.innerHTML = `<div class="card"><div class="card-title">🏭 BODEGAS<button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('bodegas','Bodega',['nombre:text:Nombre','ubicacion:text:Ubicación/Descripción'])">+ Nueva</button></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Nombre</th><th>Ubicación</th><th></th></tr></thead><tbody>${bodegas.map((b) => `<tr><td style="font-size:10px;color:var(--text2)">${b.id}</td><td style="font-weight:700">${b.name || b.nombre || ''}</td><td>${b.ubicacion || '—'}</td><td><div class="btn-group"><button class="btn btn-xs btn-secondary" onclick="abrirEditarCfgItem('bodegas','Bodega',['nombre:text:Nombre','ubicacion:text:Ubicación/Descripción'],'${b.id}')">Editar</button><button class="btn btn-xs btn-danger" onclick="eliminarBodega('${b.id}')">✕</button></div></td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:12px">Sin bodegas</td></tr>'}</tbody></table></div></div>`;
@@ -313,13 +321,28 @@
   }
 
   async function guardarParamsNomina(ctx) {
+    const calYear = global.AppNominaParams?.calendarYearBogota?.() || new Date().getFullYear();
     ctx.state.cfg_game = {
       ...ctx.state.cfg_game,
       smmlv: parseFloat(document.getElementById('cfg-smmlv')?.value) || 1750905,
-      aux_trans: parseFloat(document.getElementById('cfg-auxtrans')?.value) || 249095
+      aux_trans: parseFloat(document.getElementById('cfg-auxtrans')?.value) || 249095,
+      nomina_vigencia_year: calYear,
+      nomina_manual_lock: document.getElementById('cfg-nomina-manual-lock')?.checked === true,
+      nomina_params_source: 'manual',
+      nomina_params_pending: false,
     };
     await ctx.saveConfig('cfg_game', ctx.state.cfg_game);
     ctx.notify('success', '✅', 'Parámetros guardados', 'Se aplicarán en el próximo cálculo.', { duration: 3000 });
+  }
+
+  async function aplicarParamsNominaOficiales(ctx) {
+    if (!global.AppNominaParams?.applyOfficialForCurrentYear) {
+      ctx.notify('warning', '⚠️', 'Módulo nómina', 'nomina-params.js no cargó.', { duration: 4000 });
+      return;
+    }
+    const res = await global.AppNominaParams.applyOfficialForCurrentYear(ctx.state, ctx.saveConfig, ctx.notify);
+    if (res?.updated) ctx.renderCfgTab('nomina');
+    else if (res?.pending) ctx.renderCfgTab('nomina');
   }
 
   function eliminarConceptoCfg(ctx) {
@@ -416,6 +439,7 @@
     guardarDiasLiq,
     guardarCfgGame,
     guardarParamsNomina,
+    aplicarParamsNominaOficiales,
     eliminarConceptoCfg,
     procesarLogoConfig,
     guardarConfigCompleta,

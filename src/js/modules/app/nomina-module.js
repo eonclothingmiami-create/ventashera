@@ -1,10 +1,17 @@
 // Nomina module: ausencias, anticipos, conceptos y liquidaciones.
 (function initNominaModule(global) {
-  const SMMLV_2026 = 1750905;
-  const AUX_TRANSPORTE_2026 = 249095;
   const PILA_EMP = { salud: 0.04, pension: 0.04 };
   const PILA_EMP_ADOR = { salud: 0.0850, pension: 0.12, arl: 0.00522, caja: 0.04 };
   const PROV = { prima: 1 / 12, cesantias: 1 / 12, intCesantias: 0.12 / 12, vacaciones: 1 / 24 };
+
+  function resolveParams(cfg) {
+    if (cfg?.nominaParams?.smmlv) return cfg.nominaParams;
+    const st = global.state || global.__HERA_STATE__;
+    if (global.AppNominaParams?.getNominaParams) {
+      return global.AppNominaParams.getNominaParams(st);
+    }
+    return { smmlv: 1750905, auxTrans: 249095, year: 2026 };
+  }
 
   function renderNomAusencias(ctx) {
     const { state, formatDate } = ctx;
@@ -94,13 +101,16 @@
   }
 
   function calcNomina(cfg) {
+    const np = resolveParams(cfg);
+    const SMMLV = np.smmlv;
+    const AUX_TRANSPORTE = np.auxTrans;
     const {
-      salario = SMMLV_2026, ausenciasNoPagas = 0, incapacidades = 0, anticipos = 0, otrosDevengos = 0, otrasDeducc = 0,
+      salario = SMMLV, ausenciasNoPagas = 0, incapacidades = 0, anticipos = 0, otrosDevengos = 0, otrasDeducc = 0,
       tipo = 'quincenal', diasVacaciones = 0, diasCesantias = 0, periodosLiquidar = 0
     } = cfg;
     const salarioDia = salario / 30;
-    const auxTransDia = (salario <= 2 * SMMLV_2026) ? AUX_TRANSPORTE_2026 / 30 : 0;
-    const tieneAuxTrans = salario <= 2 * SMMLV_2026;
+    const auxTransDia = (salario <= 2 * SMMLV) ? AUX_TRANSPORTE / 30 : 0;
+    const tieneAuxTrans = salario <= 2 * SMMLV;
     let resultado = {};
     if (tipo === 'quincenal' || tipo === 'mensual') {
       const dp = tipo === 'quincenal' ? 15 : 30;
@@ -130,19 +140,19 @@
       resultado = { tipo, diasVacaciones, salarioBase: valorVac, totalDevengado: valorVac, neto: valorVac };
     } else if (tipo === 'prima') {
       const meses = diasCesantias / 30;
-      const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0);
+      const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
       const valor = (base / 12) * meses;
       resultado = { tipo, meses, base, valor, totalDevengado: valor, neto: valor };
     } else if (tipo === 'cesantias') {
-      const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0);
+      const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
       const valor = (base * diasCesantias) / 360;
       const intCes = valor * 0.12 * (diasCesantias / 365);
       resultado = { tipo, diasCesantias, base, valor, intCes, totalDevengado: valor + intCes, neto: valor + intCes };
     } else if (tipo === 'liquidacion') {
       const diasTrab = periodosLiquidar;
-      const cesan = (salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0)) * diasTrab / 360;
+      const cesan = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) * diasTrab / 360;
       const intCes = cesan * 0.12 * (diasTrab / 365);
-      const prima = (salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0)) / 12 * (diasTrab / 30);
+      const prima = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) / 12 * (diasTrab / 30);
       const vac = salarioDia * (diasTrab / 720) * 15;
       const total = cesan + intCes + prima + vac;
       resultado = { tipo, diasTrab, cesan, intCes, prima, vac, totalDevengado: total, neto: total };
@@ -219,7 +229,7 @@
   }
 
   global.AppNominaModule = {
-    SMMLV_2026,
+    resolveParams,
     renderNomAusencias,
     openNomAusenciaModal,
     saveNomAusencia,
