@@ -29,12 +29,16 @@ type WcOrder = Record<string, unknown>;
 type WcLineItem = Record<string, unknown>;
 
 function wcBaseUrl(): string {
-  return String(Deno.env.get("WOOCOMMERCE_URL") || "").replace(/\/$/, "");
+  return String(
+    Deno.env.get("WOOCOMMERCE_URL") || Deno.env.get("WC_API_URL") || "",
+  ).replace(/\/$/, "");
 }
 
 function wcAuthHeader(): string {
-  const key = Deno.env.get("WOOCOMMERCE_CONSUMER_KEY") || "";
-  const secret = Deno.env.get("WOOCOMMERCE_CONSUMER_SECRET") || "";
+  const key = Deno.env.get("WOOCOMMERCE_CONSUMER_KEY") ||
+    Deno.env.get("WC_CONSUMER_KEY") || "";
+  const secret = Deno.env.get("WOOCOMMERCE_CONSUMER_SECRET") ||
+    Deno.env.get("WC_CONSUMER_SECRET") || "";
   const token = btoa(`${key}:${secret}`);
   return `Basic ${token}`;
 }
