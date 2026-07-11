@@ -111,6 +111,23 @@
     const items = state[collection] || [];
     const u = (editar && idx !== undefined) ? items[items.length - 1 - parseInt(idx, 10)] : null;
     const titulos = { cliente: 'Cliente', empleado: 'Empleado', proveedor: 'Proveedor' };
+    const np = global.AppNominaParams?.getNominaParams?.(state) || { smmlv: 1750905 };
+    const empExtra = tipo === 'empleado' ? `
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">FECHA INGRESO</label>
+        <input type="date" class="form-control" id="usu-fingreso" value="${u?.fechaIngreso || u?.fecha_ingreso || ''}"></div>
+      <div class="form-group"><label class="form-label">SALARIO BASE ($)</label>
+        <input type="number" class="form-control" id="usu-salario" value="${u?.salarioBase || u?.salario_base || np.smmlv}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">CARGO</label><input class="form-control" id="usu-cargo" value="${u?.cargo || ''}"></div>
+      <div class="form-group"><label class="form-label">TIPO CONTRATO</label>
+        <select class="form-control" id="usu-tcontrato">
+          <option value="indefinido" ${(u?.tipoContrato || u?.tipo_contrato || 'indefinido') === 'indefinido' ? 'selected' : ''}>Indefinido</option>
+          <option value="fijo" ${(u?.tipoContrato || u?.tipo_contrato) === 'fijo' ? 'selected' : ''}>Término fijo</option>
+          <option value="obra" ${(u?.tipoContrato || u?.tipo_contrato) === 'obra' ? 'selected' : ''}>Obra o labor</option>
+        </select></div>
+    </div>` : '';
     openModal(`
     <div class="modal-title">${u ? 'Editar' : 'Nuevo'} ${titulos[tipo] || tipo}<button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="form-row">
@@ -146,6 +163,7 @@
       </div>
       <div class="form-group"><label class="form-label">FECHA NACIMIENTO</label><input type="date" class="form-control" id="usu-fnac" value="${u?.fechaNac || ''}"></div>
     </div>
+    ${empExtra}
     <div class="form-group"><label class="form-label">OBSERVACIONES</label><textarea class="form-control" id="usu-obs" rows="2">${u?.observacion || ''}</textarea></div>
     <button class="btn btn-primary" style="width:100%" onclick="guardarUsuario('${collection}','${tipo}','${pageId || 'usu_' + tipo + 's'}','${u?.id || ''}')">Guardar ${titulos[tipo] || tipo}</button>
   `);
@@ -171,7 +189,17 @@
       };
     } else if (tipo === 'empleado') {
       table = 'employees';
-      data = { id: recordId, nombre, tipo_contrato: 'indefinido', salario_base: 0 };
+      const np = global.AppNominaParams?.getNominaParams?.(state) || { smmlv: 1750905 };
+      data = {
+        id: recordId,
+        nombre,
+        tipo_contrato: document.getElementById('usu-tcontrato')?.value || 'indefinido',
+        salario_base: parseFloat(document.getElementById('usu-salario')?.value) || np.smmlv,
+        cedula: document.getElementById('usu-cedula')?.value.trim() || null,
+        celular: document.getElementById('usu-celular')?.value.trim() || null,
+        cargo: document.getElementById('usu-cargo')?.value.trim() || null,
+        fecha_ingreso: document.getElementById('usu-fingreso')?.value || null,
+      };
     } else {
       table = 'proveedores';
       data = {
@@ -196,9 +224,9 @@
       if (!state[collection]) state[collection] = [];
       if (existingId) {
         const i = state[collection].findIndex((x) => x.id === existingId);
-        if (i >= 0) state[collection][i] = { ...state[collection][i], ...data };
+        if (i >= 0) state[collection][i] = { ...state[collection][i], ...data, salarioBase: data.salario_base, fechaIngreso: data.fecha_ingreso, tipoContrato: data.tipo_contrato };
       } else {
-        state[collection].push(data);
+        state[collection].push({ ...data, salarioBase: data.salario_base, fechaIngreso: data.fecha_ingreso, tipoContrato: data.tipo_contrato });
       }
       if (tipo === 'empleado') state.empleados = state.usu_empleados;
       closeModal();

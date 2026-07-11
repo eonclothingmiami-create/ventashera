@@ -164,6 +164,11 @@
     return autoSyncCfgGame(state, saveConfig, { force: true, notify });
   }
 
+  /** Sincroniza SMMLV/auxilio al abrir nómina si cambió el año (silencioso salvo actualización). */
+  async function ensureLegalParamsFresh(state, saveConfig, notify) {
+    return autoSyncCfgGame(state, saveConfig, { notify, force: false });
+  }
+
   global.AppNominaParams = {
     LEGAL_NOMINA_BY_YEAR,
     calendarYearBogota,
@@ -172,5 +177,6 @@
     hydrateRemoteCatalog,
     autoSyncCfgGame,
     applyOfficialForCurrentYear,
+    ensureLegalParamsFresh,
   };
 })(window);

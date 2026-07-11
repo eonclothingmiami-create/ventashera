@@ -4,6 +4,173 @@
   const PILA_EMP_ADOR = { salud: 0.0850, pension: 0.12, arl: 0.00522, caja: 0.04 };
   const PROV = { prima: 1 / 12, cesantias: 1 / 12, intCesantias: 0.12 / 12, vacaciones: 1 / 24 };
 
+  function normEmpName(s) {
+    return String(s || '').trim().toLowerCase();
+  }
+
+  function parseYmd(str) {
+    if (!str) return null;
+    const p = String(str).split('T')[0].split('-');
+    if (p.length < 3) return null;
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function fmtYmd(d) {
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function daysBetweenInclusive(from, to) {
+    const a = parseYmd(from);
+    const b = parseYmd(to);
+    if (!a || !b || b < a) return 0;
+    return Math.floor((b - a) / 86400000) + 1;
+  }
+
+  /** Inicio ciclo cesantías (1° feb) o ingreso si es posterior. */
+  function inicioPeriodoCesantias(fechaRetiro, fechaIngreso) {
+    const ret = parseYmd(fechaRetiro);
+    const ing = parseYmd(fechaIngreso);
+    if (!ret || !ing) return ing;
+    let feb1 = new Date(ret.getFullYear(), 1, 1);
+    if (ret < feb1) feb1 = new Date(ret.getFullYear() - 1, 1, 1);
+    return ing > feb1 ? ing : feb1;
+  }
+
+  /** Inicio semestre prima (1 ene / 1 jul) o ingreso si es posterior. */
+  function inicioPeriodoPrima(fechaRetiro, fechaIngreso) {
+    const ret = parseYmd(fechaRetiro);
+    const ing = parseYmd(fechaIngreso);
+    if (!ret || !ing) return ing;
+    const semStart = ret.getMonth() < 6
+      ? new Date(ret.getFullYear(), 0, 1)
+      : new Date(ret.getFullYear(), 6, 1);
+    return ing > semStart ? ing : semStart;
+  }
+
+  function nominaTipoRecord(n) {
+    return String(n?.tipo || n?.detalles?.tipo || '').toLowerCase();
+  }
+
+  function matchesEmpleadoNomina(n, empNombre, empId) {
+    const nName = normEmpName(n?.empleado || n?.empleado_nombre);
+    if (empNombre && nName === normEmpName(empNombre)) return true;
+    const nid = n?.empleadoId || n?.detalles?.empleadoId;
+    return !!(empId && nid && nid === empId);
+  }
+
+  /** Suma prestaciones ya pagadas/registradas para descontar en liquidación. */
+  function resumirPrestacionesPagadas(nominas, empNombre, empId, opts = {}) {
+    const { sinceCesan, sincePrima } = opts;
+    const out = { prima: 0, cesantias: 0, intCes: 0, vacaciones: 0, diasVacPagados: 0, registros: 0 };
+    for (const n of nominas || []) {
+      if (!matchesEmpleadoNomina(n, empNombre, empId)) continue;
+      const t = nominaTipoRecord(n);
+      const d = n.detalles || {};
+      const f = String(n.fecha || '').split('T')[0];
+      if (t === 'prima') {
+        if (sincePrima && f && f < sincePrima) continue;
+        out.prima += Number(d.valor ?? n.neto ?? 0);
+        out.registros += 1;
+      } else if (t === 'cesantias') {
+        if (sinceCesan && f && f < sinceCesan) continue;
+        out.cesantias += Number(d.valor ?? 0);
+        out.intCes += Number(d.intCes ?? 0);
+        if (!d.valor && !d.intCes) out.cesantias += Number(n.neto ?? 0);
+        out.registros += 1;
+      } else if (t === 'vacaciones') {
+        out.vacaciones += Number(d.salarioBase ?? n.neto ?? 0);
+        out.diasVacPagados += Number(d.diasVacaciones ?? 0);
+        out.registros += 1;
+      } else if (t === 'liquidacion') {
+        out.prima += Number(d.prima ?? 0);
+        out.cesantias += Number(d.cesan ?? 0);
+        out.intCes += Number(d.intCes ?? 0);
+        out.vacaciones += Number(d.vac ?? 0);
+        out.registros += 1;
+      }
+    }
+    return out;
+  }
+
+  function diasVacacionesDisfrutadas(ausencias, empNombre) {
+    const name = normEmpName(empNombre);
+    return (ausencias || [])
+      .filter((a) => normEmpName(a.empleado || a.empleado_nombre) === name && String(a.tipo || '').toLowerCase() === 'vacaciones')
+      .reduce((s, a) => s + (Number(a.dias) || 0), 0);
+  }
+
+  function calcLiquidacionContrato(input) {
+    const np = input.nominaParams || resolveParams(input);
+    const SMMLV = np.smmlv;
+    const AUX_TRANSPORTE = np.auxTrans;
+    const salario = Number(input.salario) || SMMLV;
+    const salarioDia = salario / 30;
+    const tieneAuxTrans = salario <= 2 * SMMLV;
+    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
+    const fechaIngreso = input.fechaIngreso;
+    const fechaRetiro = input.fechaRetiro;
+    const diasTrab = daysBetweenInclusive(fechaIngreso, fechaRetiro);
+    if (!diasTrab) {
+      throw new Error('Revisa fechas de ingreso y retiro');
+    }
+
+    const iniCesan = inicioPeriodoCesantias(fechaRetiro, fechaIngreso);
+    const iniPrima = inicioPeriodoPrima(fechaRetiro, fechaIngreso);
+    const diasCesan = daysBetweenInclusive(iniCesan, parseYmd(fechaRetiro));
+    const diasPrima = daysBetweenInclusive(iniPrima, parseYmd(fechaRetiro));
+
+    const cesanBruto = (base * diasCesan) / 360;
+    const intCesBruto = cesanBruto * 0.12 * (diasCesan / 360);
+    const primaBruto = (base * diasPrima) / 360;
+    const vacBruto = (salario * diasTrab) / 720;
+
+    const diasVacDisfr = Number(input.diasVacDisfrutadas) || 0;
+    const vacDisfrutadasValor = salarioDia * diasVacDisfr;
+
+    const pag = input.prestacionesPagadas || { prima: 0, cesantias: 0, intCes: 0, vacaciones: 0 };
+    const cesan = Math.max(0, cesanBruto - pag.cesantias);
+    const intCes = Math.max(0, intCesBruto - pag.intCes);
+    const prima = Math.max(0, primaBruto - pag.prima);
+    const vac = Math.max(0, vacBruto - pag.vacaciones - vacDisfrutadasValor);
+    const total = cesan + intCes + prima + vac;
+
+    return {
+      diasTrab,
+      diasCesan,
+      diasPrima,
+      base,
+      smmlvVigente: SMMLV,
+      auxVigente: AUX_TRANSPORTE,
+      nominaYear: np.year || np.calendarYear,
+      cesanBruto,
+      intCesBruto,
+      primaBruto,
+      vacBruto,
+      descontado: {
+        cesantias: pag.cesantias,
+        intCes: pag.intCes,
+        prima: pag.prima,
+        vacaciones: pag.vacaciones + vacDisfrutadasValor,
+        diasVacDisfr,
+        registros: pag.registros || 0,
+      },
+      cesan,
+      intCes,
+      prima,
+      vac,
+      totalDevengado: total,
+      neto: total,
+      periodos: {
+        ingreso: fechaIngreso,
+        retiro: fechaRetiro,
+        cesantiasDesde: fmtYmd(iniCesan),
+        primaDesde: fmtYmd(iniPrima),
+      },
+    };
+  }
+
   function resolveParams(cfg) {
     if (cfg?.nominaParams?.smmlv) return cfg.nominaParams;
     const st = global.state || global.__HERA_STATE__;
@@ -106,7 +273,9 @@
     const AUX_TRANSPORTE = np.auxTrans;
     const {
       salario = SMMLV, ausenciasNoPagas = 0, incapacidades = 0, anticipos = 0, otrosDevengos = 0, otrasDeducc = 0,
-      tipo = 'quincenal', diasVacaciones = 0, diasCesantias = 0, periodosLiquidar = 0
+      tipo = 'quincenal', diasVacaciones = 0, diasCesantias = 0, periodosLiquidar = 0,
+      fechaIngreso = null, fechaRetiro = null, empleadoNombre = '', empleadoId = null,
+      nomNominas = null, ausencias = null, prestacionesPagadas = null
     } = cfg;
     const salarioDia = salario / 30;
     const auxTransDia = (salario <= 2 * SMMLV) ? AUX_TRANSPORTE / 30 : 0;
@@ -136,26 +305,51 @@
       const costoTotal = totalDevengado + costoSalud + costoPension + costoArl + costoCaja + provPrima + provCes + provIntCes + provVac;
       resultado = { tipo, diasEfectivos, salarioBase, auxTrans, valorIncap, otrosDevengos, baseCotizacion, totalDevengado, deducSalud, deducPension, anticipos, otrasDeducc, totalDeducc, neto, empleador: { costoSalud, costoPension, costoArl, costoCaja, provPrima, provCes, provIntCes, provVac, costoTotal } };
     } else if (tipo === 'vacaciones') {
+      // Vacaciones: solo salario básico (sin aux. transporte) — Art. 189 CST.
       const valorVac = salarioDia * diasVacaciones;
       resultado = { tipo, diasVacaciones, salarioBase: valorVac, totalDevengado: valorVac, neto: valorVac };
     } else if (tipo === 'prima') {
-      const meses = diasCesantias / 30;
+      // Prima: (salario + aux.) × días / 360 — Arts. 306-307 CST; Ley 1ª/1963 art. 7.
+      const diasPrima = diasCesantias > 0 ? diasCesantias : 180;
       const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
-      const valor = (base / 12) * meses;
-      resultado = { tipo, meses, base, valor, totalDevengado: valor, neto: valor };
+      const valor = (base * diasPrima) / 360;
+      resultado = { tipo, diasPrima, meses: diasPrima / 30, base, valor, totalDevengado: valor, neto: valor };
     } else if (tipo === 'cesantias') {
       const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
       const valor = (base * diasCesantias) / 360;
-      const intCes = valor * 0.12 * (diasCesantias / 365);
+      const intCes = valor * 0.12 * (diasCesantias / 360);
       resultado = { tipo, diasCesantias, base, valor, intCes, totalDevengado: valor + intCes, neto: valor + intCes };
     } else if (tipo === 'liquidacion') {
-      const diasTrab = periodosLiquidar;
-      const cesan = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) * diasTrab / 360;
-      const intCes = cesan * 0.12 * (diasTrab / 365);
-      const prima = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) / 12 * (diasTrab / 30);
-      const vac = salarioDia * (diasTrab / 720) * 15;
-      const total = cesan + intCes + prima + vac;
-      resultado = { tipo, diasTrab, cesan, intCes, prima, vac, totalDevengado: total, neto: total };
+      if (fechaIngreso && fechaRetiro) {
+        const st = global.state || global.__HERA_STATE__ || {};
+        const nominas = nomNominas || st.nom_nominas || [];
+        const aus = ausencias || st.nom_ausencias || [];
+        const iniCesan = inicioPeriodoCesantias(fechaRetiro, fechaIngreso);
+        const iniPrima = inicioPeriodoPrima(fechaRetiro, fechaIngreso);
+        const pagos = prestacionesPagadas || resumirPrestacionesPagadas(nominas, empleadoNombre, empleadoId, {
+          sinceCesan: fmtYmd(iniCesan),
+          sincePrima: fmtYmd(iniPrima),
+        });
+        const liq = calcLiquidacionContrato({
+          salario,
+          fechaIngreso,
+          fechaRetiro,
+          nominaParams: np,
+          prestacionesPagadas: pagos,
+          diasVacDisfrutadas: diasVacacionesDisfrutadas(aus, empleadoNombre),
+        });
+        if (empleadoId) liq.empleadoId = empleadoId;
+        resultado = { tipo: 'liquidacion', ...liq };
+      } else {
+        const diasTrab = periodosLiquidar;
+        const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
+        const cesan = (base * diasTrab) / 360;
+        const intCes = cesan * 0.12 * (diasTrab / 360);
+        const prima = (base * diasTrab) / 360;
+        const vac = (salario * diasTrab) / 720;
+        const total = cesan + intCes + prima + vac;
+        resultado = { tipo, diasTrab, cesan, intCes, prima, vac, totalDevengado: total, neto: total, manual: true };
+      }
     }
     return resultado;
   }
@@ -188,11 +382,23 @@
     } else if (tipo === 'vacaciones') {
       html = `${row(`Vacaciones (${r.diasVacaciones} días)`, r.salarioBase, 'var(--green)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800">VALOR VACACIONES</span><span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
     } else if (tipo === 'prima') {
-      html = `${row(`Base (${r.meses?.toFixed(1)} meses)`, r.base)}${row('Prima semestral', r.valor, 'var(--green)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800">PRIMA A PAGAR</span><span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
+      html = `${row(`Base prestacional (${r.diasPrima ?? r.meses * 30} días)`, r.base)}${row('Prima de servicios', r.valor, 'var(--green)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800">PRIMA A PAGAR</span><span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
     } else if (tipo === 'cesantias') {
       html = `${row(`Cesantías (${r.diasCesantias} días)`, r.valor, 'var(--green)')}${row('Intereses cesantías (12%)', r.intCes, 'var(--green)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800">CESANTÍAS + INTERESES</span><span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
     } else if (tipo === 'liquidacion') {
-      html = `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">LIQUIDACIÓN CONTRATO</div>${row(`Cesantías (${r.diasTrab} días)`, r.cesan, 'var(--green)')}${row('Intereses cesantías', r.intCes, 'var(--green)')}${row('Prima proporcional', r.prima, 'var(--green)')}${row('Vacaciones proporcionales', r.vac, 'var(--green)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800;font-size:14px">TOTAL LIQUIDACIÓN</span><span style="font-family:Syne;font-weight:800;font-size:16px;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
+      const desc = r.descontado || {};
+      const per = r.periodos || {};
+      const hint = r.manual
+        ? ''
+        : `<div style="font-size:10px;color:var(--text2);margin-bottom:8px;line-height:1.4">SMMLV ${r.nominaYear || '—'}: ${fmt(Math.round(r.smmlvVigente || 0))} · ${r.diasTrab} días trabajados · Cesantías desde ${per.cesantiasDesde || '—'} · Prima desde ${per.primaDesde || '—'}${desc.registros ? ` · ${desc.registros} pago(s) descontados` : ''}</div>`;
+      const brutoRow = (label, bruto, neto, descVal) => {
+        if (!bruto && !neto) return '';
+        if (descVal > 0 && bruto > neto) {
+          return `${row(`${label} (bruto)`, bruto, 'var(--text2)')}${row(`  − ya pagado`, descVal, 'var(--red)')}${row(label, neto, 'var(--green)')}`;
+        }
+        return row(label, neto, 'var(--green)');
+      };
+      html = `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">LIQUIDACIÓN CONTRATO</div>${hint}${brutoRow(`Cesantías (${r.diasCesan ?? r.diasTrab} días)`, r.cesanBruto ?? r.cesan, r.cesan, desc.cesantias)}${brutoRow('Intereses cesantías', r.intCesBruto ?? r.intCes, r.intCes, desc.intCes)}${brutoRow(`Prima (${r.diasPrima ?? '—'} días)`, r.primaBruto ?? r.prima, r.prima, desc.prima)}${brutoRow('Vacaciones proporcionales', r.vacBruto ?? r.vac, r.vac, desc.vacaciones)}${desc.diasVacDisfr > 0 ? row(`  (incl. ${desc.diasVacDisfr} días disfrutados)`, desc.diasVacDisfr, 'var(--text2)') : ''}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800;font-size:14px">TOTAL LIQUIDACIÓN</span><span style="font-family:Syne;font-weight:800;font-size:16px;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
     }
     el.innerHTML = html;
   }
@@ -230,6 +436,13 @@
 
   global.AppNominaModule = {
     resolveParams,
+    parseYmd,
+    daysBetweenInclusive,
+    inicioPeriodoCesantias,
+    inicioPeriodoPrima,
+    resumirPrestacionesPagadas,
+    diasVacacionesDisfrutadas,
+    calcLiquidacionContrato,
     renderNomAusencias,
     openNomAusenciaModal,
     saveNomAusencia,

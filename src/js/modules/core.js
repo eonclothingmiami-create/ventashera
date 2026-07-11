@@ -2795,7 +2795,7 @@ async function loadState() {
     // Cargar clientes con paginación (pueden ser miles)
     const customers = await fetchAllRows('customers');
     state.usu_clientes = (customers||[]).map(c=>({...c,tipo:'cliente',tipoId:'CC',celular:c.celular||'',fechaCreacion:c.created_at?c.created_at.split('T')[0]:today()}));
-    state.empleados = (employees||[]).map(e=>({...e,salarioBase:parseFloat(e.salario_base)||0,tipoContrato:e.tipo_contrato||'indefinido'}));
+    state.empleados = (employees||[]).map(e=>({...e,salarioBase:parseFloat(e.salario_base)||0,tipoContrato:e.tipo_contrato||'indefinido',fechaIngreso:e.fecha_ingreso||null}));
     // usu_empleados es el mismo array — renderUsuEmpleados lo usa
     state.usu_empleados = state.empleados;
     state.usu_proveedores = (proveedores||[]).map(p=>({...p,tipo:'proveedor'}));
@@ -3091,7 +3091,17 @@ async function loadState() {
     }
 
     // Nómina
-    state.nom_nominas = (nomNominas||[]).map(n=>({id:n.id,numero:n.numero,empleado:n.empleado_nombre,periodo:n.periodo,salario:parseFloat(n.salario_base)||0,devengado:parseFloat(n.devengado)||0,deducciones:parseFloat(n.deducciones)||0,neto:parseFloat(n.neto)||0,detalles:n.detalles||[],pagada:n.pagada||false,fecha:n.fecha}));
+    state.nom_nominas = (nomNominas||[]).map(n=>{
+      const det = typeof n.detalles === 'string' ? (()=>{ try{return JSON.parse(n.detalles);}catch(e){return{};} })() : (n.detalles||{});
+      return {
+        id:n.id,numero:n.numero,empleado:n.empleado_nombre,periodo:n.periodo,
+        tipo:n.tipo||det.tipo||'quincenal',
+        empleadoId:n.empleado_id||det.empleadoId||null,
+        salario:parseFloat(n.salario_base)||0,devengado:parseFloat(n.devengado)||0,
+        deducciones:parseFloat(n.deducciones)||0,neto:parseFloat(n.neto)||0,
+        detalles:det,pagada:n.pagada||false,fecha:n.fecha
+      };
+    });
     state.nom_ausencias = (nomAusencias||[]).map(a=>({id:a.id,empleado:a.empleado_nombre,tipo:a.tipo,desde:a.desde,hasta:a.hasta,dias:a.dias||0,observaciones:a.observaciones||'',aprobada:a.aprobada||false}));
     state.nom_anticipos = (nomAnticipos||[]).map(a=>({id:a.id,empleado:a.empleado_nombre,valor:parseFloat(a.valor)||0,motivo:a.motivo||'',fecha:a.fecha}));
 
@@ -6535,11 +6545,16 @@ async function guardarUsuario(collection, tipo, pageId, existingId) {
     };
   } else if (tipo === 'empleado') {
     table = 'employees';
+    const np = getNominaLegalParams();
     data = {
       id: recordId,
       nombre: nombre,
-      tipo_contrato: 'indefinido', // Valor por defecto
-      salario_base: 0 
+      tipo_contrato: document.getElementById('usu-tcontrato')?.value || 'indefinido',
+      salario_base: parseFloat(document.getElementById('usu-salario')?.value) || np.smmlv,
+      cedula: document.getElementById('usu-cedula')?.value.trim() || null,
+      celular: document.getElementById('usu-celular')?.value.trim() || null,
+      cargo: document.getElementById('usu-cargo')?.value.trim() || null,
+      fecha_ingreso: document.getElementById('usu-fingreso')?.value || null,
     };
   } else {
     // Proveedor → tabla proveedores
@@ -7270,6 +7285,12 @@ function getNominaLegalParams() {
   return { smmlv: 1750905, auxTrans: 249095, year: 2026, decreto: '' };
 }
 
+async function ensureNominaLegalFresh() {
+  if (window.AppNominaParams?.ensureLegalParamsFresh) {
+    await window.AppNominaParams.ensureLegalParamsFresh(state, saveConfig, notify);
+  }
+}
+
 // Constantes fallback (si nomina-params no cargó)
 const SMMLV_2026 = 1750905;
 const AUX_TRANSPORTE_2026 = 249095;
@@ -7288,8 +7309,9 @@ function calcNomina(cfg) {
   }
   // cfg: { salario, diasTrabajados, diasPeriodo, ausenciasNoPagas, incapacidades,
   //        anticipos, otrosDevengos, otrasDeducc, tipo ('quincenal'|'mensual'|'vacaciones'|'prima'|'cesantias'|'liquidacion') }
+  const npFallback = getNominaLegalParams();
   const {
-    salario = SMMLV_2026,
+    salario = npFallback.smmlv,
     diasTrabajados = 15,
     diasPeriodo = 15,
     ausenciasNoPagas = 0,
@@ -7300,12 +7322,20 @@ function calcNomina(cfg) {
     tipo = 'quincenal',
     diasVacaciones = 0,
     diasCesantias = 0,
-    periodosLiquidar = 0 // para liquidación completa
+    periodosLiquidar = 0,
+    fechaIngreso = null,
+    fechaRetiro = null,
+    empleadoNombre = '',
+    empleadoId = null,
+    nomNominas = null,
+    ausencias = null
   } = cfg;
 
+  const SMMLV = npFallback.smmlv;
+  const AUX_TRANSPORTE = npFallback.auxTrans;
   const salarioDia = salario / 30;
-  const auxTransDia = (salario <= 2 * SMMLV_2026) ? AUX_TRANSPORTE_2026 / 30 : 0;
-  const tieneAuxTrans = salario <= 2 * SMMLV_2026;
+  const auxTransDia = (salario <= 2 * SMMLV) ? AUX_TRANSPORTE / 30 : 0;
+  const tieneAuxTrans = salario <= 2 * SMMLV;
 
   let resultado = {};
 
@@ -7350,34 +7380,48 @@ function calcNomina(cfg) {
     resultado = { tipo, diasVacaciones, salarioBase: valorVac, totalDevengado: valorVac, neto: valorVac };
 
   } else if (tipo === 'prima') {
-    // Prima: (salario + auxTransporte) / 12 × meses trabajados (máx 6 por semestre)
-    const meses = diasCesantias / 30;
-    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0);
-    const valor = (base / 12) * meses;
-    resultado = { tipo, meses, base, valor, totalDevengado: valor, neto: valor };
+    const diasPrima = diasCesantias > 0 ? diasCesantias : 180;
+    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
+    const valor = (base * diasPrima) / 360;
+    resultado = { tipo, diasPrima, meses: diasPrima / 30, base, valor, totalDevengado: valor, neto: valor };
 
   } else if (tipo === 'cesantias') {
-    // Cesantías: salario × días / 360
-    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0);
+    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
     const valor = (base * diasCesantias) / 360;
-    const intCes = valor * 0.12 * (diasCesantias / 365);
+    const intCes = valor * 0.12 * (diasCesantias / 360);
     resultado = { tipo, diasCesantias, base, valor, intCes, totalDevengado: valor + intCes, neto: valor + intCes };
 
   } else if (tipo === 'liquidacion') {
-    // Liquidación completa al terminar contrato
-    const diasTrab = periodosLiquidar; // días totales trabajados
-    const cesan = (salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0)) * diasTrab / 360;
-    const intCes = cesan * 0.12 * (diasTrab / 365);
-    const prima = (salario + (tieneAuxTrans ? AUX_TRANSPORTE_2026 : 0)) / 12 * (diasTrab / 30);
-    const vac = salarioDia * (diasTrab / 720) * 15;
-    const total = cesan + intCes + prima + vac;
-    resultado = { tipo, diasTrab, cesan, intCes, prima, vac, totalDevengado: total, neto: total };
+    if (fechaIngreso && fechaRetiro && window.AppNominaModule?.calcLiquidacionContrato) {
+      const nominas = nomNominas || state.nom_nominas || [];
+      const aus = ausencias || state.nom_ausencias || [];
+      const iniCesan = window.AppNominaModule.inicioPeriodoCesantias(fechaRetiro, fechaIngreso);
+      const iniPrima = window.AppNominaModule.inicioPeriodoPrima(fechaRetiro, fechaIngreso);
+      const fmtY = (d) => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+      const pagos = window.AppNominaModule.resumirPrestacionesPagadas(nominas, empleadoNombre, empleadoId, {
+        sinceCesan: fmtY(iniCesan), sincePrima: fmtY(iniPrima)
+      });
+      const liq = window.AppNominaModule.calcLiquidacionContrato({
+        salario, fechaIngreso, fechaRetiro, nominaParams: npFallback, prestacionesPagadas: pagos,
+        diasVacDisfrutadas: window.AppNominaModule.diasVacacionesDisfrutadas(aus, empleadoNombre)
+      });
+      resultado = { tipo: 'liquidacion', ...liq };
+    } else {
+      const diasTrab = periodosLiquidar;
+      const cesan = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) * diasTrab / 360;
+      const intCes = cesan * 0.12 * (diasTrab / 360);
+      const prima = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) * diasTrab / 360;
+      const vac = (salario * diasTrab) / 720;
+      const total = cesan + intCes + prima + vac;
+      resultado = { tipo, diasTrab, cesan, intCes, prima, vac, totalDevengado: total, neto: total, manual: true };
+    }
   }
 
   return resultado;
 }
 
 function renderNomNominas(){
+  ensureNominaLegalFresh().catch(() => {});
   if (window.AppNominaModule?.renderNomNominas) {
     return window.AppNominaModule.renderNomNominas({ state, fmt });
   }
@@ -7415,7 +7459,8 @@ function renderNomNominas(){
     </tbody></table></div></div>`;
 }
 
-function openLiquidacionModal(tipo){
+async function openLiquidacionModal(tipo){
+  await ensureNominaLegalFresh();
   const np = getNominaLegalParams();
   const empleados = state.empleados || [];
   const ausencias = state.nom_ausencias || [];
@@ -7423,7 +7468,7 @@ function openLiquidacionModal(tipo){
   const tipoLabel = {quincenal:'Nómina Quincenal',mensual:'Nómina Mensual',prima:'Liquidación Prima',cesantias:'Cesantías + Intereses',vacaciones:'Liquidación Vacaciones',liquidacion:'Liquidación Contrato'};
 
   const empOptions = empleados.length > 0
-    ? empleados.map(e=>`<option value="${e.id}" data-salario="${e.salarioBase||e.salario_base||np.smmlv}">${e.nombre}</option>`).join('')
+    ? empleados.map(e=>`<option value="${e.id}" data-salario="${e.salarioBase||e.salario_base||np.smmlv}" data-fecha-ingreso="${e.fechaIngreso||e.fecha_ingreso||''}">${e.nombre}</option>`).join('')
     : `<option value="">— Primero crea empleados —</option>`;
 
   const hoy = today();
@@ -7479,11 +7524,12 @@ function openLiquidacionModal(tipo){
   } else if(tipo === 'liquidacion') {
     extraFields = `
       <div class="form-row">
-        <div class="form-group"><label class="form-label">DÍAS TOTALES TRABAJADOS</label>
-          <input type="number" class="form-control" id="nom-dias-liq" value="360" min="1" oninput="calcularPreviewNomina()"></div>
-        <div class="form-group"><label class="form-label">FECHA RETIRO</label>
-          <input type="date" class="form-control" id="nom-fecha-retiro" value="${hoy}"></div>
-      </div>`;
+        <div class="form-group"><label class="form-label">FECHA INGRESO *</label>
+          <input type="date" class="form-control" id="nom-fecha-ingreso" onchange="calcularPreviewNomina()"></div>
+        <div class="form-group"><label class="form-label">FECHA RETIRO *</label>
+          <input type="date" class="form-control" id="nom-fecha-retiro" value="${hoy}" onchange="calcularPreviewNomina()"></div>
+      </div>
+      <p style="font-size:10px;color:var(--text2);margin:0 0 8px;line-height:1.4">Calcula cesantías desde el 1° feb (o ingreso), prima del semestre en curso y vacaciones proporcionales. Descuenta automáticamente prima, cesantías y vacaciones ya registradas en nóminas del empleado.</p>`;
   }
 
   openModal(`
@@ -7497,7 +7543,7 @@ function openLiquidacionModal(tipo){
           </select></div>
         <div class="form-group"><label class="form-label">SALARIO BASE ($)</label>
           <input type="number" class="form-control" id="nom-salario" value="${np.smmlv}" oninput="calcularPreviewNomina()">
-          <span style="font-size:10px;color:var(--text2)">SMMLV ${np.year}: ${fmt(np.smmlv)}${np.decreto ? ` · ${np.decreto}` : ''}</span></div>
+          <span style="font-size:10px;color:var(--text2)">SMMLV ${np.year}: ${fmt(np.smmlv)} · Aux. ${fmt(np.auxTrans)}${np.decreto ? ` · ${np.decreto}` : ''}</span></div>
       </div>
 
       <div class="form-row">
@@ -7534,9 +7580,17 @@ function onNomEmpleadoChange() {
   const sel = document.getElementById('nom-empleado');
   const opt = sel.options[sel.selectedIndex];
   const salario = opt?.getAttribute('data-salario');
+  const fechaIng = opt?.getAttribute('data-fecha-ingreso');
   if(salario) {
     document.getElementById('nom-salario').value = salario;
     cargarAnticiposEmpleado();
+  }
+  if (window._nomTipo === 'liquidacion') {
+    const ingEl = document.getElementById('nom-fecha-ingreso');
+    if (ingEl && fechaIng) ingEl.value = fechaIng;
+    if (!fechaIng && ingEl) {
+      notify('warning', '📅', 'Sin fecha de ingreso', 'Regístrala en el empleado o complétala aquí.', { duration: 4000 });
+    }
   }
   calcularPreviewNomina();
 }
@@ -7571,6 +7625,9 @@ function cargarAnticiposEmpleado() {
 function calcularPreviewNomina() {
   const tipo = window._nomTipo || 'quincenal';
   const np = getNominaLegalParams();
+  const empSel = document.getElementById('nom-empleado');
+  const empId = empSel?.value || '';
+  const empNombre = empSel?.options[empSel.selectedIndex]?.text || '';
   const salario = parseFloat(document.getElementById('nom-salario')?.value) || np.smmlv;
   const anticipos = parseFloat(document.getElementById('nom-anticipos-val')?.value) || 0;
   const otrasDeducc = parseFloat(document.getElementById('nom-otras-deducc')?.value) || 0;
@@ -7579,11 +7636,17 @@ function calcularPreviewNomina() {
   const otrosDevengos = parseFloat(document.getElementById('nom-otros-dev')?.value) || 0;
   const diasVac = parseFloat(document.getElementById('nom-dias-vac')?.value) || 15;
   const diasCes = parseFloat(document.getElementById('nom-dias-ces')?.value) || 180;
-  const diasLiq = parseFloat(document.getElementById('nom-dias-liq')?.value) || 360;
+  const fechaIngreso = document.getElementById('nom-fecha-ingreso')?.value || null;
+  const fechaRetiro = document.getElementById('nom-fecha-retiro')?.value || null;
+  const diasLiq = (fechaIngreso && fechaRetiro && window.AppNominaModule?.daysBetweenInclusive)
+    ? window.AppNominaModule.daysBetweenInclusive(fechaIngreso, fechaRetiro)
+    : parseFloat(document.getElementById('nom-dias-liq')?.value) || 0;
 
-  const cfg = { salario, anticipos, otrasDeducc, tipo,
+  const cfg = { salario, anticipos, otrasDeducc, tipo, nominaParams: np,
     ausenciasNoPagas: ausencias, incapacidades: incap,
-    otrosDevengos, diasVacaciones: diasVac, diasCesantias: diasCes, periodosLiquidar: diasLiq };
+    otrosDevengos, diasVacaciones: diasVac, diasCesantias: diasCes, periodosLiquidar: diasLiq,
+    fechaIngreso, fechaRetiro, empleadoId: empId, empleadoNombre: empNombre,
+    nomNominas: state.nom_nominas, ausencias: state.nom_ausencias };
 
   try {
     const r = calcNomina(cfg);
@@ -7678,18 +7741,27 @@ function renderNominaPreview(r, tipo) {
 
 async function guardarNomina(tipo) {
   const empSel = document.getElementById('nom-empleado');
+  const empId = empSel?.value || '';
   const empNombre = empSel?.options[empSel.selectedIndex]?.text || 'Empleado';
   if(!empNombre || empNombre === '— Seleccionar —') {
     notify('warning','⚠️','Selecciona un empleado','',{duration:3000}); return;
   }
+  if (tipo === 'liquidacion') {
+    const fi = document.getElementById('nom-fecha-ingreso')?.value;
+    const fr = document.getElementById('nom-fecha-retiro')?.value;
+    if (!fi || !fr) {
+      notify('warning','📅','Fechas requeridas','Indica ingreso y retiro para liquidar.',{duration:4000}); return;
+    }
+  }
   const periodo = document.getElementById('nom-periodo')?.value || today();
   const r = window._nomResult;
   if(!r) { notify('warning','⚠️','Primero recalcula','',{duration:3000}); return; }
+  if (empId) r.empleadoId = empId;
 
   const nomina = {
     id: dbId(),
     numero: 'NOM-' + String((state.nom_nominas||[]).length + 1).padStart(4,'0'),
-    tipo, empleado: empNombre,
+    tipo, empleado: empNombre, empleadoId: empId || null,
     periodo, salario: parseFloat(document.getElementById('nom-salario')?.value)||getNominaLegalParams().smmlv,
     devengado: r.totalDevengado || 0,
     deducciones: r.totalDeducc || 0,
@@ -9157,13 +9229,13 @@ function renderCfgTab(tab) {
         </tbody></table></div>
       </div>
       <div class="card">
-        <div class="card-title">📅 PARÁMETROS DE NÓMINA</div>
+        <div class="card-title">📅 PARÁMETROS DE NÓMINA (${getNominaLegalParams().year || new Date().getFullYear()})</div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">SMMLV 2026</label>
-            <input type="number" class="form-control" id="cfg-smmlv" value="${state.cfg_game?.smmlv||1750905}">
+          <div class="form-group"><label class="form-label">SMMLV ${getNominaLegalParams().year || ''}</label>
+            <input type="number" class="form-control" id="cfg-smmlv" value="${state.cfg_game?.smmlv||getNominaLegalParams().smmlv||1750905}">
           </div>
-          <div class="form-group"><label class="form-label">AUX. TRANSPORTE 2026</label>
-            <input type="number" class="form-control" id="cfg-auxtrans" value="${state.cfg_game?.aux_trans||249095}">
+          <div class="form-group"><label class="form-label">AUX. TRANSPORTE ${getNominaLegalParams().year || ''}</label>
+            <input type="number" class="form-control" id="cfg-auxtrans" value="${state.cfg_game?.aux_trans||getNominaLegalParams().auxTrans||249095}">
           </div>
         </div>
         <button class="btn btn-primary" onclick="guardarParamsNomina()">💾 Guardar Parámetros</button>
