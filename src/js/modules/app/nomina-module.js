@@ -109,8 +109,10 @@
       const auxTrans = tieneAuxTrans ? (auxTransDia * diasEfectivos) : 0;
       const valorIncap = incapacidades > 0 ? (salarioDia * incapacidades * (2 / 3)) : 0;
       const totalDevengado = salarioBase + auxTrans + otrosDevengos + valorIncap;
-      const deducSalud = totalDevengado * PILA_EMP.salud;
-      const deducPension = totalDevengado * PILA_EMP.pension;
+      // IBC salud/pensión: NO incluye auxilio de transporte (prestación no salarial — Colombia).
+      const baseCotizacion = salarioBase + otrosDevengos + valorIncap;
+      const deducSalud = baseCotizacion * PILA_EMP.salud;
+      const deducPension = baseCotizacion * PILA_EMP.pension;
       const totalDeducc = deducSalud + deducPension + anticipos + otrasDeducc;
       const neto = Math.max(0, totalDevengado - totalDeducc);
       const costoSalud = salarioBase * PILA_EMP_ADOR.salud;
@@ -122,7 +124,7 @@
       const provIntCes = provCes * (PROV.intCesantias * 12);
       const provVac = salarioBase * PROV.vacaciones;
       const costoTotal = totalDevengado + costoSalud + costoPension + costoArl + costoCaja + provPrima + provCes + provIntCes + provVac;
-      resultado = { tipo, diasEfectivos, salarioBase, auxTrans, valorIncap, otrosDevengos, totalDevengado, deducSalud, deducPension, anticipos, otrasDeducc, totalDeducc, neto, empleador: { costoSalud, costoPension, costoArl, costoCaja, provPrima, provCes, provIntCes, provVac, costoTotal } };
+      resultado = { tipo, diasEfectivos, salarioBase, auxTrans, valorIncap, otrosDevengos, baseCotizacion, totalDevengado, deducSalud, deducPension, anticipos, otrasDeducc, totalDeducc, neto, empleador: { costoSalud, costoPension, costoArl, costoCaja, provPrima, provCes, provIntCes, provVac, costoTotal } };
     } else if (tipo === 'vacaciones') {
       const valorVac = salarioDia * diasVacaciones;
       resultado = { tipo, diasVacaciones, salarioBase: valorVac, totalDevengado: valorVac, neto: valorVac };
@@ -172,7 +174,7 @@
     const row = (label, val, color = '') => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:var(--text2)">${label}</span>${color ? `<span style="color:${color};font-weight:700">${fmt(Math.round(val || 0))}</span>` : `<span style="font-weight:700">${fmt(Math.round(val || 0))}</span>`}</div>`;
     let html = '';
     if (tipo === 'quincenal' || tipo === 'mensual') {
-      html = `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">DEVENGADO</div>${row(`Salario (${r.diasEfectivos} días)`, r.salarioBase, 'var(--green)')}${r.auxTrans > 0 ? row('Aux. Transporte', r.auxTrans, 'var(--green)') : ''}${r.valorIncap > 0 ? row('Incapacidad (EPS 2/3)', r.valorIncap, 'var(--yellow)') : ''}${r.otrosDevengos > 0 ? row('Otros devengos', r.otrosDevengos, 'var(--green)') : ''}${row('TOTAL DEVENGADO', r.totalDevengado, 'var(--green)')}<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">DEDUCCIONES</div>${row('Salud empleado (4%)', r.deducSalud, 'var(--red)')}${row('Pensión empleado (4%)', r.deducPension, 'var(--red)')}${r.anticipos > 0 ? row('Anticipos', r.anticipos, 'var(--red)') : ''}${r.otrasDeducc > 0 ? row('Otras deducciones', r.otrasDeducc, 'var(--red)') : ''}${row('TOTAL DEDUCCIONES', r.totalDeducc, 'var(--red)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800;font-size:14px">NETO A PAGAR</span><span style="font-family:Syne;font-weight:800;font-size:16px;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
+      html = `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">DEVENGADO</div>${row(`Salario (${r.diasEfectivos} días)`, r.salarioBase, 'var(--green)')}${r.auxTrans > 0 ? row('Aux. Transporte', r.auxTrans, 'var(--green)') : ''}${r.valorIncap > 0 ? row('Incapacidad (EPS 2/3)', r.valorIncap, 'var(--yellow)') : ''}${r.otrosDevengos > 0 ? row('Otros devengos', r.otrosDevengos, 'var(--green)') : ''}${row('TOTAL DEVENGADO', r.totalDevengado, 'var(--green)')}<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">DEDUCCIONES</div>${r.baseCotizacion != null ? `<div style="font-size:10px;color:var(--text2);margin-bottom:4px">Base cotización salud/pensión (sin aux. transporte): ${fmt(Math.round(r.baseCotizacion))}</div>` : ''}${row('Salud empleado (4%)', r.deducSalud, 'var(--red)')}${row('Pensión empleado (4%)', r.deducPension, 'var(--red)')}${r.anticipos > 0 ? row('Anticipos', r.anticipos, 'var(--red)') : ''}${r.otrasDeducc > 0 ? row('Otras deducciones', r.otrasDeducc, 'var(--red)') : ''}${row('TOTAL DEDUCCIONES', r.totalDeducc, 'var(--red)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800;font-size:14px">NETO A PAGAR</span><span style="font-family:Syne;font-weight:800;font-size:16px;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
     } else if (tipo === 'vacaciones') {
       html = `${row(`Vacaciones (${r.diasVacaciones} días)`, r.salarioBase, 'var(--green)')}<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px"><span style="font-family:Syne;font-weight:800">VALOR VACACIONES</span><span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span></div>`;
     } else if (tipo === 'prima') {

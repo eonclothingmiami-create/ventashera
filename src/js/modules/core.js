@@ -7305,8 +7305,10 @@ function calcNomina(cfg) {
     const valorIncap = incapacidades > 0 ? (salarioDia * incapacidades * (2/3)) : 0;
     const totalDevengado = salarioBase + auxTrans + otrosDevengos + valorIncap;
 
-    const deducSalud = totalDevengado * PILA_EMP.salud;
-    const deducPension = totalDevengado * PILA_EMP.pension;
+    // IBC salud/pensión: NO incluye auxilio de transporte (prestación no salarial — Colombia).
+    const baseCotizacion = salarioBase + otrosDevengos + valorIncap;
+    const deducSalud = baseCotizacion * PILA_EMP.salud;
+    const deducPension = baseCotizacion * PILA_EMP.pension;
     const totalDeducc = deducSalud + deducPension + anticipos + otrasDeducc;
     const neto = Math.max(0, totalDevengado - totalDeducc);
 
@@ -7323,7 +7325,7 @@ function calcNomina(cfg) {
     const costoTotal = totalDevengado + costoSalud + costoPension + costoArl + costoCaja + provPrima + provCes + provIntCes + provVac;
 
     resultado = {
-      tipo, diasEfectivos, salarioBase, auxTrans, valorIncap, otrosDevengos,
+      tipo, diasEfectivos, salarioBase, auxTrans, valorIncap, otrosDevengos, baseCotizacion,
       totalDevengado, deducSalud, deducPension, anticipos, otrasDeducc,
       totalDeducc, neto,
       empleador: { costoSalud, costoPension, costoArl, costoCaja, provPrima, provCes, provIntCes, provVac, costoTotal }

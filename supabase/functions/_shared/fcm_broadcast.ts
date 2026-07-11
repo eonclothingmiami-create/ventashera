@@ -71,6 +71,63 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
   return json.access_token;
 }
 
+async function sendOneFcmMessage(
+  accessToken: string,
+  projectId: string,
+  token: string,
+  opts: {
+    title: string;
+    body: string;
+    link: string;
+    image: string;
+    data?: Record<string, string>;
+  },
+): Promise<{ ok: boolean; errText?: string; invalid?: boolean }> {
+  const notification: Record<string, string> = {
+    title: opts.title,
+    body: opts.body,
+  };
+  const webpushNotification: Record<string, string> = {
+    title: opts.title,
+    body: opts.body,
+  };
+  if (opts.image) {
+    notification.image = opts.image;
+    webpushNotification.image = opts.image;
+  }
+
+  const message: Record<string, unknown> = {
+    token,
+    notification,
+    webpush: {
+      fcm_options: { link: opts.link },
+      notification: webpushNotification,
+    },
+  };
+  if (opts.data && Object.keys(opts.data).length > 0) {
+    message.data = opts.data;
+  }
+
+  const res = await fetch(
+    `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message }),
+    },
+  );
+  if (res.ok) return { ok: true };
+  const errText = await res.text();
+  const invalid =
+    errText.includes("UNREGISTERED") ||
+    errText.includes("INVALID_ARGUMENT") ||
+    errText.includes("NOT_FOUND");
+  return { ok: false, errText, invalid };
+}
+
 export async function broadcastFcm(
   supabaseUrl: string,
   serviceKey: string,
@@ -80,6 +137,7 @@ export async function broadcastFcm(
     link?: string;
     image?: string;
     exclude_token?: string;
+    only_token?: string;
     data?: Record<string, string>;
   },
 ): Promise<FcmBroadcastResult> {
@@ -88,6 +146,34 @@ export async function broadcastFcm(
   const sa = JSON.parse(saRaw) as ServiceAccount;
 
   const supabase = createClient(supabaseUrl, serviceKey);
+  const link = opts.link || "";
+  const image = opts.image?.trim() || "";
+
+  if (opts.only_token?.trim()) {
+    const token = opts.only_token.trim();
+    const accessToken = await getAccessToken(sa);
+    const result = await sendOneFcmMessage(accessToken, sa.project_id, token, {
+      title: opts.title,
+      body: opts.body,
+      link,
+      image,
+      data: opts.data,
+    });
+    if (result.ok) {
+      return { sent: 1, failed: 0, total_tokens: 1, removed_invalid: 0, sample_errors: [] };
+    }
+    if (result.invalid) {
+      await supabase.from("fcm_tokens").delete().eq("token", token);
+    }
+    return {
+      sent: 0,
+      failed: 1,
+      total_tokens: 1,
+      removed_invalid: result.invalid ? 1 : 0,
+      sample_errors: result.errText ? [result.errText.slice(0, 200)] : [],
+    };
+  }
+
   const { data: rows, error } = await supabase.from("fcm_tokens").select("token");
   if (error) throw error;
 
@@ -106,61 +192,26 @@ export async function broadcastFcm(
   const invalid: string[] = [];
   const sample_errors: string[] = [];
 
-  const link = opts.link || "";
-  const image = opts.image?.trim() || "";
   for (let i = 0; i < tokens.length; i += 25) {
     const chunk = tokens.slice(i, i + 25);
     await Promise.all(
       chunk.map(async (token) => {
-        const notification: Record<string, string> = {
+        const result = await sendOneFcmMessage(accessToken, projectId, token, {
           title: opts.title,
           body: opts.body,
-        };
-        const webpushNotification: Record<string, string> = {
-          title: opts.title,
-          body: opts.body,
-        };
-        if (image) {
-          notification.image = image;
-          webpushNotification.image = image;
-        }
-
-        const message: Record<string, unknown> = {
-          token,
-          notification,
-          webpush: {
-            fcm_options: { link },
-            notification: webpushNotification,
-          },
-        };
-        if (opts.data && Object.keys(opts.data).length > 0) {
-          message.data = opts.data;
-        }
-        const res = await fetch(
-          `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ message }),
-          },
-        );
-        if (res.ok) {
+          link,
+          image,
+          data: opts.data,
+        });
+        if (result.ok) {
           sent++;
           return;
         }
         failed++;
-        const errText = await res.text();
-        if (sample_errors.length < 5) sample_errors.push(errText.slice(0, 200));
-        if (
-          errText.includes("UNREGISTERED") ||
-          errText.includes("INVALID_ARGUMENT") ||
-          errText.includes("NOT_FOUND")
-        ) {
-          invalid.push(token);
+        if (result.errText && sample_errors.length < 5) {
+          sample_errors.push(result.errText.slice(0, 200));
         }
+        if (result.invalid) invalid.push(token);
       }),
     );
   }

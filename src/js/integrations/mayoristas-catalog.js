@@ -66,7 +66,6 @@
     };
   }
 
-  function b64url(bytes) {
     const bin = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
     return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   }
