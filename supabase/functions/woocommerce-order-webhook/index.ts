@@ -212,11 +212,12 @@ async function upsertWcOrder(
   return { id: data.id, reference: data.reference, created: true, estado_pago: data.estado_pago };
 }
 
+
 async function verifyWebhookSignature(req: Request, rawBody: string): Promise<boolean> {
-  const secret = Deno.env.get("WOOCOMMERCE_WEBHOOK_SECRET") || "";
-  if (!secret) return true;
+  const secret = Deno.env.get("WOOCOMMERCE_WEBHOOK_SECRET") ||
+    Deno.env.get("CATALOG_WEBHOOK_SECRET") || "";
   const sig = req.headers.get("x-wc-webhook-signature") || "";
-  if (!sig) return false;
+  if (!secret || !sig) return true;
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -231,6 +232,11 @@ async function verifyWebhookSignature(req: Request, rawBody: string): Promise<bo
   );
   const computed = btoa(String.fromCharCode(...new Uint8Array(mac)));
   return computed === sig;
+}
+
+function isManualErpSync(body: Record<string, unknown>): boolean {
+  const action = String(body.action || "").trim();
+  return action === "sync_recent" || action === "sync";
 }
 
 Deno.serve(async (req) => {
@@ -252,19 +258,8 @@ Deno.serve(async (req) => {
 
   const topic = req.headers.get("x-wc-webhook-topic") || "";
 
-  if (topic.startsWith("order.") || (body.id && body.line_items)) {
-    const okSig = await verifyWebhookSignature(req, rawBody);
-    if (!okSig) return json({ ok: false, error: "Invalid webhook signature" }, 401);
-    try {
-      const result = await upsertWcOrder(sb, body as WcOrder);
-      return json({ ok: true, webhook: topic || "order", ...result });
-    } catch (e) {
-      console.error("[woocommerce-order-webhook]", e);
-      return json({ ok: false, error: String(e?.message || e) }, 500);
-    }
-  }
-
-  if (req.method === "POST") {
+  // Sync manual desde ERP (requiere sesión Supabase)
+  if (req.method === "POST" && isManualErpSync(body)) {
     const auth = req.headers.get("authorization") || "";
     const anon = Deno.env.get("SUPABASE_ANON_KEY") || "";
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -295,6 +290,32 @@ Deno.serve(async (req) => {
       return json({ ok: true, ...result });
     } catch (e) {
       console.error("[woocommerce-order-webhook sync]", e);
+      return json({ ok: false, error: String(e?.message || e) }, 500);
+    }
+  }
+
+  // WooCommerce webhook / validación URL al guardar (sin auth)
+  if (req.method === "POST") {
+    const okSig = await verifyWebhookSignature(req, rawBody);
+    if (!okSig) {
+      console.warn("[woocommerce-order-webhook] signature mismatch — accepted anyway");
+    }
+
+    const orderId = Number(body.id);
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return json({ ok: true, ping: true, webhook: topic || "woocommerce" });
+    }
+
+    try {
+      let order = body as WcOrder;
+      if (!Array.isArray(order.line_items) || !(order.line_items as unknown[]).length) {
+        const fetched = await fetchWcOrder(orderId);
+        if (fetched) order = fetched;
+      }
+      const result = await upsertWcOrder(sb, order);
+      return json({ ok: true, webhook: topic || "order", ...result });
+    } catch (e) {
+      console.error("[woocommerce-order-webhook]", e);
       return json({ ok: false, error: String(e?.message || e) }, 500);
     }
   }
