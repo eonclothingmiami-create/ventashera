@@ -7,6 +7,7 @@ import {
   normalizeCustomer,
   normalizeItems,
 } from "../_shared/ventas_catalogo_map.ts";
+import { catalogOrderAuthOk } from "../_shared/catalog_order_auth.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -21,13 +22,6 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-function authOk(req: Request): boolean {
-  const secret = Deno.env.get("CATALOG_ORDER_SECRET") || "";
-  if (!secret) return true;
-  const hdr = req.headers.get("x-catalog-order-secret") || "";
-  return hdr === secret;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -35,7 +29,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return json({ ok: false, error: "POST only" }, 405);
   }
-  if (!authOk(req)) {
+  if (!catalogOrderAuthOk(req)) {
     return json({ ok: false, error: "Unauthorized" }, 401);
   }
 

@@ -13,6 +13,7 @@ import {
   fetchWompiTransactionById,
   fetchWompiTransactionByReference,
 } from "../_shared/wompi_client.ts";
+import { catalogOrderAuthOk } from "../_shared/catalog_order_auth.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -28,10 +29,7 @@ function json(body: Record<string, unknown>, status = 200): Response {
 }
 
 function authOk(req: Request): boolean {
-  const secret = Deno.env.get("CATALOG_ORDER_SECRET") || "";
-  if (!secret) return true;
-  const hdr = req.headers.get("x-catalog-order-secret") || "";
-  return hdr === secret;
+  return catalogOrderAuthOk(req);
 }
 
 function erpAuthOk(req: Request): boolean {
