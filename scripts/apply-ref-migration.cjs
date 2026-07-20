@@ -83,6 +83,14 @@ async function main() {
     await patch(key, row.id, { ref: row.new_ref, sku: row.new_ref, updated_at: now });
   }
   writeAliases(map);
+  try {
+    require('child_process').execSync('node scripts/populate-ref-aliases.cjs', {
+      cwd: ROOT,
+      stdio: 'inherit',
+    });
+  } catch (e) {
+    console.warn('populate-ref-aliases skipped:', e.message);
+  }
   console.log('Done', map.length);
 }
 
