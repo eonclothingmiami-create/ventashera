@@ -370,21 +370,91 @@
   }
 
   async function getDashboardSummary() {
-    const [cfg, status, pendingArts, recentFailed] = await Promise.all([
+    const [cfg, status, pendingArts, recentFailed, brand] = await Promise.all([
       getRuntimeConfig(),
       getCatalogStatus(),
       listPendingReview({ limit: 5 }),
       listRecentJobs({ limit: 5, status: 'failed' }),
+      getActiveBrandVoice().catch(() => null),
     ]);
     return {
       config: cfg,
       catalog: status,
+      brand_voice: brand,
       pending_artifacts: pendingArts.length,
       pending_jobs: status.jobs.pending,
       failed_jobs: status.jobs.failed,
       last_failed: recentFailed[0] || null,
-      cost_today: null, // no token metering yet — never invent $
+      cost_today: null,
     };
+  }
+
+  async function getActiveBrandVoice() {
+    const { data, error } = await sb().rpc('get_active_brand_voice');
+    if (error) throw error;
+    return data;
+  }
+
+  async function listBrandVoices() {
+    const { data, error } = await sb()
+      .from('ai_brand_voice')
+      .select(
+        'id, version, status, title, tone, audience, always_use, never_use, description_style, seo_structure, good_examples, bad_examples, guide_markdown, activated_at, updated_at',
+      )
+      .order('version', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function saveBrandVoiceDraft(patch) {
+    const client = sb();
+    const { data: maxRow } = await client
+      .from('ai_brand_voice')
+      .select('version')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextVersion = (maxRow?.version || 0) + 1;
+    const row = {
+      version: nextVersion,
+      status: 'draft',
+      title: patch.title || 'Hera Brand Voice',
+      locale: patch.locale || 'es-CO',
+      tone: patch.tone || '',
+      audience: patch.audience || '',
+      always_use: patch.always_use || [],
+      never_use: patch.never_use || [],
+      description_style: patch.description_style || '',
+      seo_structure: patch.seo_structure || '',
+      good_examples: patch.good_examples || '',
+      bad_examples: patch.bad_examples || '',
+      guide_markdown: patch.guide_markdown || '',
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await client
+      .from('ai_brand_voice')
+      .insert(row)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function updateBrandVoice(id, patch) {
+    const { data, error } = await sb()
+      .from('ai_brand_voice')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function activateBrandVoice(id) {
+    const { data, error } = await sb().rpc('activate_brand_voice', { p_id: id });
+    if (error) throw error;
+    return data;
   }
 
   global.ProductIntelligenceApi = {
@@ -400,6 +470,11 @@
     updateRuntimeModules,
     updateRuntimeModels,
     getDashboardSummary,
+    getActiveBrandVoice,
+    listBrandVoices,
+    saveBrandVoiceDraft,
+    updateBrandVoice,
+    activateBrandVoice,
     probeWorker,
     pingProvider,
     enqueue,

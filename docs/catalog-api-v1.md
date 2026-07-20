@@ -59,7 +59,9 @@ Página `Centro de IA` (nav **INTELIGENCIA**). Es el “Configuración → IA”
 
 **Arquitectura runtime:** `Worker → AiProvider → OpenAI` (extensible). Embedding exige Knowledge `accepted`. Embed model locked a familia 1536 dims.
 
-**Playbook SKU:** Copy → SEO → Attributes → Knowledge → Embedding (Relations cuando gates on + revisión humana).
+**Brand Voice:** tabla `ai_brand_voice` (versión `active`). Copy/SEO/Attributes/Knowledge/Relations inyectan `guide_markdown` en el system prompt. UI: Centro de IA → Brand Voice. Así el tono Quiet Luxury sobrevive al cambio de proveedor.
+
+**Playbook SKU:** Brand Voice activa → Proveedor OK → Copy → SEO → Attributes → Knowledge → Embedding (Relations cuando gates on + revisión humana).
 
 No es un panel de ChatGPT ni de API keys.
 

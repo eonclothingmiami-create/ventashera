@@ -5,6 +5,7 @@
 (function initAiCenterModule(global) {
   const TABS = [
     { id: 'resumen', label: 'Resumen' },
+    { id: 'brand', label: 'Brand Voice' },
     { id: 'proveedores', label: 'Proveedores' },
     { id: 'activacion', label: 'Activación módulos' },
     { id: 'estado', label: 'Estado del catálogo' },
@@ -116,15 +117,80 @@
             </div>
           </div>
           <div style="padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
+            <div style="font-size:11px;color:var(--text2);">Brand Voice</div>
+            <div style="font-size:20px;font-weight:800;color:var(--text1);">
+              ${dash.brand_voice ? `v${esc(dash.brand_voice.version)}` : '—'}
+            </div>
+            <div style="font-size:10px;color:var(--text2);">${dash.brand_voice ? esc(dash.brand_voice.status) : 'Sin guía activa'}</div>
+          </div>
+          <div style="padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);">
             <div style="font-size:11px;color:var(--text2);">Costo estimado hoy</div>
             <div style="font-size:20px;font-weight:800;color:var(--text2);">—</div>
             <div style="font-size:10px;color:var(--text2);">Sin telemetría de tokens aún</div>
           </div>
         </div>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary btn-sm" onclick="AiCenter.setTab('proveedores')">Ir a Proveedores</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="AiCenter.setTab('brand')">Brand Voice</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="AiCenter.setTab('proveedores')">Ir a Proveedores</button>
           <button type="button" class="btn btn-secondary btn-sm" onclick="AiCenter.setTab('activacion')">Activación módulos</button>
           <button type="button" class="btn btn-secondary btn-sm" onclick="AiCenter.refresh()">🔄 Actualizar</button>
+        </div>`;
+    } catch (e) {
+      host.innerHTML = `<div style="color:var(--red);padding:16px;">${esc(e.message || e)}</div>`;
+    }
+  }
+
+  async function renderBrand(host) {
+    host.innerHTML = `<div style="padding:16px;color:var(--text2);">Cargando Brand Voice…</div>`;
+    try {
+      const [active, all] = await Promise.all([
+        api().getActiveBrandVoice(),
+        api().listBrandVoices(),
+      ]);
+      if (!active) {
+        host.innerHTML = `<div style="padding:16px;color:var(--orange);">No hay Brand Voice activa. Revisá la migración.</div>`;
+        return;
+      }
+      const always = (active.always_use || []).join(', ');
+      const never = (active.never_use || []).join(', ');
+      host.innerHTML = `
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px;">
+          Guía de identidad que <strong style="color:var(--text1);">todos</strong> los módulos (Copy, SEO, Attributes, Knowledge, Relations)
+          inyectan en el system prompt. Si cambiás de proveedor LLM, el sonido Hera permanece.
+          Editá el markdown y guardá una nueva versión draft → Activar.
+        </div>
+        <div style="padding:14px;border-radius:10px;border:1px solid rgba(0,229,180,0.3);background:rgba(0,229,180,0.06);margin-bottom:14px;">
+          <div style="font-weight:800;color:var(--text1);">${esc(active.title)} · v${esc(active.version)} · ${esc(active.status)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:6px;"><strong>Tono:</strong> ${esc(active.tone)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;"><strong>Público:</strong> ${esc(active.audience)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;"><strong>Usar:</strong> ${esc(always)}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;"><strong>Nunca:</strong> ${esc(never)}</div>
+        </div>
+        <label class="form-label">guide_markdown (inyectado a los módulos)</label>
+        <textarea class="form-control" id="ai-bv-guide" rows="16" style="font-family:ui-monospace,monospace;font-size:11px;">${esc(active.guide_markdown || '')}</textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="AiCenter.saveBrandDraft()">Guardar como nueva versión (draft)</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="AiCenter.refresh()">🔄</button>
+        </div>
+        <div style="margin-top:16px;font-size:12px;font-weight:700;color:var(--text1);">Versiones</div>
+        <div style="margin-top:8px;">
+          ${(all || [])
+            .map(
+              (v) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.2);margin-bottom:6px;">
+              <div>
+                <code>v${esc(v.version)}</code>
+                <span style="margin-left:8px;color:var(--text2);">${esc(v.status)}</span>
+                ${v.status === 'active' ? '<span style="color:var(--green);margin-left:6px;">●</span>' : ''}
+              </div>
+              ${
+                v.status !== 'active'
+                  ? `<button type="button" class="btn btn-secondary btn-sm" onclick="AiCenter.activateBrand('${esc(v.id)}')">Activar</button>`
+                  : '<span style="font-size:11px;color:var(--text2);">en uso</span>'
+              }
+            </div>`,
+            )
+            .join('')}
         </div>`;
     } catch (e) {
       host.innerHTML = `<div style="color:var(--red);padding:16px;">${esc(e.message || e)}</div>`;
@@ -385,6 +451,7 @@
       return;
     }
     if (_tab === 'resumen') return renderResumen(host);
+    if (_tab === 'brand') return renderBrand(host);
     if (_tab === 'proveedores') return renderProveedores(host);
     if (_tab === 'activacion') return renderActivacion(host);
     if (_tab === 'estado') return renderEstado(host);
@@ -501,6 +568,39 @@
     }
   }
 
+  async function saveBrandDraft() {
+    try {
+      const active = await api().getActiveBrandVoice();
+      const guide = document.getElementById('ai-bv-guide')?.value || '';
+      const draft = await api().saveBrandVoiceDraft({
+        title: active?.title || 'Hera Brand Voice',
+        tone: active?.tone || '',
+        audience: active?.audience || '',
+        always_use: active?.always_use || [],
+        never_use: active?.never_use || [],
+        description_style: active?.description_style || '',
+        seo_structure: active?.seo_structure || '',
+        good_examples: active?.good_examples || '',
+        bad_examples: active?.bad_examples || '',
+        guide_markdown: guide,
+      });
+      notify('success', 'Brand Voice', `Draft v${draft.version} creado. Activá cuando esté listo.`);
+      await refresh();
+    } catch (e) {
+      notify('error', 'Brand Voice', e.message || String(e));
+    }
+  }
+
+  async function activateBrand(id) {
+    try {
+      const row = await api().activateBrandVoice(id);
+      notify('success', 'Brand Voice', `v${row.version} activa. Los próximos jobs la usarán.`);
+      await refresh();
+    } catch (e) {
+      notify('error', 'Brand Voice', e.message || String(e));
+    }
+  }
+
   global.AppAiCenterModule = { renderAiCenter };
   global.AiCenter = {
     refresh,
@@ -511,6 +611,8 @@
     probeConnection,
     saveModules,
     saveModels,
+    saveBrandDraft,
+    activateBrand,
     setTab(id) {
       _tab = id;
       renderAiCenter();

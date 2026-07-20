@@ -42,6 +42,24 @@ type JobRow = {
   attempts: number;
 };
 
+async function loadBrandVoiceGuide(admin: SupabaseClient): Promise<{
+  guide: string;
+  version: number | null;
+  id: string | null;
+}> {
+  const { data, error } = await admin.rpc("get_active_brand_voice");
+  if (error || !data) {
+    return { guide: "", version: null, id: null };
+  }
+  const row = data as Record<string, unknown>;
+  const guide = String(row.guide_markdown || "").trim();
+  return {
+    guide,
+    version: row.version != null ? Number(row.version) : null,
+    id: row.id ? String(row.id) : null,
+  };
+}
+
 async function loadRuntimeConfig(admin: SupabaseClient): Promise<RuntimeConfig> {
   const { data, error } = await admin.rpc("get_ai_runtime_config");
   if (error) {
@@ -200,18 +218,28 @@ async function processGenerationJob(
   provider: AiProvider,
   cfg: RuntimeConfig,
   userId: string | null,
+  brandVoiceGuide: string,
+  brandVoiceVersion: number | null,
 ) {
   const module = job.module as Exclude<PiModule, "embedding">;
   const artifactType = artifactTypeForModule(module);
   if (!artifactType) throw new Error("invalid generation module");
 
   const ctx = await loadContext(admin, job.ref);
-  const messages = buildMessages(module, ctx);
+  const messages = buildMessages(module, ctx, brandVoiceGuide);
   const chat = await provider.chatJson({
     model: cfg.chat_model,
     messages,
   });
   const payload = parseJsonObject(chat.content);
+  // Stamp brand voice version for audit (non-breaking)
+  const stamped = {
+    ...payload,
+    _meta: {
+      brand_voice_version: brandVoiceVersion,
+      prompt_version: PROMPT_VERSIONS[module],
+    },
+  };
   const version = await nextVersion(admin, job.ref, artifactType);
 
   const { data: artifact, error: artErr } = await admin
@@ -220,7 +248,7 @@ async function processGenerationJob(
       ref: job.ref,
       artifact_type: artifactType,
       version,
-      payload,
+      payload: stamped,
       status: "suggested",
       model: chat.model,
       prompt_version: PROMPT_VERSIONS[module],
@@ -399,6 +427,7 @@ Deno.serve(async (req) => {
 
   const admin = createClient(supabaseUrl, serviceKey);
   const cfg = await loadRuntimeConfig(admin);
+  const brandVoice = await loadBrandVoiceGuide(admin);
 
   // --- Ping / provider health ---
   if (body.action === "ping") {
@@ -422,6 +451,7 @@ Deno.serve(async (req) => {
         latency_ms: ping.latency_ms,
         message: ping.message,
         modules: cfg.modules,
+        brand_voice_version: brandVoice.version,
         secret_configured: true,
       });
     } catch (e) {
@@ -549,7 +579,15 @@ Deno.serve(async (req) => {
     if (job.module === "embedding") {
       result = await processEmbeddingModule(admin, job.ref, provider, cfg);
     } else {
-      result = await processGenerationJob(admin, job, provider, cfg, user.id);
+      result = await processGenerationJob(
+        admin,
+        job,
+        provider,
+        cfg,
+        user.id,
+        brandVoice.guide,
+        brandVoice.version,
+      );
     }
 
     await admin

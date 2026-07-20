@@ -28,15 +28,15 @@ export type ProductContext = {
   }>;
 };
 
-const BRAND = `Hera Swimwear (Colombia). Tono: femenino, aspiracional, claro, sin exagerar.
-No inventes materiales, precios, stock ni URLs de redes. Escribe en español (es-CO).`;
+const BRAND_FALLBACK = `Hera Swimwear (Colombia). Tono Quiet Luxury: femenino, aspiracional, claro, sin exagerar.
+No inventes materiales, precios, stock ni URLs de redes. Español es-CO.`;
 
 export const PROMPT_VERSIONS: Record<Exclude<PiModule, "embedding">, string> = {
-  copy: "copy_v1",
-  seo: "seo_v1",
-  attributes: "attributes_v1",
-  relations: "relations_v1",
-  knowledge: "knowledge_v1",
+  copy: "copy_v2_brand",
+  seo: "seo_v2_brand",
+  attributes: "attributes_v2_brand",
+  relations: "relations_v2_brand",
+  knowledge: "knowledge_v2_brand",
 };
 
 export function artifactTypeForModule(
@@ -64,24 +64,36 @@ function ctxBlock(p: ProductContext): string {
   );
 }
 
+function systemPreamble(brandVoiceGuide?: string | null): string {
+  const guide = String(brandVoiceGuide || "").trim() || BRAND_FALLBACK;
+  return `## Brand Voice (obligatoria — todos los módulos)
+${guide}
+
+## Regla de proveedor
+Aunque el modelo LLM cambie, el resultado debe sonar a Hera Swimwear según la Brand Voice anterior — nunca al estilo genérico del modelo.`;
+}
+
 export function buildMessages(
   module: Exclude<PiModule, "embedding">,
   p: ProductContext,
+  brandVoiceGuide?: string | null,
 ): Array<{ role: "system" | "user"; content: string }> {
   const productJson = ctxBlock(p);
+  const brand = systemPreamble(brandVoiceGuide);
 
   if (module === "copy") {
     return [
       {
         role: "system",
-        content: `${BRAND}
-Eres copywriter de moda. Responde SOLO JSON válido:
+        content: `${brand}
+
+Eres copywriter de Hera. Responde SOLO JSON válido:
 {
   "name": string,
   "description_short": string,
   "description_long": string
 }
-description_short <= 160 chars. description_long 2-4 párrafos cortos.`,
+description_short <= 160 chars. description_long 2-4 párrafos cortos. Respeta tono Quiet Luxury y listas always/never de la Brand Voice.`,
       },
       {
         role: "user",
@@ -94,15 +106,16 @@ description_short <= 160 chars. description_long 2-4 párrafos cortos.`,
     return [
       {
         role: "system",
-        content: `${BRAND}
-Eres especialista SEO e-commerce moda. Responde SOLO JSON:
+        content: `${brand}
+
+Eres especialista SEO de Hera. Responde SOLO JSON:
 {
   "meta_title": string,
   "meta_description": string,
   "slug": string,
   "keywords": string[]
 }
-meta_title <= 60 chars. meta_description <= 155. slug kebab-case sin acentos.`,
+Sigue la estructura SEO de la Brand Voice. meta_title ≤ 60. meta_description ≤ 155. slug kebab-case sin acentos.`,
       },
       {
         role: "user",
@@ -115,8 +128,9 @@ meta_title <= 60 chars. meta_description <= 155. slug kebab-case sin acentos.`,
     return [
       {
         role: "system",
-        content: `${BRAND}
-Eres stylist de moda (Quiet Luxury, Resort, Cartagena, Honeymoon). Responde SOLO JSON:
+        content: `${brand}
+
+Eres stylist Hera (Quiet Luxury, Resort, Cartagena, Honeymoon). Responde SOLO JSON:
 {
   "product_type": string,
   "style": string[],
@@ -133,8 +147,8 @@ Eres stylist de moda (Quiet Luxury, Resort, Cartagena, Honeymoon). Responde SOLO
     "semantic_tags": string[]
   }
 }
-Usa slugs de colección conocidos cuando apliquen: quiet-luxury, cartagena, luna-de-miel, estiliza-cintura.
-No inventes materiales si no hay dato; deja materials [].`,
+Slugs de colección cuando apliquen: quiet-luxury, cartagena, luna-de-miel, estiliza-cintura.
+No inventes materiales; materials [] si no hay dato. brand_tone alineado a Quiet Luxury cuando corresponda.`,
       },
       {
         role: "user",
@@ -148,8 +162,10 @@ No inventes materiales si no hay dato; deja materials [].`,
     return [
       {
         role: "system",
-        content: `${BRAND}
-Eres knowledge curator. Sugiere relaciones SOLO hacia refs del catálogo dado.
+        content: `${brand}
+
+Eres knowledge curator Hera. Sugiere relaciones SOLO hacia refs del catálogo dado.
+Prioriza outfits coherentes con Quiet Luxury / resort / Cartagena cuando el producto lo sostenga.
 Responde SOLO JSON:
 {
   "candidates": [
@@ -171,18 +187,18 @@ Máximo 8 candidatos. score 0-100. No inventes refs.`,
     ];
   }
 
-  // knowledge
   return [
     {
       role: "system",
-      content: `${BRAND}
-Compones el documento de conocimiento canónico para búsqueda semántica.
+      content: `${brand}
+
+Compones el documento de conocimiento canónico Hera para búsqueda semántica.
 Responde SOLO JSON:
 {
   "document": string
 }
-El documento debe incluir: ref, nombre, tipo, ocasión, estilo, descripción, facetas.
-Texto plano, denso, en español. Sin markdown.`,
+Incluye: ref, nombre, tipo, ocasión, estilo Quiet Luxury si aplica, descripción, facetas.
+Texto plano, denso, en español. Sin markdown. Sin inventar hechos.`,
     },
     {
       role: "user",
