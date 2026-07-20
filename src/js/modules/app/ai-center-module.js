@@ -5,6 +5,7 @@
  */
 (function initAiCenterModule(global) {
   const TABS = [
+    { id: 'conexion', label: 'Conexión OpenAI' },
     { id: 'estado', label: 'Estado del catálogo' },
     { id: 'cola', label: 'Cola de revisión' },
     { id: 'modulos', label: 'Módulos IA' },
@@ -38,7 +39,7 @@
     },
   };
 
-  let _tab = 'estado';
+  let _tab = 'conexion';
   let _statusCache = null;
   let _detailKey = null;
   let _busy = false;
@@ -114,6 +115,56 @@
             )
             .join('')}
         </div>
+      </div>`;
+  }
+
+  async function renderConexion(host) {
+    host.innerHTML = `<div style="padding:16px;color:var(--text2);">Comprobando conexión…</div>`;
+    let probe = { ok: false, openai: false, message: 'Sin probar aún' };
+    try {
+      probe = await api().probeWorker();
+    } catch (e) {
+      probe = { ok: false, openai: false, message: e.message || String(e) };
+    }
+
+    const ok = !!probe.openai;
+    host.innerHTML = `
+      <div style="padding:14px;border-radius:10px;border:1px solid ${ok ? 'rgba(0,229,180,0.35)' : 'rgba(255,180,80,0.4)'};background:${ok ? 'rgba(0,229,180,0.08)' : 'rgba(255,180,80,0.08)'};margin-bottom:14px;">
+        <div style="font-weight:800;color:var(--text1);font-size:15px;">
+          ${ok ? 'OpenAI conectado' : 'OpenAI aún no conectado'}
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.45;">${esc(probe.message)}</div>
+      </div>
+
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:12px;">
+        Por seguridad <strong style="color:var(--text1);">la API key no se pega ni se guarda en el ERP</strong>.
+        Se configura como secret del backend (Supabase) y el worker la usa.
+      </div>
+
+      <div style="padding:12px;border-radius:8px;background:rgba(0,0,0,0.22);font-size:12px;line-height:1.55;color:var(--text2);">
+        <div style="font-weight:700;color:var(--text1);margin-bottom:8px;">Cómo conectar (1 vez)</div>
+        <ol style="margin:0;padding-left:18px;">
+          <li style="margin-bottom:6px;">Creá / copiá tu key en
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color:var(--accent);">platform.openai.com/api-keys</a>
+          </li>
+          <li style="margin-bottom:6px;">En terminal (carpeta VentasHera):
+            <pre style="margin:8px 0;padding:10px;background:rgba(0,0,0,0.35);border-radius:6px;overflow:auto;color:var(--text1);">npx supabase secrets set OPENAI_API_KEY=sk-tu-key --project-ref niilaxdeetuzutycvdkz</pre>
+          </li>
+          <li style="margin-bottom:6px;">O en el dashboard:
+            <a href="https://supabase.com/dashboard/project/niilaxdeetuzutycvdkz/settings/functions" target="_blank" rel="noopener" style="color:var(--accent);">Edge Functions → Secrets</a>
+            → agregá <code>OPENAI_API_KEY</code>
+          </li>
+          <li>Volvé aquí y tocá <strong style="color:var(--text1);">Probar conexión</strong>.</li>
+        </ol>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="AiCenter.probeConnection()">🔌 Probar conexión</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="AiCenter.setTab('modulos')">Ver módulos IA</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showPage('articulos')">Ir a Artículos</button>
+      </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--text2);line-height:1.4;">
+        Después de conectar: abrí un artículo <code>HERA-*</code> → sección <strong>Inteligencia</strong> → Regenerar.
       </div>`;
   }
 
@@ -309,6 +360,7 @@
         '<div style="padding:16px;color:var(--red);">ProductIntelligenceApi no cargada. Recargá la página.</div>';
       return;
     }
+    if (_tab === 'conexion') return renderConexion(host);
     if (_tab === 'estado') return renderEstado(host);
     if (_tab === 'cola') return renderCola(host);
     if (_tab === 'modulos') return renderModulos(host);
@@ -402,6 +454,18 @@
     }
   }
 
+  async function probeConnection() {
+    _tab = 'conexion';
+    await paintBody();
+    try {
+      const probe = await api().probeWorker();
+      if (probe.openai) notify('success', 'OpenAI', probe.message);
+      else notify('error', 'OpenAI', probe.message || 'No conectado');
+    } catch (e) {
+      notify('error', 'OpenAI', e.message || String(e));
+    }
+  }
+
   global.AppAiCenterModule = { renderAiCenter };
   global.AiCenter = {
     refresh,
@@ -409,6 +473,7 @@
     accept,
     reject,
     runWorker,
+    probeConnection,
     setTab(id) {
       _tab = id;
       renderAiCenter();
