@@ -303,19 +303,24 @@
   }
 
   async function probeWorker() {
+    return pingProvider();
+  }
+
+  async function pingProvider() {
     try {
-      const body = await invokeWorker({});
-      if (body && body.error === 'OPENAI_API_KEY not configured') {
-        return { ok: false, openai: false, message: body.hint || body.error, body };
-      }
+      const body = await invokeWorker({ action: 'ping' });
       return {
-        ok: true,
-        openai: true,
-        message: body.processed
-          ? `Job procesado (#${body.job_id})`
-          : body.reason === 'no_pending_jobs'
-            ? 'Worker OK · sin jobs pendientes'
-            : 'Worker OK',
+        ok: !!body.ok,
+        openai: !!body.ok || !!body.secret_configured,
+        connected: !!body.ok,
+        provider: body.provider || 'openai',
+        model: body.model || body.chat_model,
+        chat_model: body.chat_model,
+        embed_model: body.embed_model,
+        latency_ms: body.latency_ms,
+        message: body.message || body.error || '',
+        modules: body.modules,
+        secret_configured: body.secret_configured !== false,
         body,
       };
     } catch (e) {
@@ -326,12 +331,60 @@
         /OPENAI_API_KEY/i.test(String(e.body?.error || ''));
       return {
         ok: false,
-        openai: !openaiMissing && status !== 503,
+        openai: false,
+        connected: false,
+        provider: e.body?.provider || 'openai',
+        model: e.body?.chat_model,
+        chat_model: e.body?.chat_model,
+        embed_model: e.body?.embed_model,
+        latency_ms: e.body?.latency_ms || 0,
         message: e.message || String(e),
+        secret_configured: !openaiMissing,
         status,
         body: e.body,
       };
     }
+  }
+
+  async function getRuntimeConfig() {
+    const { data, error } = await sb().rpc('get_ai_runtime_config');
+    if (error) throw error;
+    return data;
+  }
+
+  async function updateRuntimeModules(modules) {
+    const { data, error } = await sb().rpc('update_ai_runtime_modules', {
+      p_modules: modules,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function updateRuntimeModels(chatModel, embedModel) {
+    const { data, error } = await sb().rpc('update_ai_runtime_models', {
+      p_chat_model: chatModel || null,
+      p_embed_model: embedModel || null,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  async function getDashboardSummary() {
+    const [cfg, status, pendingArts, recentFailed] = await Promise.all([
+      getRuntimeConfig(),
+      getCatalogStatus(),
+      listPendingReview({ limit: 5 }),
+      listRecentJobs({ limit: 5, status: 'failed' }),
+    ]);
+    return {
+      config: cfg,
+      catalog: status,
+      pending_artifacts: pendingArts.length,
+      pending_jobs: status.jobs.pending,
+      failed_jobs: status.jobs.failed,
+      last_failed: recentFailed[0] || null,
+      cost_today: null, // no token metering yet — never invent $
+    };
   }
 
   global.ProductIntelligenceApi = {
@@ -343,7 +396,12 @@
     listRecentJobs,
     listPendingReview,
     getCatalogStatus,
+    getRuntimeConfig,
+    updateRuntimeModules,
+    updateRuntimeModels,
+    getDashboardSummary,
     probeWorker,
+    pingProvider,
     enqueue,
     accept,
     reject,

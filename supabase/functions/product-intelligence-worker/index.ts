@@ -1,15 +1,14 @@
 /**
  * product-intelligence-worker
- * Processes one pending product_ai_jobs row (or embedding drain).
- * Auth: ERP user JWT. Uses service role for DB writes. OPENAI_API_KEY secret.
+ * Runtime: AiProvider port → OpenAI (extensible). Domain: PI jobs/artifacts.
+ * Auth: ERP JWT. Secrets: OPENAI_API_KEY (never in DB).
  */
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { createAiProvider, type AiProvider } from "../_shared/ai_provider.ts";
 import {
   PROMPT_VERSIONS,
   artifactTypeForModule,
   buildMessages,
-  openaiChatJson,
-  openaiEmbed,
   parseJsonObject,
   type PiModule,
   type ProductContext,
@@ -21,8 +20,12 @@ const corsHeaders: Record<string, string> = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const CHAT_MODEL = Deno.env.get("OPENAI_CHAT_MODEL") || "gpt-4o-mini";
-const EMBED_MODEL = Deno.env.get("OPENAI_EMBED_MODEL") || "text-embedding-3-small";
+type RuntimeConfig = {
+  active_provider: string;
+  chat_model: string;
+  embed_model: string;
+  modules: Record<string, boolean>;
+};
 
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -38,6 +41,42 @@ type JobRow = {
   status: string;
   attempts: number;
 };
+
+async function loadRuntimeConfig(admin: SupabaseClient): Promise<RuntimeConfig> {
+  const { data, error } = await admin.rpc("get_ai_runtime_config");
+  if (error) {
+    // Fallback if migration not applied yet
+    return {
+      active_provider: "openai",
+      chat_model: Deno.env.get("OPENAI_CHAT_MODEL") || "gpt-4o-mini",
+      embed_model: Deno.env.get("OPENAI_EMBED_MODEL") || "text-embedding-3-small",
+      modules: {
+        copy: true,
+        seo: true,
+        attributes: true,
+        relations: false,
+        knowledge: true,
+        embedding: true,
+      },
+    };
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    active_provider: String(row.active_provider || "openai"),
+    chat_model: String(
+      Deno.env.get("OPENAI_CHAT_MODEL") || row.chat_model || "gpt-4o-mini",
+    ),
+    embed_model: String(
+      Deno.env.get("OPENAI_EMBED_MODEL") || row.embed_model || "text-embedding-3-small",
+    ),
+    modules: (row.modules || {}) as Record<string, boolean>,
+  };
+}
+
+function moduleEnabled(cfg: RuntimeConfig, module: string): boolean {
+  if (cfg.modules[module] === false) return false;
+  return true;
+}
 
 async function loadContext(
   admin: SupabaseClient,
@@ -139,10 +178,27 @@ async function patchModuleStatus(
   await admin.from("product_intelligence").update(update).eq("ref", ref);
 }
 
+async function assertKnowledgeAccepted(admin: SupabaseClient, ref: string) {
+  const { data } = await admin
+    .from("product_ai_artifacts")
+    .select("id")
+    .eq("ref", ref)
+    .eq("artifact_type", "knowledge_doc")
+    .eq("status", "accepted")
+    .limit(1)
+    .maybeSingle();
+  if (!data) {
+    throw new Error(
+      "Embedding blocked: approve Knowledge first (knowledge_doc accepted)",
+    );
+  }
+}
+
 async function processGenerationJob(
   admin: SupabaseClient,
   job: JobRow,
-  apiKey: string,
+  provider: AiProvider,
+  cfg: RuntimeConfig,
   userId: string | null,
 ) {
   const module = job.module as Exclude<PiModule, "embedding">;
@@ -151,12 +207,11 @@ async function processGenerationJob(
 
   const ctx = await loadContext(admin, job.ref);
   const messages = buildMessages(module, ctx);
-  const { content, model } = await openaiChatJson({
-    apiKey,
-    model: CHAT_MODEL,
+  const chat = await provider.chatJson({
+    model: cfg.chat_model,
     messages,
   });
-  const payload = parseJsonObject(content);
+  const payload = parseJsonObject(chat.content);
   const version = await nextVersion(admin, job.ref, artifactType);
 
   const { data: artifact, error: artErr } = await admin
@@ -167,9 +222,9 @@ async function processGenerationJob(
       version,
       payload,
       status: "suggested",
-      model,
+      model: chat.model,
       prompt_version: PROMPT_VERSIONS[module],
-      provider: "openai",
+      provider: provider.id,
       created_by: userId,
     })
     .select("*")
@@ -194,9 +249,11 @@ async function processGenerationJob(
 async function processEmbeddingModule(
   admin: SupabaseClient,
   ref: string,
-  apiKey: string,
+  provider: AiProvider,
+  cfg: RuntimeConfig,
 ) {
-  // Prefer existing pending embedding_jobs for this ref; else enqueue from search doc.
+  await assertKnowledgeAccepted(admin, ref);
+
   let { data: embJob } = await admin
     .from("embedding_jobs")
     .select("id, ref, status, attempts")
@@ -255,16 +312,20 @@ async function processEmbeddingModule(
   }
 
   try {
-    const vector = await openaiEmbed({
-      apiKey,
-      model: EMBED_MODEL,
+    const emb = await provider.embed({
+      model: cfg.embed_model,
       input: doc.embedding_text,
     });
+    if (emb.dims !== 1536) {
+      throw new Error(
+        `embedding dims ${emb.dims} != 1536; refuse write (use text-embedding-3-small)`,
+      );
+    }
     const { error: upErr } = await admin
       .from("product_search_docs")
       .update({
-        embedding: vector,
-        embedding_model: EMBED_MODEL,
+        embedding: emb.embedding,
+        embedding_model: emb.model,
         updated_at: new Date().toISOString(),
       })
       .eq("ref", ref);
@@ -291,7 +352,7 @@ async function processEmbeddingModule(
       "partial",
     );
 
-    return { embedding_job_id: embJob.id, dims: vector.length };
+    return { embedding_job_id: embJob.id, dims: emb.dims, model: emb.model };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await admin
@@ -314,7 +375,6 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const openaiKey = Deno.env.get("OPENAI_API_KEY") || "";
 
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
@@ -325,17 +385,12 @@ Deno.serve(async (req) => {
   } = await userClient.auth.getUser();
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-  if (!openaiKey) {
-    return json(
-      {
-        error: "OPENAI_API_KEY not configured",
-        hint: "Set secret OPENAI_API_KEY on the Edge Function",
-      },
-      503,
-    );
-  }
-
-  let body: { job_id?: number; ref?: string; module?: string } = {};
+  let body: {
+    action?: string;
+    job_id?: number;
+    ref?: string;
+    module?: string;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -343,6 +398,83 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, serviceKey);
+  const cfg = await loadRuntimeConfig(admin);
+
+  // --- Ping / provider health ---
+  if (body.action === "ping") {
+    try {
+      const provider = createAiProvider(cfg.active_provider, {
+        OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || "",
+      });
+      const ping = await provider.ping({ chatModel: cfg.chat_model });
+      await admin.rpc("record_ai_provider_ping", {
+        p_ok: ping.ok,
+        p_latency_ms: ping.latency_ms,
+        p_message: ping.message,
+        p_model: ping.model,
+      });
+      return json({
+        ok: ping.ok,
+        provider: ping.provider,
+        model: ping.model,
+        chat_model: cfg.chat_model,
+        embed_model: cfg.embed_model,
+        latency_ms: ping.latency_ms,
+        message: ping.message,
+        modules: cfg.modules,
+        secret_configured: true,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const missing = /OPENAI_API_KEY/i.test(msg);
+      try {
+        await admin.rpc("record_ai_provider_ping", {
+          p_ok: false,
+          p_latency_ms: 0,
+          p_message: msg.slice(0, 500),
+          p_model: cfg.chat_model,
+        });
+      } catch {
+        /* ignore */
+      }
+      return json(
+        {
+          ok: false,
+          provider: cfg.active_provider,
+          model: cfg.chat_model,
+          chat_model: cfg.chat_model,
+          embed_model: cfg.embed_model,
+          latency_ms: 0,
+          message: msg,
+          modules: cfg.modules,
+          secret_configured: !missing,
+          error: missing ? "OPENAI_API_KEY not configured" : msg,
+          hint: missing
+            ? "Set secret OPENAI_API_KEY on Supabase Edge Functions"
+            : undefined,
+        },
+        missing ? 503 : 500,
+      );
+    }
+  }
+
+  let provider: AiProvider;
+  try {
+    provider = createAiProvider(cfg.active_provider, {
+      OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") || "",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return json(
+      {
+        error: /OPENAI_API_KEY/i.test(msg)
+          ? "OPENAI_API_KEY not configured"
+          : msg,
+        hint: "Set secret OPENAI_API_KEY on the Edge Function",
+      },
+      503,
+    );
+  }
 
   let job: JobRow | null = null;
   if (body.job_id) {
@@ -379,6 +511,24 @@ Deno.serve(async (req) => {
 
   if (!job) return json({ ok: true, processed: false, reason: "no_pending_jobs" });
 
+  if (!moduleEnabled(cfg, job.module)) {
+    await admin
+      .from("product_ai_jobs")
+      .update({
+        status: "skipped",
+        last_error: `module ${job.module} disabled in ai_runtime_config`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
+    return json({
+      ok: true,
+      processed: false,
+      reason: "module_disabled",
+      module: job.module,
+      job_id: job.id,
+    });
+  }
+
   await admin
     .from("product_ai_jobs")
     .update({
@@ -397,9 +547,9 @@ Deno.serve(async (req) => {
   try {
     let result: Record<string, unknown>;
     if (job.module === "embedding") {
-      result = await processEmbeddingModule(admin, job.ref, openaiKey);
+      result = await processEmbeddingModule(admin, job.ref, provider, cfg);
     } else {
-      result = await processGenerationJob(admin, job, openaiKey, user.id);
+      result = await processGenerationJob(admin, job, provider, cfg, user.id);
     }
 
     await admin
@@ -411,7 +561,14 @@ Deno.serve(async (req) => {
       })
       .eq("id", job.id);
 
-    return json({ ok: true, processed: true, job_id: job.id, module: job.module, result });
+    return json({
+      ok: true,
+      processed: true,
+      job_id: job.id,
+      module: job.module,
+      provider: provider.id,
+      result,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await admin

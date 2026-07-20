@@ -84,24 +84,29 @@
     }
 
     try {
-      const [intel, artifacts] = await Promise.all([
+      const [intel, artifacts, runtime] = await Promise.all([
         PI.getIntelligence(ref),
         PI.listArtifacts(ref),
+        PI.getRuntimeConfig().catch(() => null),
       ]);
       const modules = intel?.modules || {};
+      const gates = (runtime && runtime.modules) || {};
       const suggested = (artifacts || []).filter((a) => a.status === 'suggested');
       const accepted = (artifacts || []).filter((a) => a.status === 'accepted');
 
       const rows = PI.MODULES.map((mod) => {
         const st = moduleStatus(modules, mod);
+        const enabled = gates[mod] !== false;
         return `
           <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
             <div>
               <strong style="color:var(--text1);">${esc(MODULE_LABELS[mod] || mod)}</strong>
               <span style="margin-left:8px;opacity:0.8;">${esc(st)}</span>
+              ${enabled ? '' : '<span style="margin-left:6px;color:var(--orange);font-size:10px;">manual/off</span>'}
             </div>
             <button type="button" class="btn btn-secondary btn-sm"
-              ${ _busy ? 'disabled' : '' }
+              ${ _busy || !enabled ? 'disabled' : '' }
+              title="${enabled ? 'Regenerar' : 'Módulo desactivado en Centro de IA → Activación'}"
               onclick="ProductIntelligence.enqueueModule('${esc(mod)}')">
               Regenerar
             </button>
@@ -166,7 +171,9 @@
     _busy = true;
     try {
       const { job, worker } = await PI.enqueue(ref, module, { run: true });
-      if (worker && worker.ok === false) {
+      if (worker && worker.reason === 'module_disabled') {
+        notify('error', 'Módulo off', `${module} está desactivado en Centro de IA → Activación`);
+      } else if (worker && worker.ok === false) {
         notify(
           'error',
           'Worker',

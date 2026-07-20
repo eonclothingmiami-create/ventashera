@@ -46,16 +46,23 @@ La Catalog API **no cambia**: sigue leyendo `products` + grafo. Intelligence ali
 
 ### Centro de IA (ERP)
 
-Página `Centro de IA` (nav **INTELIGENCIA**). Submódulos mínimos:
+Página `Centro de IA` (nav **INTELIGENCIA**). Es el “Configuración → IA” operativo:
 
 | Submódulo | Qué hace |
 |-----------|----------|
-| **Estado del catálogo** | Cobertura: inteligencia aprobada, pendientes, sin embedding / relaciones / SEO / copy / sociales |
+| **Resumen** | Proveedor, estado, modelos, artifacts/jobs pendientes, último error (costo = — sin telemetría) |
+| **Proveedores** | OpenAI conectado/no · test ping + latencia · modelos (sin API key en ERP) |
+| **Activación módulos** | Gates: Copy/SEO/Attributes/Knowledge/Embedding on; Relations off por defecto |
+| **Estado del catálogo** | Cobertura del activo digital |
 | **Cola de revisión** | Artifacts `suggested` → Aprobar / Rechazar |
-| **Módulos IA** | Copy, SEO, Stylist, Relaciones, Knowledge, Embedding (labels; generación en el modal) |
-| **Jobs y salud** | Cola pending/failed + probe del worker / OpenAI (secret en Supabase, no en el ERP) |
+| **Jobs** | Cola + procesar siguiente |
+
+**Arquitectura runtime:** `Worker → AiProvider → OpenAI` (extensible). Embedding exige Knowledge `accepted`. Embed model locked a familia 1536 dims.
+
+**Playbook SKU:** Copy → SEO → Attributes → Knowledge → Embedding (Relations cuando gates on + revisión humana).
 
 No es un panel de ChatGPT ni de API keys.
+
 
 ## Source of truth
 
