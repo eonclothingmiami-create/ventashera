@@ -19,6 +19,7 @@ import {
   catalogOrderUserAuthOk,
 } from "../_shared/catalog_order_auth.ts";
 import { sendTikTokPurchaseForOrder } from "../_shared/tiktok_events_api.ts";
+import { sendPinterestCheckoutForOrder } from "../_shared/pinterest_events_api.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -60,6 +61,8 @@ async function patchOrder(
     paymentRaw?: string;
     source?: string;
     extraMeta?: Record<string, unknown>;
+    clientIp?: string;
+    userAgent?: string;
   },
 ) {
   if (
@@ -110,36 +113,60 @@ async function patchOrder(
 
   if (updErr) throw new Error(updErr.message);
 
-  const TIKTOK_PURCHASE_SOURCES = new Set(["wompi_return", "addi_return"]);
+  const ADS_PURCHASE_SOURCES = new Set(["wompi_return", "addi_return"]);
   if (
     nuevoEstado === "pago_exitoso" &&
     row.estado_pago !== "pago_exitoso" &&
-    TIKTOK_PURCHASE_SOURCES.has(String(opts.source || ""))
+    ADS_PURCHASE_SOURCES.has(String(opts.source || ""))
   ) {
+    const orderPayload = {
+      reference: row.reference,
+      amount_cop: row.amount_cop,
+      totales: row.totales as { total?: number },
+      items: row.items as Record<string, unknown>[],
+      cliente_email: row.cliente_email,
+      cliente_telefono: row.cliente_telefono,
+      tracking_meta: prevMeta,
+    };
+    const metaExtra: Record<string, unknown> = {
+      ...(patch.tracking_meta as Record<string, unknown>),
+    };
+    let metaChanged = false;
+
     try {
-      const tt = await sendTikTokPurchaseForOrder({
-        reference: row.reference,
-        amount_cop: row.amount_cop,
-        totales: row.totales as { total?: number },
-        items: row.items as Record<string, unknown>[],
-        cliente_email: row.cliente_email,
-        cliente_telefono: row.cliente_telefono,
-        tracking_meta: prevMeta,
-      });
+      const tt = await sendTikTokPurchaseForOrder(orderPayload);
       if (tt.ok) {
-        const sentAt = new Date().toISOString();
-        await sb.from("ventas_catalogo").update({
-          tracking_meta: {
-            ...(patch.tracking_meta as Record<string, unknown>),
-            tiktok_purchase_sent_at: sentAt,
-            tiktok_events_api: true,
-          },
-        }).eq("id", row.id);
+        metaExtra.tiktok_purchase_sent_at = new Date().toISOString();
+        metaExtra.tiktok_events_api = true;
+        metaChanged = true;
       } else if (tt.skipped !== "tiktok_not_configured") {
         console.warn("[catalog-order-status] TikTok Events API", tt);
       }
     } catch (e) {
       console.warn("[catalog-order-status] TikTok Events API error", e);
+    }
+
+    try {
+      const pin = await sendPinterestCheckoutForOrder(orderPayload, {
+        clientIp: opts.clientIp,
+        userAgent: opts.userAgent,
+      });
+      if (pin.ok) {
+        metaExtra.pinterest_checkout_sent_at = new Date().toISOString();
+        metaExtra.pinterest_events_api = true;
+        metaChanged = true;
+      } else if (pin.skipped !== "pinterest_not_configured") {
+        console.warn("[catalog-order-status] Pinterest CAPI", pin);
+      }
+    } catch (e) {
+      console.warn("[catalog-order-status] Pinterest CAPI error", e);
+    }
+
+    if (metaChanged) {
+      await sb.from("ventas_catalogo").update({ tracking_meta: metaExtra }).eq(
+        "id",
+        row.id,
+      );
     }
   }
 
@@ -150,6 +177,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  const clientIp = (
+    req.headers.get("x-forwarded-for") ||
+    req.headers.get("cf-connecting-ip") ||
+    ""
+  ).split(",")[0]?.trim() || undefined;
+  const userAgent = req.headers.get("user-agent") || undefined;
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -227,6 +261,8 @@ Deno.serve(async (req) => {
           paymentRaw: tx.status,
           source: "wompi_return",
           extraMeta: { wompi_reconciled_at: new Date().toISOString() },
+          clientIp,
+          userAgent,
         });
 
         return json({ ok: true, wompi: tx, ...result });
@@ -267,6 +303,8 @@ Deno.serve(async (req) => {
           body.payment_status_raw ?? body.status ?? "",
         ).trim() || undefined,
         source: String(body.source || "catalog-order-status"),
+        clientIp,
+        userAgent,
       });
       return json({ ok: true, ...result });
     } catch (e) {

@@ -166,29 +166,92 @@
       .select('id, ref, name')
       .or(`name.ilike.%${q}%,ref.ilike.%${q}%`)
       .eq('active', true)
+      .eq('visible', true)
       .limit(20);
     if (error) throw error;
     return data || [];
   }
 
-  async function publishPost(postId, { sendPush = true } = {}) {
-    const headers = await global.AppRepository.getSupabaseEdgeHeaders();
-    const res = await fetch(publishEndpoint(), {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ post_id: postId, send_push: sendPush }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = new Error(json.error || res.statusText || 'publish_failed');
-      err.details = json;
-      throw err;
+  async function upsertKnowledgeLink(row) {
+    const client = sb();
+    const payload = {
+      ref: row.ref ? String(row.ref).trim().toUpperCase() : null,
+      kind: String(row.kind || '').trim(),
+      title: String(row.title || '').trim(),
+      url: String(row.url || '').trim(),
+      thumbnail_url: row.thumbnail_url || null,
+      external_id: row.external_id || null,
+      locale: row.locale || 'es-CO',
+      applies_to: row.applies_to || {},
+      active: row.active !== false,
+      published_at: row.published_at || new Date().toISOString(),
+      meta: { ...(row.meta || {}), source: (row.meta && row.meta.source) || 'erp' },
+      updated_at: new Date().toISOString(),
+    };
+    if (!payload.kind || !payload.title || !payload.url) {
+      throw new Error('kind, title y url son obligatorios');
     }
-    return json;
+    if (payload.ref && !/^HERA-/i.test(payload.ref)) {
+      throw new Error('ref debe ser HERA-* (o vacío para conocimiento de marca/categoría)');
+    }
+
+    let q = client
+      .from('product_knowledge_links')
+      .select('id')
+      .eq('kind', payload.kind)
+      .eq('url', payload.url);
+    if (payload.ref) q = q.eq('ref', payload.ref);
+    else q = q.is('ref', null);
+    const { data: existing, error: findErr } = await q.maybeSingle();
+    if (findErr) throw findErr;
+
+    if (existing?.id) {
+      const { data, error } = await client
+        .from('product_knowledge_links')
+        .update(payload)
+        .eq('id', existing.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    const { data, error } = await client
+      .from('product_knowledge_links')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data;
   }
 
-  function landingPreviewUrl(postId) {
-    return `${catalogBase()}contenido.html?id=${encodeURIComponent(postId)}`;
+  async function listKnowledgeLinks({ ref, kind, limit = 40 } = {}) {
+    const client = sb();
+    let q = client
+      .from('product_knowledge_links')
+      .select('*')
+      .eq('active', true)
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+    if (ref) q = q.eq('ref', ref);
+    if (kind) q = q.eq('kind', kind);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function syncEditorialKnowledge() {
+    const { data, error } = await sb().rpc('sync_editorial_knowledge_links');
+    if (error) throw error;
+    const { data: graph, error: gErr } = await sb().rpc('rebuild_knowledge_graph');
+    if (gErr) throw gErr;
+    return { editorial: data, graph };
+  }
+
+  async function rebuildKnowledgeGraph() {
+    const { data, error } = await sb().rpc('rebuild_knowledge_graph');
+    if (error) throw error;
+    return data;
   }
 
   global.SocialContentApi = {
@@ -204,5 +267,9 @@
     publishPost,
     landingPreviewUrl,
     catalogBase,
+    upsertKnowledgeLink,
+    listKnowledgeLinks,
+    syncEditorialKnowledge,
+    rebuildKnowledgeGraph,
   };
 })(window);

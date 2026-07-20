@@ -1,0 +1,19 @@
+{
+  "name": "hera-catalog-mcp",
+  "version": "1.0.0",
+  "description": "Thin MCP adapter for Hera Swimwear Catalog API v1 (products + knowledge).",
+  "type": "module",
+  "bin": {
+    "hera-catalog-mcp": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.25.0"
+  }
+}

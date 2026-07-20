@@ -34,6 +34,19 @@ async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+/** Teléfono E.164 (+57…) antes de hashear — requisito Events API / Advanced Matching. */
+function normalizePhoneE164(phone: string): string {
+  let digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 10 && digits.startsWith("3")) digits = `57${digits}`;
+  if (digits.startsWith("57") && digits.length >= 12) return `+${digits}`;
+  if (String(phone || "").trim().startsWith("+") && digits.length >= 10) {
+    return `+${digits}`;
+  }
+  return digits.length >= 10 ? `+${digits}` : "";
+}
+
 function orderItems(row: OrderRow): OrderItem[] {
   const raw = row.items;
   if (!Array.isArray(raw)) return [];
@@ -92,10 +105,13 @@ export async function sendTikTokPurchaseForOrder(
     contents.reduce((s, c) => s + (Number(c.price) || 0) * (Number(c.quantity) || 1), 0);
 
   const user: Record<string, string> = {};
-  const email = String(row.cliente_email || "").trim();
-  const phone = String(row.cliente_telefono || "").replace(/\D/g, "");
-  if (email) user.email = await sha256Hex(email);
-  if (phone) user.phone_number = await sha256Hex(phone);
+  const email = String(row.cliente_email || "").trim().toLowerCase();
+  const phoneE164 = normalizePhoneE164(String(row.cliente_telefono || ""));
+  if (email && email.includes("@")) user.email = await sha256Hex(email);
+  if (phoneE164) user.phone_number = await sha256Hex(phoneE164);
+  if (!user.email && !user.phone_number) {
+    console.warn("[tiktok_events_api] Purchase sin email/phone hashed", reference);
+  }
 
   const eventId = `hera-${reference}`;
   const pageUrl = opts?.pageUrl || "https://heraswimsuit.com/catalogo/";

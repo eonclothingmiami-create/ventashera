@@ -109,7 +109,11 @@
     if (!type || type === 'none') return null;
     if (type === 'product') {
       const pid = slot === 2 ? row.cta_product_id_2 : row.cta_product_id;
+      const pref = slot === 2 ? row.cta_product_ref_2 : row.cta_product_ref;
       if (!pid) return `Selecciona un producto para el CTA${sfx}.`;
+      if (!pref || !/^HERA-/i.test(String(pref))) {
+        return `CTA${sfx}: el producto debe tener ref HERA-* (vuelve a buscar y seleccionar).`;
+      }
     }
     if (type === 'external') {
       const url = slot === 2 ? row.cta_external_link_2 : row.external_link;
@@ -211,6 +215,11 @@
       await saveDraft();
       if (!_editingId) return;
       await Api().publishPost(_editingId, { sendPush: false });
+      try {
+        await Api().syncEditorialKnowledge();
+      } catch (_) {
+        /* noop */
+      }
       notify('Publicado en catálogo (sin push)');
       await renderList();
     } catch (e) {
@@ -228,6 +237,11 @@
       );
       if (!ok) return;
       const res = await Api().publishPost(_editingId, { sendPush: true });
+      try {
+        await Api().syncEditorialKnowledge();
+      } catch (_) {
+        /* noop */
+      }
       const sent = res?.push?.sent ?? 0;
       notify(`Publicado y enviado a ${sent} dispositivos`);
       await renderList();
@@ -509,6 +523,41 @@
         </div>
       </div>
       <div class="card" style="margin-top:16px">
+        <div class="card-title">🔗 Conocimiento comercial (IG / TikTok / Blog → producto)</div>
+        <p style="font-size:12px;color:var(--text2);margin:0 0 12px">
+          Enlaza posts o artículos a un <code>HERA-*</code>. Aparecen en
+          <code>/api/v1/products/{ref}/knowledge</code> para asistentes de IA.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div>
+            <label class="form-label">Ref producto</label>
+            <input id="sk-ref" class="form-input" placeholder="HERA-20132">
+          </div>
+          <div>
+            <label class="form-label">Tipo</label>
+            <select id="sk-kind" class="form-input">
+              <option value="instagram">Instagram</option>
+              <option value="tiktok">TikTok</option>
+              <option value="blog">Blog</option>
+              <option value="guide">Guía</option>
+              <option value="video">Video externo</option>
+              <option value="lookbook">Lookbook</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Título</label>
+            <input id="sk-title" class="form-input" placeholder="Reel look Cartagena">
+          </div>
+        </div>
+        <label class="form-label" style="margin-top:8px">URL</label>
+        <input id="sk-url" class="form-input" placeholder="https://www.instagram.com/p/...">
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-primary" onclick="scSaveKnowledgeLink()">Guardar enlace</button>
+          <button type="button" class="btn btn-secondary" onclick="scSyncEditorialKnowledge()">Sincronizar editoriales → knowledge</button>
+        </div>
+        <div id="sk-status" style="font-size:11px;color:var(--text2);margin-top:8px"></div>
+      </div>
+      <div class="card" style="margin-top:16px">
         <div class="card-title">Historial</div>
         <div id="sc-posts-list"></div>
       </div>`;
@@ -555,6 +604,45 @@
   global.scSearchProduct2 = () => searchProduct(2);
   global.scPickProduct = (id) => pickProduct(1, id);
   global.scPickProduct2 = (id) => pickProduct(2, id);
+
+  global.scSaveKnowledgeLink = async () => {
+    const status = document.getElementById('sk-status');
+    try {
+      const row = {
+        ref: document.getElementById('sk-ref')?.value,
+        kind: document.getElementById('sk-kind')?.value,
+        title: document.getElementById('sk-title')?.value,
+        url: document.getElementById('sk-url')?.value,
+      };
+      const saved = await Api().upsertKnowledgeLink(row);
+      try {
+        await Api().rebuildKnowledgeGraph();
+      } catch (_) {
+        /* link saved; graph rebuild optional */
+      }
+      if (status) {
+        status.textContent = `OK: ${saved.kind} → ${saved.ref || '(marca/categoría)'} (${saved.id}) · grafo actualizado`;
+      }
+      notify('Enlace de conocimiento guardado');
+      document.getElementById('sk-title').value = '';
+      document.getElementById('sk-url').value = '';
+    } catch (e) {
+      if (status) status.textContent = e.message || String(e);
+      notify(e.message || 'Error al guardar enlace', false);
+    }
+  };
+
+  global.scSyncEditorialKnowledge = async () => {
+    const status = document.getElementById('sk-status');
+    try {
+      const n = await Api().syncEditorialKnowledge();
+      if (status) status.textContent = `Editoriales sincronizados: ${n}`;
+      notify(`Knowledge editorial actualizado (${n})`);
+    } catch (e) {
+      if (status) status.textContent = e.message || String(e);
+      notify(e.message || 'Error al sincronizar', false);
+    }
+  };
 
   global.AppSocialContentModule = { renderSocialContenido };
 })(window);
