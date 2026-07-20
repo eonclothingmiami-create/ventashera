@@ -13,7 +13,12 @@ import {
   fetchWompiTransactionById,
   fetchWompiTransactionByReference,
 } from "../_shared/wompi_client.ts";
-import { catalogOrderAuthOk } from "../_shared/catalog_order_auth.ts";
+import {
+  catalogOrderClientAuthOk,
+  catalogOrderPrivilegedAuthOk,
+  catalogOrderUserAuthOk,
+} from "../_shared/catalog_order_auth.ts";
+import { sendTikTokPurchaseForOrder } from "../_shared/tiktok_events_api.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -26,15 +31,6 @@ function json(body: Record<string, unknown>, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function authOk(req: Request): boolean {
-  return catalogOrderAuthOk(req);
-}
-
-function erpAuthOk(req: Request): boolean {
-  const auth = req.headers.get("authorization") || "";
-  return auth.startsWith("Bearer ");
 }
 
 function resolveEstado(body: Record<string, unknown>): EstadoPago | null {
@@ -108,11 +104,40 @@ async function patchOrder(
 
   const { data: updated, error: updErr } = await sb.from("ventas_catalogo")
     .update(patch)
-    .eq("id", row.id)
+    .eq("id", String(row.id))
     .select("id, reference, estado_pago, pagado_at, payment_status_raw, proveedor_ref")
     .single();
 
   if (updErr) throw new Error(updErr.message);
+
+  if (nuevoEstado === "pago_exitoso" && row.estado_pago !== "pago_exitoso") {
+    try {
+      const tt = await sendTikTokPurchaseForOrder({
+        reference: row.reference,
+        amount_cop: row.amount_cop,
+        totales: row.totales as { total?: number },
+        items: row.items as Record<string, unknown>[],
+        cliente_email: row.cliente_email,
+        cliente_telefono: row.cliente_telefono,
+        tracking_meta: prevMeta,
+      });
+      if (tt.ok) {
+        const sentAt = new Date().toISOString();
+        await sb.from("ventas_catalogo").update({
+          tracking_meta: {
+            ...(patch.tracking_meta as Record<string, unknown>),
+            tiktok_purchase_sent_at: sentAt,
+            tiktok_events_api: true,
+          },
+        }).eq("id", row.id);
+      } else if (tt.skipped !== "tiktok_not_configured") {
+        console.warn("[catalog-order-status] TikTok Events API", tt);
+      }
+    } catch (e) {
+      console.warn("[catalog-order-status] TikTok Events API error", e);
+    }
+  }
+
   return { order: updated };
 }
 
@@ -136,7 +161,7 @@ Deno.serve(async (req) => {
     const action = String(body.action || "").trim();
 
     if (action === "expire_stale") {
-      if (!erpAuthOk(req)) {
+      if (!await catalogOrderUserAuthOk(req)) {
         return json({ ok: false, error: "Authorization required" }, 401);
       }
       const hours = Math.max(1, Number(body.hours) || 168);
@@ -148,7 +173,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "resolve_wompi_return") {
-      if (!authOk(req)) {
+      if (!await catalogOrderClientAuthOk(req)) {
         return json({ ok: false, error: "Unauthorized" }, 401);
       }
 
@@ -206,7 +231,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (!authOk(req)) {
+    if (!await catalogOrderPrivilegedAuthOk(req)) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 

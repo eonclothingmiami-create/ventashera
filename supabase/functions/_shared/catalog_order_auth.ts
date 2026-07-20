@@ -1,59 +1,66 @@
-/**
- * Auth para edge functions de pedidos del catálogo.
- * Acepta:
- * 1) Header x-catalog-order-secret == CATALOG_ORDER_SECRET
- * 2) Bearer/apikey JWT del proyecto (role anon | authenticated | service_role)
- * 3) Exact match con SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
- * 4) Si no hay CATALOG_ORDER_SECRET configurado → permite (legacy)
- */
-function projectRefFromUrl(): string {
-  const url = Deno.env.get("SUPABASE_URL") || "";
-  const m = url.match(/https:\/\/([^.]+)\.supabase\.co/i);
-  return m?.[1] || "";
-}
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
-    const json = atob(b64 + pad);
-    return JSON.parse(json) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
+type OrderAuthMode = "client" | "user" | "privileged";
 
-export function catalogOrderAuthOk(req: Request): boolean {
-  const secret = (Deno.env.get("CATALOG_ORDER_SECRET") || "").trim();
-  const hdr = (req.headers.get("x-catalog-order-secret") || "").trim();
-  if (secret && hdr === secret) return true;
-
+function bearerToken(req: Request): string {
   const auth = (req.headers.get("authorization") || "").trim();
-  const apikey = (req.headers.get("apikey") || "").trim();
-  const bearer = auth.replace(/^Bearer\s+/i, "").trim();
-  const token = bearer || apikey;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || "";
+}
 
-  if (token) {
-    const anon = (Deno.env.get("SUPABASE_ANON_KEY") || "").trim();
-    const service = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
-    if (anon && token === anon) return true;
-    if (service && token === service) return true;
+function configuredSecretOk(req: Request): boolean {
+  const secret = (Deno.env.get("CATALOG_ORDER_SECRET") || "").trim();
+  const supplied = (req.headers.get("x-catalog-order-secret") || "").trim();
+  return Boolean(secret && supplied && supplied === secret);
+}
 
-    const payload = decodeJwtPayload(token);
-    if (payload) {
-      const role = String(payload.role || "");
-      const ref = String(payload.ref || "");
-      const projectRef = projectRefFromUrl();
-      const roleOk =
-        role === "anon" ||
-        role === "authenticated" ||
-        role === "service_role";
-      const refOk = !projectRef || !ref || ref === projectRef;
-      if (roleOk && refOk) return true;
-    }
+async function verifiedUserToken(token: string): Promise<boolean> {
+  if (!token) return false;
+  const url = (Deno.env.get("SUPABASE_URL") || "").trim();
+  const serviceKey = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  if (!url || !serviceKey) return false;
+
+  try {
+    const admin = createClient(url, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await admin.auth.getUser(token);
+    return !error && Boolean(data.user?.id);
+  } catch {
+    return false;
   }
+}
 
-  return !secret;
+async function catalogOrderAuthOk(
+  req: Request,
+  mode: OrderAuthMode,
+): Promise<boolean> {
+  if (configuredSecretOk(req)) return true;
+
+  const bearer = bearerToken(req);
+  const apikey = (req.headers.get("apikey") || "").trim();
+  const serviceKey = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  const anonKey = (Deno.env.get("SUPABASE_ANON_KEY") || "").trim();
+
+  if (serviceKey && (bearer === serviceKey || apikey === serviceKey)) return true;
+  if (
+    mode === "client" &&
+    anonKey &&
+    (bearer === anonKey || apikey === anonKey)
+  ) return true;
+  if (mode !== "privileged" && await verifiedUserToken(bearer)) return true;
+
+  return false;
+}
+
+export function catalogOrderClientAuthOk(req: Request): Promise<boolean> {
+  return catalogOrderAuthOk(req, "client");
+}
+
+export function catalogOrderUserAuthOk(req: Request): Promise<boolean> {
+  return catalogOrderAuthOk(req, "user");
+}
+
+export function catalogOrderPrivilegedAuthOk(req: Request): Promise<boolean> {
+  return catalogOrderAuthOk(req, "privileged");
 }
