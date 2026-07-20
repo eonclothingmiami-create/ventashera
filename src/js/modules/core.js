@@ -4944,16 +4944,9 @@ function openArticuloModal(id){
     
     openModal(`
         <div class="modal-title" style="font-family:'Syne'; letter-spacing:1px;">🚀 MAQUETADOR DE PRENDA PROFESIONAL</div>
-        <div class="m-art-accordion-root" style="max-height: 75vh; overflow-y: auto; padding-right: 10px; text-align:left; display:flex; flex-direction:column; gap:10px;">
+        <div style="max-height: 75vh; overflow-y: auto; padding-right: 10px; text-align:left;">
 
-            <!-- 1. Ficha -->
-            <div class="m-art-acc">
-              <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
-                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
-                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">01</span> Ficha del producto</span>
-                <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
-              </button>
-              <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
+            <!-- Ficha siempre visible -->
             <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:16px;">
                 <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
@@ -5059,14 +5052,14 @@ function openArticuloModal(id){
                         <option value="credito" ${art?.tituloMercancia === 'credito' ? 'selected' : ''}>💳 Mercancía a Crédito</option>
                     </select>
                 </div>
-              </div>
-            </div>
 
-            <!-- 2. Inventario -->
+            <div class="m-art-accordion-root" style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+
+            <!-- 1. Inventario -->
             <div class="m-art-acc">
               <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
                 style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
-                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">02</span> Inventario y precios</span>
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">01</span> Inventario y precios</span>
                 <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
               </button>
               <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
@@ -5095,11 +5088,11 @@ function openArticuloModal(id){
               </div>
             </div>
 
-            <!-- 3. Canales -->
+            <!-- 2. Canales -->
             <div class="m-art-acc">
               <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
                 style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
-                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">03</span> Canales de venta</span>
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">02</span> Canales de venta</span>
                 <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
               </button>
               <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
@@ -5174,11 +5167,11 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
               </div>
             </div>
 
-            <!-- 4. Sugerencias IA -->
+            <!-- 3. Sugerencias IA -->
             <div class="m-art-acc">
               <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
                 style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
-                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">04</span> Sugerencias IA</span>
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">03</span> Sugerencias IA</span>
                 <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
               </button>
               <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
@@ -5186,6 +5179,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
               </div>
             </div>
 
+            </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px;">
         <button type="button" class="btn btn-primary" id="m-art-btn-save" style="width:100%; font-weight:800;" onclick="saveArticulo('${id || ''}', {})">💾 GUARDAR Y ACTUALIZAR WEB</button>
