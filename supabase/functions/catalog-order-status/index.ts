@@ -110,7 +110,12 @@ async function patchOrder(
 
   if (updErr) throw new Error(updErr.message);
 
-  if (nuevoEstado === "pago_exitoso" && row.estado_pago !== "pago_exitoso") {
+  const TIKTOK_PURCHASE_SOURCES = new Set(["wompi_return", "addi_return"]);
+  if (
+    nuevoEstado === "pago_exitoso" &&
+    row.estado_pago !== "pago_exitoso" &&
+    TIKTOK_PURCHASE_SOURCES.has(String(opts.source || ""))
+  ) {
     try {
       const tt = await sendTikTokPurchaseForOrder({
         reference: row.reference,

@@ -4918,7 +4918,7 @@ function openArticuloModal(id){
             </div>
 
             <div class="form-row">
-                <div class="form-group"><label class="form-label">REFERENCIA (REF)</label><input class="form-control" id="m-art-codigo" value="${art?.codigo || ''}"></div>
+                <div class="form-group"><label class="form-label">REFERENCIA (REF) — formato HERA-13003</label><input class="form-control" id="m-art-codigo" value="${art?.codigo || ''}" placeholder="HERA-13003"></div>
                 <div class="form-group"><label class="form-label">COLECCIÓN / TEMPORADA</label><input class="form-control" id="m-art-coleccion" value="${art?.coleccion || ''}" placeholder="Ej: Verano 2026"></div>
             </div>
 
@@ -5125,6 +5125,14 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
     window._falabellaCategoryIndexed = null;
     refreshFalabellaMaquetadorValidation();
     scheduleFalabellaModaOptionsFromCategory();
+    if (!id && window.ProductRefUtil && supabaseClient) {
+      window.ProductRefUtil.suggestNextHeraRef(supabaseClient)
+        .then((ref) => {
+          const el = document.getElementById('m-art-codigo');
+          if (el && !String(el.value || '').trim()) el.value = ref;
+        })
+        .catch(() => {});
+    }
   }, 10);
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
@@ -5253,9 +5261,29 @@ async function uploadGalleryImages(input) {
 async function saveArticulo(existingId, options) {
     const opts = options && typeof options === 'object' ? options : {};
     const nombre = document.getElementById('m-art-nombre').value.trim();
-    const refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
+    let refID = document.getElementById('m-art-codigo').value.trim().toUpperCase();
     
     if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
+
+    if (window.ProductRefUtil) {
+      if (!window.ProductRefUtil.isNormalizedHeraRef(refID)) {
+        const used = new Set(
+          (state.articulos || [])
+            .filter((a) => a.id !== existingId)
+            .map((a) => String(a.ref || a.codigo || '').trim().toUpperCase())
+            .filter(Boolean),
+        );
+        refID = window.ProductRefUtil.normalizeProductRef(refID, used);
+        const refInput = document.getElementById('m-art-codigo');
+        if (refInput) refInput.value = refID;
+      }
+      const dup = (state.articulos || []).find(
+        (a) =>
+          a.id !== existingId &&
+          String(a.ref || a.codigo || '').trim().toUpperCase() === refID,
+      );
+      if (dup) return alert(`La referencia ${refID} ya existe en otro artículo.`);
+    }
 
     const channelProfile = document.getElementById('m-art-channel-profile')?.value || 'generic';
     window.__suppressFalabellaSyncThisSave = false;
@@ -5308,6 +5336,7 @@ async function saveArticulo(existingId, options) {
     const productData = {
         id: existingId || dbId(),
         ref: refID,
+        sku: refID,
         name: nombre,
         seccion: document.getElementById('m-art-seccion').value,
         categoria: document.getElementById('m-art-cat').value,
