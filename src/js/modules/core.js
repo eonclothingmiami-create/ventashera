@@ -4884,6 +4884,34 @@ async function aplicarEntradaStockArticulo(productId, cantidad, bodegaId, motivo
   }
 }
 
+function toggleArticuloAccordion(btn) {
+  const panel = btn?.nextElementSibling;
+  if (!panel || !panel.classList.contains('m-art-acc-panel')) return;
+  const root = btn.closest('.m-art-accordion-root');
+  const willOpen = panel.hidden;
+  if (root) {
+    root.querySelectorAll('.m-art-acc-panel').forEach((p) => {
+      p.hidden = true;
+    });
+    root.querySelectorAll('.m-art-acc-btn').forEach((b) => {
+      b.setAttribute('aria-expanded', 'false');
+      const chev = b.querySelector('.m-art-acc-chev');
+      if (chev) chev.textContent = '▸';
+      b.style.borderColor = 'var(--border)';
+      b.style.background = 'rgba(255,255,255,0.03)';
+    });
+  }
+  if (willOpen) {
+    panel.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    const chev = btn.querySelector('.m-art-acc-chev');
+    if (chev) chev.textContent = '▾';
+    btn.style.borderColor = 'rgba(0,229,180,0.35)';
+    btn.style.background = 'rgba(0,229,180,0.06)';
+  }
+}
+window.toggleArticuloAccordion = toggleArticuloAccordion;
+
 function openArticuloModal(id){
     const art = id ? (state.articulos || []).find(a => a.id === id) : null;
     // Cargar imágenes existentes del artículo en la galería temporal
@@ -4916,9 +4944,17 @@ function openArticuloModal(id){
     
     openModal(`
         <div class="modal-title" style="font-family:'Syne'; letter-spacing:1px;">🚀 MAQUETADOR DE PRENDA PROFESIONAL</div>
-        <div style="max-height: 75vh; overflow-y: auto; padding-right: 10px; text-align:left;">
-            
-            <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:20px;">
+        <div class="m-art-accordion-root" style="max-height: 75vh; overflow-y: auto; padding-right: 10px; text-align:left; display:flex; flex-direction:column; gap:10px;">
+
+            <!-- 1. Ficha -->
+            <div class="m-art-acc">
+              <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">01</span> Ficha del producto</span>
+                <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
+              </button>
+              <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
+            <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:16px;">
                 <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
                     <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br>
@@ -5023,8 +5059,17 @@ function openArticuloModal(id){
                         <option value="credito" ${art?.tituloMercancia === 'credito' ? 'selected' : ''}>💳 Mercancía a Crédito</option>
                     </select>
                 </div>
+              </div>
+            </div>
 
-            <div class="card-title" style="margin-top:10px; border-top:1px solid var(--border); padding-top:15px; color:var(--accent);">💰 INVENTARIO Y PRECIOS</div>
+            <!-- 2. Inventario -->
+            <div class="m-art-acc">
+              <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">02</span> Inventario y precios</span>
+                <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
+              </button>
+              <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
             <div class="form-row-3">
                 <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra || 0}"></div>
                 <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta || 0}"></div>
@@ -5037,7 +5082,28 @@ function openArticuloModal(id){
                 </select>
                 ${(state.usu_proveedores||[]).length === 0 ? '<span style="font-size:10px;color:var(--text2)">Sin proveedores. <a onclick="closeModal();showPage(\'usu_proveedores\')" style="color:var(--accent);cursor:pointer">→ Crear proveedor</a></span>' : ''}
             </div>
-            <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
+            <div class="form-row">
+                <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas || []).map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
+                <div class="form-group">
+                  <label class="form-label">${art ? 'STOCK ACTUAL' : 'STOCK INICIAL'}</label>
+                  <input type="number" class="form-control" id="m-art-stock0"
+                    value="${art ? (art.stock||0) : 0}"
+                    ${art ? 'readonly style="opacity:0.5;cursor:not-allowed"' : 'min="0"'}>
+                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para más stock: Inventario → Ajustes</div>' : ''}
+                </div>
+            </div>
+              </div>
+            </div>
+
+            <!-- 3. Canales -->
+            <div class="m-art-acc">
+              <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">03</span> Canales de venta</span>
+                <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
+              </button>
+              <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
+            <div class="form-group" style="margin-top: 0; padding: 10px; background: rgba(0,255,170,0.1); border-radius: 8px;">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-mostrar-web" style="width: 18px; height: 18px;"> 
     🌐 Mostrar esta prenda en el Catálogo Web (Supabase)
@@ -5102,21 +5168,24 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
   <div id="art-falabella-status-line" style="display:none;font-size:10px;margin-top:8px;line-height:1.35;"></div>
   ${id ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%" onclick="reenviarFalabellaFeedModal()">🔄 Reenviar feed a Falabella</button>
   <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%" onclick="verFalabellaAtributosCategoriaModal()">📋 Atributos de categoría (Falabella API)</button>
-  <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%" onclick="pushFalabellaPrecioStockModal()">💲 Actualizar precio y stock (Falabella)</button>
+  <button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px" onclick="pushFalabellaPrecioStockModal()">💲 Actualizar precio y stock (Falabella)</button>
   <div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.35;">Alta = sync al guardar. Luego usa «Actualizar precio y stock» para ProductUpdate (mismo SKU). «Atributos» = GetCategoryAttributes.</div>` : `<div style="font-size:10px;color:var(--text2);margin-top:8px;line-height:1.35;">Tras guardar el artículo podrás reenviar el feed, actualizar precio/stock y consultar atributos.</div>`}
 </div>` : ''}
-
-            <div class="form-row">
-                <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-art-bodega">${(state.bodegas || []).map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
-                <div class="form-group">
-                  <label class="form-label">${art ? 'STOCK ACTUAL' : 'STOCK INICIAL'}</label>
-                  <input type="number" class="form-control" id="m-art-stock0"
-                    value="${art ? (art.stock||0) : 0}"
-                    ${art ? 'readonly style="opacity:0.5;cursor:not-allowed"' : 'min="0"'}>
-                  ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para más stock: Inventario → Ajustes</div>' : ''}
-                </div>
+              </div>
             </div>
-            <div id="m-art-inteligencia-wrap" style="margin-top:8px;"></div>
+
+            <!-- 4. Sugerencias IA -->
+            <div class="m-art-acc">
+              <button type="button" class="m-art-acc-btn" aria-expanded="false" onclick="toggleArticuloAccordion(this)"
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03);cursor:pointer;color:var(--text1);font-family:Syne,sans-serif;font-weight:800;font-size:13px;letter-spacing:0.04em;text-align:left;">
+                <span><span style="opacity:0.55;margin-right:8px;font-weight:600;">04</span> Sugerencias IA</span>
+                <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
+              </button>
+              <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
+            <div id="m-art-inteligencia-wrap"></div>
+              </div>
+            </div>
+
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px;">
         <button type="button" class="btn btn-primary" id="m-art-btn-save" style="width:100%; font-weight:800;" onclick="saveArticulo('${id || ''}', {})">💾 GUARDAR Y ACTUALIZAR WEB</button>

@@ -59,9 +59,6 @@
 
     if (!_ctx.id || !ref) {
       wrap.innerHTML = `
-        <div class="card-title" style="margin-top:10px;border-top:1px solid var(--border);padding-top:15px;color:var(--accent);">
-          🧠 INTELIGENCIA DEL PRODUCTO
-        </div>
         <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.45;">
           Guardá el artículo primero (con ref <code>HERA-*</code>) para generar copy, SEO, atributos y knowledge.
           El alta operativa no cambia: la IA no bloquea Guardar.
@@ -71,10 +68,8 @@
 
     _ctx.ref = ref;
     wrap.innerHTML = `
-      <div class="card-title" style="margin-top:10px;border-top:1px solid var(--border);padding-top:15px;color:var(--accent);">
-        🧠 INTELIGENCIA · ${esc(ref)}
-      </div>
-      <div id="m-art-pi-body" style="font-size:12px;color:var(--text2);padding:8px 0;">Cargando…</div>`;
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Ref <code>${esc(ref)}</code></div>
+      <div id="m-art-pi-body" style="font-size:12px;color:var(--text2);padding:4px 0;">Cargando…</div>`;
 
     const PI = api();
     if (!PI) {
@@ -165,7 +160,7 @@
         .trim()
         .toUpperCase();
     if (!ref) {
-      notify('error', 'Inteligencia', 'Falta ref HERA-*');
+      notify('error', 'Sugerencias IA', 'Falta ref HERA-*');
       return;
     }
     _busy = true;
@@ -181,13 +176,13 @@
             'Job encolado pero el worker falló (¿OPENAI_API_KEY?).',
         );
       } else if (worker && worker.processed) {
-        notify('success', 'Inteligencia', `${MODULE_LABELS[module] || module} generado (sugerido).`);
+        notify('success', 'Sugerencias IA', `${MODULE_LABELS[module] || module} generado (sugerido).`);
       } else {
-        notify('success', 'Inteligencia', `Job #${job?.id} encolado.`);
+        notify('success', 'Sugerencias IA', `Job #${job?.id} encolado.`);
       }
       await refresh();
     } catch (e) {
-      notify('error', 'Inteligencia', e.message || String(e));
+      notify('error', 'Sugerencias IA', e.message || String(e));
       await refresh();
     } finally {
       _busy = false;
