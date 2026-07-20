@@ -5044,15 +5044,6 @@ function openArticuloModal(id){
             </div>
             <div id="m-art-color-covers-wrap" style="display:none;margin-bottom:16px;"></div>
 
-            <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
-                    <select class="form-control" id="m-art-titulo-mercancia">
-                        <option value="" ${!art?.tituloMercancia ? 'selected' : ''}>— Seleccionar —</option>
-                        <option value="propia" ${art?.tituloMercancia === 'propia' ? 'selected' : ''}>🏷️ Mercancía Propia</option>
-                        <option value="contado" ${art?.tituloMercancia === 'contado' ? 'selected' : ''}>💵 Mercancía de Contado</option>
-                        <option value="credito" ${art?.tituloMercancia === 'credito' ? 'selected' : ''}>💳 Mercancía a Crédito</option>
-                    </select>
-                </div>
-
             <div class="m-art-accordion-root" style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
 
             <!-- 1. Inventario -->
@@ -5063,6 +5054,14 @@ function openArticuloModal(id){
                 <span class="m-art-acc-chev" style="opacity:0.7;font-size:12px;">▸</span>
               </button>
               <div class="m-art-acc-panel" hidden style="padding:14px 4px 6px;">
+            <div class="form-group"><label class="form-label">TÍTULO DE MERCANCÍA</label>
+                    <select class="form-control" id="m-art-titulo-mercancia">
+                        <option value="" ${!art?.tituloMercancia ? 'selected' : ''}>— Seleccionar —</option>
+                        <option value="propia" ${art?.tituloMercancia === 'propia' ? 'selected' : ''}>🏷️ Mercancía Propia</option>
+                        <option value="contado" ${art?.tituloMercancia === 'contado' ? 'selected' : ''}>💵 Mercancía de Contado</option>
+                        <option value="credito" ${art?.tituloMercancia === 'credito' ? 'selected' : ''}>💳 Mercancía a Crédito</option>
+                    </select>
+                </div>
             <div class="form-row-3">
                 <div class="form-group"><label class="form-label">COSTO</label><input type="number" class="form-control" id="m-art-pc" value="${art?.precioCompra || 0}"></div>
                 <div class="form-group"><label class="form-label">P. MAYORISTA</label><input type="number" class="form-control" id="m-art-pv" value="${art?.precioVenta || 0}"></div>
