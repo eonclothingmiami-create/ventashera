@@ -71,6 +71,7 @@
 <script defer src="./src/js/integrations/falabella.js?v=20260327falprof2"></script>
 <script defer src="./src/js/integrations/mayoristas-catalog.js?v=20260711b64fix"></script>
 <script defer src="./src/js/integrations/social-content-api.js?v=20260710content2"></script>
+<script defer src="./src/js/integrations/product-intelligence-api.js?v=20260720pi2"></script>
 <script defer src="./src/js/modules/app/social-content-module.js?v=20260710content2"></script>
 <script defer src="./src/js/integrations/woocommerce-catalog.js?v=20260710vc1"></script>
 <script defer src="./src/js/integrations/woocommerce-orders.js?v=20260710vc1"></script>
@@ -99,6 +100,8 @@
 <script defer src="./src/js/modules/app/sync-guard.js?v=20260327antids1"></script>
 <script defer src="./src/js/modules/app/falabella-maquetador.js?v=20260327falmoda1"></script>
 <script defer src="./src/js/modules/app/product-color-media.js?v=20260709colcov4"></script>
+<script defer src="./src/js/modules/app/product-intelligence-module.js?v=20260720pi1"></script>
+<script defer src="./src/js/modules/app/ai-center-module.js?v=20260720ai1"></script>
 <script defer src="./src/js/utils/product-ref.js?v=20260720heraref1"></script>
 <script defer src="./src/js/modules/core.js?v=20260720heraref1"></script>
 <script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
@@ -241,6 +244,9 @@
     <div class="nav-item" onclick="showPage('tes_comp_egreso')"><span class="nav-icon">📤</span>Comp. Egreso</div>
     <div class="nav-item" onclick="showPage('tes_transferencias')"><span class="nav-icon">🔄</span>Transferencias</div>
 
+    <div class="nav-section">INTELIGENCIA</div>
+    <div class="nav-item" onclick="showPage('centro_ia')"><span class="nav-icon">🧠</span>Centro de IA</div>
+
     <div class="nav-section">REDES SOCIALES</div>
     <div class="nav-item" onclick="showPage('social_contenido')"><span class="nav-icon">📱</span>Contenido</div>
 
@@ -312,6 +318,7 @@
   <div class="page" id="page-historial"><div class="page-title">Historial de Ventas</div><div id="historial-content"></div></div>
   <div class="page" id="page-config"><div class="page-title">Configuración</div><div id="config-content"></div></div>
   <div class="page" id="page-social_contenido"><div class="page-title">Contenido — Push PWA</div><div id="social_contenido-content"></div></div>
+  <div class="page" id="page-centro_ia"><div class="page-title">Centro de IA</div><div id="centro_ia-content"></div></div>
 </main>
 </div>
 

@@ -3365,12 +3365,23 @@ function renderPage(id){
     juego:renderGamePage, recompensas:renderRewards,
     alertas:renderAlertas, historial:renderHistorial, config:renderConfig, separados:renderSeparados,
     ventas_consolidado:renderVentasConsolidado,
-    social_contenido:renderSocialContenido
+    social_contenido:renderSocialContenido,
+    centro_ia:renderCentroIa
   };
   if(renderers[id])renderers[id]();
 }
 
 /** Bridge SOLO LECTURA hacia ventas-consolidado-module.js (consolidado por líneas, sale_items). */
+function renderCentroIa(){
+  const M = window.AppAiCenterModule;
+  const el = document.getElementById('centro_ia-content');
+  if (!M || typeof M.renderAiCenter !== 'function') {
+    if (el) el.innerHTML = '<div class="card"><div class="card-title">Centro de IA</div><div style="color:var(--text2);padding:16px">No se cargó ai-center-module.js. Recarga la página.</div></div>';
+    return;
+  }
+  M.renderAiCenter();
+}
+
 function renderSocialContenido(){
   const M = window.AppSocialContentModule;
   const el = document.getElementById('social_contenido-content');
@@ -5105,6 +5116,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
                   ${art ? '<div style="font-size:10px;color:var(--text2);margin-top:3px">Para más stock: Inventario → Ajustes</div>' : ''}
                 </div>
             </div>
+            <div id="m-art-inteligencia-wrap" style="margin-top:8px;"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px;">
         <button type="button" class="btn btn-primary" id="m-art-btn-save" style="width:100%; font-weight:800;" onclick="saveArticulo('${id || ''}', {})">💾 GUARDAR Y ACTUALIZAR WEB</button>
@@ -5137,6 +5149,12 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
     actualizarCatsERP(art?.cat);
     renderGaleriaVisual();
     if (window.ProductColorMedia) window.ProductColorMedia.initForModal(art?.id || null);
+    if (window.ProductIntelligence) {
+      window.ProductIntelligence.initForModal({
+        id: art?.id || null,
+        ref: art?.ref || art?.codigo || null,
+      });
+    }
 }
 
 function removeMainImg(){
