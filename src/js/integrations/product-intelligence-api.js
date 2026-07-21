@@ -543,9 +543,9 @@
       payload,
       name: payload.name || '',
       description:
-        payload.description_long ||
         payload.description_short ||
         payload.description ||
+        payload.description_long ||
         '',
       accept: out.accept,
       worker: out.worker,

@@ -32,7 +32,7 @@ const BRAND_FALLBACK = `Hera Swimwear (Colombia). Tono Quiet Luxury: femenino, a
 No inventes materiales, precios, stock ni URLs de redes. Español es-CO.`;
 
 export const PROMPT_VERSIONS: Record<Exclude<PiModule, "embedding">, string> = {
-  copy: "copy_v2_brand",
+  copy: "copy_v3_short",
   seo: "seo_v2_brand",
   attributes: "attributes_v2_brand",
   relations: "relations_v2_brand",
@@ -90,10 +90,11 @@ export function buildMessages(
 Eres copywriter de Hera. Responde SOLO JSON válido:
 {
   "name": string,
-  "description_short": string,
-  "description_long": string
+  "description_short": string
 }
-description_short <= 160 chars. description_long 2-4 párrafos cortos. Respeta tono Quiet Luxury y listas always/never de la Brand Voice.`,
+description_short = 1–2 frases, máximo 160 caracteres. Es el texto de ficha de catálogo (clientes no leen párrafos largos).
+No inventes description_long. El detalle largo vive en Knowledge, no en la descripción pública.
+Respeta tono Quiet Luxury y listas always/never de la Brand Voice.`,
       },
       {
         role: "user",

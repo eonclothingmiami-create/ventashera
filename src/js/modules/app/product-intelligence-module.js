@@ -68,9 +68,9 @@
     if (nameEl && payload.name) nameEl.value = payload.name;
     if (descEl) {
       const d =
-        payload.description_long ||
         payload.description_short ||
-        payload.description;
+        payload.description ||
+        payload.description_long;
       if (d) descEl.value = d;
     }
   }
@@ -228,7 +228,7 @@
       const out = await PI.generateInlineCopy(ref);
       applyCopyToForm({
         name: out.name,
-        description_long: out.description,
+        description_short: out.description,
         description: out.description,
       });
       setAiHint('Listo. Revisá el texto.');
