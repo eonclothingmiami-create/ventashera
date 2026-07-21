@@ -457,8 +457,159 @@
     return data;
   }
 
+  const SILENT_PIPELINE = ['seo', 'attributes', 'knowledge'];
+
+  function moduleIsAccepted(modules, key) {
+    const st = modules && modules[key] && modules[key].status;
+    return st === 'accepted' || st === 'done';
+  }
+
+  /**
+   * True if background enrichment (seo/attributes/knowledge) is incomplete.
+   * Copy is operator-driven via Generar con IA — not gated here.
+   */
+  function shouldSilentEnrich(intel) {
+    if (!intel) return true;
+    const mods = intel.modules || {};
+    return SILENT_PIPELINE.some((k) => !moduleIsAccepted(mods, k));
+  }
+
+  function artifactFromWorker(worker) {
+    return (
+      worker?.result?.artifact ||
+      worker?.artifact ||
+      null
+    );
+  }
+
+  async function latestSuggestedArtifact(ref, artifactType) {
+    const clean = String(ref || '').trim().toUpperCase();
+    const { data, error } = await sb()
+      .from('product_ai_artifacts')
+      .select('*')
+      .eq('ref', clean)
+      .eq('artifact_type', artifactType)
+      .eq('status', 'suggested')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  /**
+   * Run one module, auto-accept suggested artifact. Returns accept result or null.
+   */
+  async function runAndAccept(ref, module, artifactType) {
+    const { job, worker } = await enqueue(ref, module, { run: true });
+    if (worker && worker.ok === false) {
+      const err = new Error(worker.error || `Worker falló (${module})`);
+      err.worker = worker;
+      throw err;
+    }
+    if (worker && worker.reason === 'module_disabled') {
+      return { skipped: true, reason: 'module_disabled', job, worker };
+    }
+    let art = artifactFromWorker(worker);
+    if (!art || !art.id) {
+      art = await latestSuggestedArtifact(ref, artifactType);
+    }
+    if (!art || !art.id) {
+      return { skipped: true, reason: 'no_artifact', job, worker };
+    }
+    if (art.status === 'accepted') {
+      return { skipped: true, reason: 'already_accepted', artifact: art, job, worker };
+    }
+    const accepted = await accept(art.id);
+    return { skipped: false, artifact: accepted?.artifact || art, accept: accepted, job, worker };
+  }
+
+  /**
+   * Operator path: generate copy, auto-apply to products, return payload for form fill.
+   */
+  async function generateInlineCopy(ref) {
+    const clean = String(ref || '').trim().toUpperCase();
+    if (!clean) throw new Error('ref requerido');
+    await ensure(clean);
+    const out = await runAndAccept(clean, 'copy', 'copy');
+    if (out.skipped && out.reason === 'module_disabled') {
+      throw new Error('Módulo Copy desactivado en Centro de IA → Activación');
+    }
+    if (out.skipped && out.reason === 'no_artifact') {
+      throw new Error('No se generó copy. Revisá OPENAI_API_KEY / Centro de IA.');
+    }
+    const payload = out.artifact?.payload || out.accept?.artifact?.payload || {};
+    return {
+      payload,
+      name: payload.name || '',
+      description:
+        payload.description_long ||
+        payload.description_short ||
+        payload.description ||
+        '',
+      accept: out.accept,
+      worker: out.worker,
+    };
+  }
+
+  /**
+   * Background: seo → attributes → knowledge → embedding. Never relations.
+   * Fire-and-forget friendly; does not throw to caller if wrapped.
+   */
+  async function enqueueSilentEnrichment(ref) {
+    const clean = String(ref || '').trim().toUpperCase();
+    if (!clean) throw new Error('ref requerido');
+    await ensure(clean);
+
+    let gates = {};
+    try {
+      const runtime = await getRuntimeConfig();
+      gates = (runtime && runtime.modules) || {};
+    } catch (_) {
+      gates = {};
+    }
+
+    const results = [];
+    for (const mod of SILENT_PIPELINE) {
+      if (gates[mod] === false) {
+        results.push({ module: mod, skipped: true, reason: 'module_disabled' });
+        continue;
+      }
+      const artifactType = mod === 'knowledge' ? 'knowledge_doc' : mod;
+      try {
+        const out = await runAndAccept(clean, mod, artifactType);
+        results.push({ module: mod, ...out });
+      } catch (e) {
+        console.warn('[PI silent]', mod, e.message || e);
+        results.push({ module: mod, ok: false, error: e.message || String(e) });
+        // Continue other modules; knowledge fail blocks embedding below.
+        if (mod === 'knowledge') break;
+      }
+    }
+
+    const knowledgeOk = results.some(
+      (r) => r.module === 'knowledge' && !r.skipped && !r.error,
+    );
+    const knowledgeAlready =
+      results.some((r) => r.module === 'knowledge' && r.reason === 'already_accepted') ||
+      moduleIsAccepted((await getIntelligence(clean).catch(() => null))?.modules, 'knowledge');
+
+    if ((knowledgeOk || knowledgeAlready) && gates.embedding !== false) {
+      try {
+        const { job, worker } = await enqueue(clean, 'embedding', { run: true });
+        results.push({ module: 'embedding', job, worker });
+      } catch (e) {
+        console.warn('[PI silent] embedding', e.message || e);
+        results.push({ module: 'embedding', ok: false, error: e.message || String(e) });
+      }
+    }
+
+    return { ref: clean, results };
+  }
+
   global.ProductIntelligenceApi = {
     MODULES,
+    SILENT_PIPELINE,
     ensure,
     getIntelligence,
     listArtifacts,
@@ -482,5 +633,8 @@
     reject,
     invokeWorker,
     workerUrl,
+    shouldSilentEnrich,
+    generateInlineCopy,
+    enqueueSilentEnrichment,
   };
 })(window);

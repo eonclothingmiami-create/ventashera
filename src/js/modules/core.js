@@ -5036,7 +5036,16 @@ function openArticuloModal(id){
             </div>
 
             <div class="form-group"><label class="form-label">NOMBRE COMERCIAL</label><input class="form-control" id="m-art-nombre" value="${art?.nombre || ''}"></div>
-            <div class="form-group"><label class="form-label">DESCRIPCIÓN (Para el Catálogo)</label><textarea class="form-control" id="m-art-desc" rows="2">${art?.descripcion || ''}</textarea></div>
+            <div class="form-group">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+                <label class="form-label" style="margin:0;">DESCRIPCIÓN (Para el Catálogo)</label>
+                <button type="button" class="btn btn-secondary btn-sm" id="m-art-btn-generar-ia"
+                  ${art?.id ? '' : 'disabled title="Guardá el artículo primero"'}
+                  onclick="ProductIntelligence&&ProductIntelligence.generateInlineCopy()">✨ Generar con IA</button>
+              </div>
+              <textarea class="form-control" id="m-art-desc" rows="2">${art?.descripcion || ''}</textarea>
+              <div id="m-art-ai-hint" style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.35;">${art?.id ? 'Un clic genera nombre y descripción con la voz de marca.' : 'Guardá el artículo primero para usar Generar con IA.'}</div>
+            </div>
 
             <div class="form-row">
                 <div class="form-group"><label class="form-label">TALLAS</label><input class="form-control" id="m-art-tallas" value="${art?.tallas || (art ? '' : 'S, M, L, XL')}"></div>
@@ -5773,6 +5782,10 @@ async function saveArticulo(existingId, options) {
         renderArticulos();
         showLoadingOverlay('hide');
         notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${dropiNote}${rappiNote}${falabellaNote}${pushNote}`);
+
+        if (window.ProductIntelligence && typeof window.ProductIntelligence.maybeSilentEnrichAfterSave === 'function') {
+          window.ProductIntelligence.maybeSilentEnrichAfterSave(refID);
+        }
 
     } catch(e) {
         showLoadingOverlay('hide');

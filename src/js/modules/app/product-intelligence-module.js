@@ -1,5 +1,6 @@
 /**
- * Panel Product Intelligence en el modal de artículo (sin tocar saveArticulo).
+ * Panel Product Intelligence en el modal de artículo.
+ * Operador: Generar con IA (inline). Avanzado: regenerar módulo a módulo.
  */
 (function initProductIntelligenceModule(global) {
   const MODULE_LABELS = {
@@ -9,6 +10,13 @@
     relations: 'Relaciones',
     knowledge: 'Knowledge',
     embedding: 'Embedding',
+  };
+
+  const STATUS_LABELS = {
+    empty: 'Vacía',
+    partial: 'Parcial',
+    complete: 'Completa',
+    generating: 'Generando…',
   };
 
   let _ctx = { id: null, ref: null };
@@ -34,18 +42,74 @@
       .replace(/"/g, '&quot;');
   }
 
-  function payloadPreview(payload) {
-    try {
-      const t = JSON.stringify(payload, null, 2);
-      return t.length > 900 ? t.slice(0, 900) + '\n…' : t;
-    } catch {
-      return String(payload || '');
-    }
-  }
-
   function moduleStatus(modules, key) {
     const m = modules && modules[key];
     return (m && m.status) || 'empty';
+  }
+
+  function setAiHint(text, isError) {
+    const hint = document.getElementById('m-art-ai-hint');
+    if (!hint) return;
+    hint.textContent = text || '';
+    hint.style.color = isError ? 'var(--red, #f87171)' : 'var(--text2)';
+  }
+
+  function setGenerateBtnBusy(busy) {
+    const btn = document.getElementById('m-art-btn-generar-ia');
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.textContent = busy ? 'Generando…' : '✨ Generar con IA';
+  }
+
+  function applyCopyToForm(payload) {
+    if (!payload) return;
+    const nameEl = document.getElementById('m-art-nombre');
+    const descEl = document.getElementById('m-art-desc');
+    if (nameEl && payload.name) nameEl.value = payload.name;
+    if (descEl) {
+      const d =
+        payload.description_long ||
+        payload.description_short ||
+        payload.description;
+      if (d) descEl.value = d;
+    }
+  }
+
+  function humanStatus(intel) {
+    const raw = String(intel?.status || 'empty').toLowerCase();
+    if (STATUS_LABELS[raw]) return STATUS_LABELS[raw];
+    if (raw === 'ready' || raw === 'ok') return 'Completa';
+    return raw || 'Vacía';
+  }
+
+  function formatRelative(iso) {
+    if (!iso) return '';
+    try {
+      const t = new Date(iso).getTime();
+      if (!Number.isFinite(t)) return '';
+      const mins = Math.round((Date.now() - t) / 60000);
+      if (mins < 1) return 'hace un momento';
+      if (mins < 60) return `hace ${mins} min`;
+      const hrs = Math.round(mins / 60);
+      if (hrs < 48) return `hace ${hrs} h`;
+      return new Date(iso).toLocaleString();
+    } catch {
+      return '';
+    }
+  }
+
+  function checklistHtml(modules, gates) {
+    const keys = ['copy', 'seo', 'attributes', 'knowledge'];
+    return keys
+      .map((k) => {
+        const st = moduleStatus(modules, k);
+        const ok = st === 'accepted' || st === 'done';
+        const off = gates[k] === false;
+        const mark = ok ? '✔' : off ? '○' : '·';
+        const extra = off ? ' (off)' : ok ? '' : ` ${esc(st)}`;
+        return `<span style="margin-right:10px;">${mark} ${esc(MODULE_LABELS[k])}${extra}</span>`;
+      })
+      .join('');
   }
 
   async function refresh() {
@@ -60,16 +124,14 @@
     if (!_ctx.id || !ref) {
       wrap.innerHTML = `
         <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.45;">
-          Guardá el artículo primero (con ref <code>HERA-*</code>) para generar copy, SEO, atributos y knowledge.
-          El alta operativa no cambia: la IA no bloquea Guardar.
+          Guardá el artículo primero (ref <code>HERA-*</code>). Después usá
+          <strong style="color:var(--text1);">Generar con IA</strong> junto a la descripción.
         </div>`;
       return;
     }
 
     _ctx.ref = ref;
-    wrap.innerHTML = `
-      <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Ref <code>${esc(ref)}</code></div>
-      <div id="m-art-pi-body" style="font-size:12px;color:var(--text2);padding:4px 0;">Cargando…</div>`;
+    wrap.innerHTML = `<div id="m-art-pi-body" style="font-size:12px;color:var(--text2);padding:4px 0;">Cargando…</div>`;
 
     const PI = api();
     if (!PI) {
@@ -79,76 +141,116 @@
     }
 
     try {
-      const [intel, artifacts, runtime] = await Promise.all([
+      const [intel, runtime] = await Promise.all([
         PI.getIntelligence(ref),
-        PI.listArtifacts(ref),
         PI.getRuntimeConfig().catch(() => null),
       ]);
       const modules = intel?.modules || {};
       const gates = (runtime && runtime.modules) || {};
-      const suggested = (artifacts || []).filter((a) => a.status === 'suggested');
-      const accepted = (artifacts || []).filter((a) => a.status === 'accepted');
+      const when = formatRelative(intel?.updated_at);
 
-      const rows = PI.MODULES.map((mod) => {
+      const advRows = PI.MODULES.map((mod) => {
         const st = moduleStatus(modules, mod);
         const enabled = gates[mod] !== false;
         return `
-          <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
             <div>
               <strong style="color:var(--text1);">${esc(MODULE_LABELS[mod] || mod)}</strong>
               <span style="margin-left:8px;opacity:0.8;">${esc(st)}</span>
-              ${enabled ? '' : '<span style="margin-left:6px;color:var(--orange);font-size:10px;">manual/off</span>'}
+              ${enabled ? '' : '<span style="margin-left:6px;color:var(--orange);font-size:10px;">off</span>'}
             </div>
             <button type="button" class="btn btn-secondary btn-sm"
               ${ _busy || !enabled ? 'disabled' : '' }
-              title="${enabled ? 'Regenerar' : 'Módulo desactivado en Centro de IA → Activación'}"
               onclick="ProductIntelligence.enqueueModule('${esc(mod)}')">
               Regenerar
             </button>
           </div>`;
       }).join('');
 
-      const artCards = (suggested.length ? suggested : accepted.slice(0, 4))
-        .map((a) => {
-          const isSug = a.status === 'suggested';
-          return `
-            <div style="margin-top:10px;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid rgba(255,255,255,0.08);">
-              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
-                <div>
-                  <strong style="color:var(--text1);">${esc(a.artifact_type)}</strong>
-                  <span style="opacity:0.75;"> · v${esc(a.version)} · ${esc(a.status)}</span>
-                </div>
-                <div style="display:flex;gap:6px;">
-                  ${
-                    isSug
-                      ? `<button type="button" class="btn btn-primary btn-sm" onclick="ProductIntelligence.acceptArtifact('${esc(a.id)}')">Aprobar</button>
-                         <button type="button" class="btn btn-secondary btn-sm" onclick="ProductIntelligence.rejectArtifact('${esc(a.id)}')">Rechazar</button>`
-                      : ''
-                  }
-                </div>
-              </div>
-              <pre style="margin:8px 0 0;white-space:pre-wrap;word-break:break-word;font-size:10px;max-height:160px;overflow:auto;color:var(--text2);">${esc(payloadPreview(a.payload))}</pre>
-            </div>`;
-        })
-        .join('');
-
       document.getElementById('m-art-pi-body').innerHTML = `
-        <div style="margin-bottom:8px;line-height:1.4;">
-          Estado: <strong style="color:var(--text1);">${esc(intel?.status || 'empty')}</strong>
-          · provider <code>${esc(intel?.active_provider || 'openai')}</code>
-          ${intel?.last_error ? `<div style="color:var(--red);margin-top:4px;">${esc(intel.last_error)}</div>` : ''}
+        <div style="margin-bottom:10px;line-height:1.45;">
+          <div>Estado: <strong style="color:var(--text1);">${esc(humanStatus(intel))}</strong>
+            ${when ? `<span style="opacity:0.75;"> · ${esc(when)}</span>` : ''}
+          </div>
+          <div style="margin-top:8px;font-size:11px;">${checklistHtml(modules, gates)}</div>
+          <p style="margin:10px 0 0;font-size:11px;line-height:1.4;opacity:0.85;">
+            El texto se genera con el botón <strong>Generar con IA</strong> junto a la descripción.
+            SEO, atributos y knowledge se enriquecen solos en segundo plano.
+          </p>
+          ${intel?.last_error ? `<div style="color:var(--red);margin-top:6px;">${esc(intel.last_error)}</div>` : ''}
         </div>
-        <div style="margin-bottom:10px;">${rows}</div>
-        <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">
-          Sugerencias pendientes: ${suggested.length}. Aprobar escribe en products / attributes / relations / search docs según el tipo.
-        </div>
-        ${artCards || '<div style="opacity:0.7;">Sin artifacts aún. Usá Regenerar en un módulo.</div>'}
-        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;"
-          onclick="ProductIntelligence.refresh()">🔄 Actualizar panel</button>
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;font-weight:700;color:var(--text1);font-size:12px;">Opciones avanzadas</summary>
+          <div style="margin-top:8px;">${advRows}</div>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;"
+            onclick="ProductIntelligence.refresh()">Actualizar panel</button>
+        </details>
       `;
     } catch (e) {
       document.getElementById('m-art-pi-body').innerHTML =
         `<div style="color:var(--red);">${esc(e.message || e)}</div>`;
+    }
+  }
+
+  /**
+   * Primary operator action: fill name + description, then silent enrichment.
+   */
+  async function generateInlineCopy() {
+    const PI = api();
+    if (!PI) {
+      notify('error', 'Generar con IA', 'API no cargada');
+      return;
+    }
+    if (_busy) return;
+
+    if (!_ctx.id) {
+      notify('error', 'Generar con IA', 'Guardá el artículo primero (con ref HERA-*).');
+      setAiHint('Guardá el artículo primero.', true);
+      return;
+    }
+
+    const ref =
+      String(document.getElementById('m-art-codigo')?.value || _ctx.ref || '')
+        .trim()
+        .toUpperCase();
+    if (!ref || !/^HERA-/i.test(ref)) {
+      notify('error', 'Generar con IA', 'Falta una ref válida HERA-*');
+      setAiHint('Falta ref HERA-*.', true);
+      return;
+    }
+
+    _busy = true;
+    _ctx.ref = ref;
+    setGenerateBtnBusy(true);
+    setAiHint('Generando texto…');
+
+    try {
+      const out = await PI.generateInlineCopy(ref);
+      applyCopyToForm({
+        name: out.name,
+        description_long: out.description,
+        description: out.description,
+      });
+      setAiHint('Listo. Revisá el texto.');
+      notify(
+        'success',
+        'Generar con IA',
+        'Texto generado. Revisá y guardá si cambiás otra cosa.',
+      );
+
+      // Background enrichment — never block the operator
+      Promise.resolve()
+        .then(() => PI.enqueueSilentEnrichment(ref))
+        .then(() => refresh())
+        .catch((e) => console.warn('[PI silent after copy]', e));
+
+      await refresh();
+    } catch (e) {
+      setAiHint(e.message || String(e), true);
+      notify('error', 'Generar con IA', e.message || String(e));
+    } finally {
+      _busy = false;
+      setGenerateBtnBusy(false);
     }
   }
 
@@ -202,18 +304,8 @@
           ? `Aplicado: ${res.side_effects.applied}`
           : 'Artifact aceptado',
       );
-      // Sync modal fields if copy was applied
       if (res?.artifact?.artifact_type === 'copy' && res.artifact.payload) {
-        const nameEl = document.getElementById('m-art-nombre');
-        const descEl = document.getElementById('m-art-desc');
-        if (nameEl && res.artifact.payload.name) nameEl.value = res.artifact.payload.name;
-        if (descEl) {
-          const d =
-            res.artifact.payload.description_long ||
-            res.artifact.payload.description_short ||
-            res.artifact.payload.description;
-          if (d) descEl.value = d;
-        }
+        applyCopyToForm(res.artifact.payload);
       }
       await refresh();
     } catch (e) {
@@ -238,6 +330,22 @@
     }
   }
 
+  /**
+   * After saveArticulo — silent enrichment if modules incomplete.
+   */
+  function maybeSilentEnrichAfterSave(ref) {
+    const PI = api();
+    const clean = String(ref || '').trim().toUpperCase();
+    if (!PI || !clean) return;
+    Promise.resolve()
+      .then(async () => {
+        const intel = await PI.getIntelligence(clean).catch(() => null);
+        if (!PI.shouldSilentEnrich(intel)) return;
+        await PI.enqueueSilentEnrichment(clean);
+      })
+      .catch((e) => console.warn('[PI silent after save]', e?.message || e));
+  }
+
   function initForModal({ id, ref } = {}) {
     _ctx = {
       id: id || null,
@@ -251,8 +359,10 @@
   global.ProductIntelligence = {
     initForModal,
     refresh,
+    generateInlineCopy,
     enqueueModule,
     acceptArtifact,
     rejectArtifact,
+    maybeSilentEnrichAfterSave,
   };
 })(window);
