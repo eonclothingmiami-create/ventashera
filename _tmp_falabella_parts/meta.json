@@ -1,0 +1,1 @@
+{"name":"falabella-sync-product","entrypoint_path":"functions/falabella-sync-product/index.ts","verify_jwt":true,"files":[{"name":"functions/falabella-sync-product/index.ts"},{"name":"functions/_shared/falabella-common.ts"},{"name":"functions/_shared/falabella-auto-map.ts"}]}

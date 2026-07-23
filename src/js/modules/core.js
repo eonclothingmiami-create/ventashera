@@ -632,11 +632,18 @@ function refreshFalabellaMaquetadorValidation() {
   const falChk = document.getElementById('art-sync-falabella');
   const badge = document.getElementById('m-fal-badge-state');
   const badgeBlock = document.getElementById('m-fal-badge-blocked');
+  if (btn) btn.disabled = false;
+  if (falChk) {
+    falChk.disabled = false;
+    falChk.title = '';
+  }
+  if (badgeBlock) badgeBlock.style.display = 'none';
   if (profile !== 'falabella') {
     if (errEl) errEl.innerHTML = '';
-    if (btn) btn.disabled = false;
-    if (falChk) falChk.disabled = false;
-    if (badgeBlock) badgeBlock.style.display = 'none';
+    if (badge) {
+      badge.textContent = 'Automático';
+      badge.style.background = 'rgba(0,229,180,0.22)';
+    }
     return;
   }
   if (!window.FalabellaMaquetador) return;
@@ -652,24 +659,16 @@ function refreshFalabellaMaquetadorValidation() {
   }
   if (errEl) {
     errEl.innerHTML = errs.length
-      ? errs.map((e) => `<div><strong>${e.field}</strong>: ${e.message}</div>`).join('')
-      : '';
-  }
-  const localOk = errs.length === 0;
-  if (btn) btn.disabled = false;
-  if (falChk) {
-    falChk.disabled = !localOk;
-    falChk.title = !localOk
-      ? 'Completa requisitos Falabella; usa Preflight o Guardar borrador.'
+      ? `<div style="opacity:.9">Overrides parciales: el servidor auto-completa lo vacío.</div>` +
+        errs
+          .slice(0, 6)
+          .map((e) => `<div><strong>${e.field}</strong>: ${e.message}</div>`)
+          .join('')
       : '';
   }
   if (badge) {
-    badge.textContent = localOk ? 'Listo para sync' : 'Borrador incompleto';
-    badge.style.background = localOk ? 'rgba(0,229,180,0.22)' : 'rgba(255,180,80,0.22)';
-  }
-  if (badgeBlock) {
-    const blocked = falChk && falChk.checked && !localOk;
-    badgeBlock.style.display = blocked ? 'inline' : 'none';
+    badge.textContent = errs.length ? 'Overrides parciales' : 'Overrides OK';
+    badge.style.background = errs.length ? 'rgba(255,180,80,0.22)' : 'rgba(0,229,180,0.22)';
   }
   setFalabellaBrandFallbackBadge(window._falabellaBrandFallbackActive);
   const draftB = window.FalabellaMaquetador.collectDraftFromDom();
@@ -1273,37 +1272,15 @@ async function postSaveFalabellaIntegration(productId) {
     falChk.checked;
   if (!want) return { note: '' };
   try {
-    const profile = document.getElementById('m-art-channel-profile')?.value || 'generic';
-    if (profile === 'falabella') {
-      const gate = await ensureFalabellaBrandBeforeSync(productId);
-      if (!gate.ok && gate.declined) {
-        const errDecl =
-          '[error_validacion] Sincronización cancelada: con catálogo de marcas vacío (GetBrands) debe aceptar marca GENERICO o solicitar aprobación en Seller Support.';
-        notify(
-          'warning',
-          '🏬',
-          'Falabella',
-          'Sincronización no enviada: rechazó usar GENERICO con GetBrands vacío.',
-          { duration: 12000 },
-        );
-        return {
-          note: ' · Falabella: error_validacion (marca / GetBrands vacío)',
-          falabellaPatch: {
-            falabellaSyncStatus: 'error_validacion',
-            falabellaLastError: errDecl,
-            falabellaLastSyncAt: new Date().toISOString(),
-            falabellaSyncAuditJson: {
-              brand_check_status: 'empty_catalog',
-              brand_fallback_applied: false,
-              brand_sent: null,
-              phase: 'ui_declined_generic_fallback',
-            },
-          },
-        };
-      }
-    }
+    // Modo Mercado Libre: solo productId. El Edge auto-mapea categoría/attrs/color/talla/marca.
+    // Overrides opcionales si el usuario llenó el panel avanzado Falabella.
     let falExtra;
-    if (profile === 'falabella' && window.FalabellaMaquetador && window.FalabellaMaquetador.buildFalabellaPayload) {
+    const profile = document.getElementById('m-art-channel-profile')?.value || 'generic';
+    const hasAdvanced =
+      profile === 'falabella' &&
+      window.FalabellaMaquetador &&
+      String(document.getElementById('m-fal-primary-cat')?.value || '').trim();
+    if (hasAdvanced && window.FalabellaMaquetador.buildFalabellaPayload) {
       const draft = window.FalabellaMaquetador.collectDraftFromDom();
       const artRow = {
         id: productId,
@@ -1313,18 +1290,6 @@ async function postSaveFalabellaIntegration(productId) {
         ref: document.getElementById('m-art-codigo')?.value,
       };
       falExtra = window.FalabellaMaquetador.buildFalabellaPayload(artRow, draft);
-    } else {
-      const tallaForm = document.getElementById('m-art-tallas')?.value || '';
-      const colorForm = document.getElementById('m-art-colores')?.value || '';
-      const firstTalla = tallaForm.split(',').map((t) => t.trim()).filter(Boolean)[0];
-      const firstColor = colorForm.split(',').map((c) => c.trim()).filter(Boolean)[0];
-      falExtra =
-        firstTalla || firstColor
-          ? {
-              ...(firstTalla ? { talla: firstTalla } : {}),
-              ...(firstColor ? { color: firstColor, colorBasico: firstColor } : {}),
-            }
-          : undefined;
     }
     const falRes = await window.requestFalabellaSync(productId, falExtra);
     if (typeof console !== 'undefined' && console.info) {
@@ -1436,44 +1401,22 @@ async function reenviarFalabellaFeedModal() {
     return;
   }
   const artSt = (state.articulos || []).find((a) => a.id === pid);
+  let falExtra;
   const profile =
     document.getElementById('m-art-channel-profile')?.value ||
     (artSt?.falabellaProductDataJson?.channelProfile === 'falabella' ? 'falabella' : 'generic');
-  if (profile === 'falabella') {
-    const gate = await ensureFalabellaBrandBeforeSync(pid);
-    if (!gate.ok && gate.declined) {
-      notify(
-        'warning',
-        '🏬',
-        'Falabella',
-        'Reenvío cancelado: con GetBrands vacío debe aceptar marca GENERICO.',
-        { duration: 12000 },
-      );
-      return;
-    }
-  }
-  let falExtra;
-  if (
+  const hasAdvanced =
     profile === 'falabella' &&
     window.FalabellaMaquetador &&
-    artSt?.falabellaProductDataJson?.falabellaDraft
-  ) {
-    falExtra = window.FalabellaMaquetador.buildFalabellaPayload(artSt, artSt.falabellaProductDataJson.falabellaDraft);
-  } else if (profile === 'falabella' && window.FalabellaMaquetador) {
-    const draft = window.FalabellaMaquetador.collectDraftFromDom();
-    falExtra = window.FalabellaMaquetador.buildFalabellaPayload(artSt || { id: pid }, draft);
-  } else {
-    const tallaForm = document.getElementById('m-art-tallas')?.value || '';
-    const colorForm = document.getElementById('m-art-colores')?.value || '';
-    const firstTalla = tallaForm.split(',').map((t) => t.trim()).filter(Boolean)[0];
-    const firstColor = colorForm.split(',').map((c) => c.trim()).filter(Boolean)[0];
-    falExtra =
-      firstTalla || firstColor
-        ? {
-            ...(firstTalla ? { talla: firstTalla } : {}),
-            ...(firstColor ? { color: firstColor, colorBasico: firstColor } : {}),
-          }
-        : undefined;
+    (String(document.getElementById('m-fal-primary-cat')?.value || '').trim() ||
+      artSt?.falabellaProductDataJson?.falabellaDraft?.primaryCategoryId);
+  if (hasAdvanced && window.FalabellaMaquetador) {
+    if (artSt?.falabellaProductDataJson?.falabellaDraft) {
+      falExtra = window.FalabellaMaquetador.buildFalabellaPayload(artSt, artSt.falabellaProductDataJson.falabellaDraft);
+    } else {
+      const draft = window.FalabellaMaquetador.collectDraftFromDom();
+      falExtra = window.FalabellaMaquetador.buildFalabellaPayload(artSt || { id: pid }, draft);
+    }
   }
   try {
     notify('info', '🏬', 'Falabella', 'Enviando feed…', { duration: 2500 });
@@ -4964,16 +4907,17 @@ function openArticuloModal(id){
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Perfil de canal (maquetador)</label>
+                    <label class="form-label">Perfil avanzado (opcional)</label>
                     <select class="form-control" id="m-art-channel-profile" onchange="onMaquetadorChannelProfileChange()">
-                        <option value="generic">Genérico (ERP)</option>
-                        <option value="falabella">Falabella</option>
+                        <option value="generic">Automático (recomendado)</option>
+                        <option value="falabella">Overrides manuales Falabella</option>
                     </select>
+                    <p style="font-size:10px;color:var(--text2);margin:6px 0 0;line-height:1.35;">Con el checkbox Falabella basta: el servidor mapea categoría, color, talla y attrs. Usa «Overrides» solo si necesitas forzar un ID o marca.</p>
                 </div>
             </div>
             <div id="falabella-requisitos-wrap" style="display:none;padding:14px;border-radius:10px;border:1px solid rgba(100,80,200,0.35);background:rgba(100,80,200,0.06);margin-bottom:16px;">
-                <div style="font-weight:800;color:var(--accent);margin-bottom:10px;">Requisitos Falabella</div>
-                <p style="font-size:10px;color:var(--text2);margin:0 0 10px;line-height:1.35;">Indica PrimaryCategory (ID numérico): las listas de moda se rellenan solas con las opciones autorizadas por Falabella (GetCategoryAttributes). También puedes pulsar «Cargar opciones». No uses valores que no aparezcan en el desplegable.</p>
+                <div style="font-weight:800;color:var(--accent);margin-bottom:10px;">Overrides Falabella (opcional)</div>
+                <p style="font-size:10px;color:var(--text2);margin:0 0 10px;line-height:1.35;">Vacío = auto-mapa en servidor (categoría ERP→3199 baño, color básico, talla, ProductData). Solo completa si quieres forzar valores.</p>
                 <div class="form-row">
                     <div class="form-group"><label class="form-label">Brand</label><input class="form-control" id="m-fal-brand" autocomplete="off" placeholder="GENERICO si no hay marcas aprobadas">
                       <p style="font-size:10px;color:var(--text2);margin:6px 0 0;line-height:1.35;">Solicita aprobación de marca en Seller Support para dejar de usar GENERICO.</p>
@@ -5162,9 +5106,9 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
             <div class="form-group" data-integration-channel="falabella" style="margin-top: 8px; padding: 10px; background: rgba(100,80,200,0.1); border-radius: 8px; border: 1px solid rgba(100,80,200,0.35);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-falabella" style="width: 18px; height: 18px;">
-    🏬 Falabella Seller Center al guardar
+    🏬 Publicar en Falabella al guardar
   </label>
-  <div style="font-size:11px;color:var(--text2);margin:4px 0 0 28px;line-height:1.35;">No requiere «mostrar en catálogo web»; el feed puede enviarse con el producto oculto en tu sitio.</div>
+  <div style="font-size:11px;color:var(--text2);margin:4px 0 0 28px;line-height:1.35;">Como Mercado Libre: solo chulear. El Edge mapea categoría, marca (GENERICO si hace falta), color/talla y attrs moda.</div>
   <div id="art-sync-falabella-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
   <div id="art-falabella-status-line" style="display:none;font-size:10px;margin-top:8px;line-height:1.35;"></div>
   ${id ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%" onclick="reenviarFalabellaFeedModal()">🔄 Reenviar feed a Falabella</button>
@@ -5617,33 +5561,6 @@ async function saveArticulo(existingId, options) {
 
         if (opts.draftOnly) {
           window.__suppressFalabellaSyncThisSave = true;
-        } else if (
-          channelProfile === 'falabella' &&
-          document.getElementById('art-sync-falabella')?.checked &&
-          window.FalabellaMaquetador
-        ) {
-          const draftV = window.FalabellaMaquetador.collectDraftFromDom();
-          const v0 = window.FalabellaMaquetador.validateDraft(draftV, { buFac: true });
-          let errsV = (v0.errors || []).slice();
-          const idxV = window._falabellaCategoryIndexed;
-          if (idxV && idxV.byFeedName) {
-            errsV = errsV.concat(window.FalabellaMaquetador.validateOptionFields(draftV, idxV).errors || []);
-            errsV = errsV.concat(
-              window.FalabellaMaquetador.validateVariationAgainstCategoryOptions(draftV, idxV).errors || [],
-            );
-          }
-          if (errsV.length) {
-            window.__suppressFalabellaSyncThisSave = true;
-            const falChkUn = document.getElementById('art-sync-falabella');
-            if (falChkUn) falChkUn.checked = false;
-            notify(
-              'warning',
-              '🏬',
-              'Falabella',
-              `Producto guardado; sincronización Falabella omitida (${errsV.length} pendiente(s)). Completa requisitos, Preflight o usa «Guardar borrador».`,
-              { duration: 12000 },
-            );
-          }
         }
 
         const mlR = await postSaveMercadoLibreIntegration(productId, catalogVisibleBool);

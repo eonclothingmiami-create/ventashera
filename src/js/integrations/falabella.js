@@ -3,14 +3,16 @@
  * Documentación: https://developers.falabella.com/v600/reference/getting-started
  *
  * Credenciales (UserID, ApiKey, categoría, marca, operator) van en secrets de Supabase, no en el navegador.
- * Categoría por producto: secret `FALABELLA_CATEGORY_MAP_JSON` (nombre ERP → CategoryId) o `FALABELLA_PRIMARY_CATEGORY_ID`.
+ * Modo checkbox (como ML): `requestFalabellaSync(productId)` — el Edge auto-mapea con `_shared/falabella-auto-map.ts`
+ * (categoría ERP→3199 baño, color básico, talla, ProductData, marca GENERICO si hace falta).
+ * Overrides opcionales: body con primaryCategoryId / brand / productDataMandatory desde el panel avanzado.
  * La función guarda estado en columnas `falabella_*` de `products` (tras migración SQL).
  * El alta es asíncrona (feed); revisa el estado en Seller Center.
  * Ejemplo de XML mínimo (moda/FACO): ver comentario junto a `xmlBody` en
  * `supabase/functions/falabella-sync-product/index.ts`.
  *
  * Estados en `products.falabella_sync_status`: pending | synced | error | error_validacion | feed_timeout
- * (error_validacion = falló validación local o marca no registrada en GetBrands; feed_timeout = feed siguió Queued/Processing tras polling con backoff).
+ * (error_validacion = falló validación; feed_timeout = feed siguió Queued/Processing tras polling).
  */
 (function initFalabellaEndpoint() {
   const base = window.AppRepository && window.AppRepository.SUPABASE_URL;
