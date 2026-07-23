@@ -1624,10 +1624,11 @@ async function hydrateArticulosFromSupabase() {
       ? p.falabella_product_data_json
       : {};
     const integIds = integrationIdsFromProductRow(p);
-    return {
+      return {
       id: p.id,
       codigo: p.ref || '',
       ref: p.ref || '',
+      scanAlias: (p.scan_alias || '').trim(),
       nombre: p.name || '',
       name: p.name || '',
       categoria: p.categoria || '',
@@ -2282,7 +2283,7 @@ async function loadState() {
       const falJson = p.falabella_product_data_json && typeof p.falabella_product_data_json === 'object' && !Array.isArray(p.falabella_product_data_json)
         ? p.falabella_product_data_json : {};
       const integIds = integrationIdsFromProductRow(p);
-      return {id:p.id,codigo:p.ref||'',ref:p.ref||'',nombre:p.name||'',name:p.name||'',
+      return {id:p.id,codigo:p.ref||'',ref:p.ref||'',scanAlias:(p.scan_alias||'').trim(),nombre:p.name||'',name:p.name||'',
         categoria:p.categoria||'',seccion:p.seccion||'',cat:p.categoria||'',
         descripcion:p.description||'',precioVenta:parseFloat(p.price)||0,price:parseFloat(p.price)||0,
         precioCompra:parseFloat(p.cost)||0,
@@ -3444,7 +3445,7 @@ function renderPOSProductGrid(){
   }
   const el=document.getElementById('pos-product-grid');if(!el)return;
   let items=(state.articulos||[]).filter(a=>a.activo!==false);
-  if(_posFilter)items=items.filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(_posFilter));
+  if(_posFilter)items=items.filter(a=>(a.nombre+a.codigo+(a.scanAlias||'')+a.categoria).toLowerCase().includes(_posFilter));
   if(_posCatFilter)items=items.filter(a=>a.categoria===_posCatFilter);
 
   el.innerHTML=items.map(a=>{
@@ -3462,7 +3463,7 @@ const videoIcon = (a.video || esVideo) ? `<div style="position:absolute;top:8px;
   <div class="p-name" style="position:relative;z-index:2;${(a.imagen||esVideo)?'text-shadow:0 1px 3px rgba(0,0,0,0.8);':''}">${a.nombre}</div>
   <div class="p-price" style="position:relative;z-index:2;${(a.imagen||esVideo)?'color:#00e5b4;text-shadow:0 1px 2px rgba(0,0,0,0.8);':''}">${fmt(a.precioVenta)}</div>
   <div class="p-stock" style="position:relative;z-index:2;${(a.imagen||esVideo)?'color:#ddd;':''}">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
-  ${a.codigo&&!a.imagen&&!esVideo?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+a.codigo+'</div>':''}
+  ${!a.imagen&&!esVideo?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+(a.scanAlias||a.codigo||'')+'</div>':''}
   
     </div>`}).join('')||'<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
 }
@@ -4136,6 +4137,24 @@ window.convertirVentaCatalogoAPos=convertirVentaCatalogoAPos;
 
 
 // ===== SCANNER =====
+/** Código de pistola/bodega: normaliza a mayúsculas y caracteres escaneables. */
+function normalizeScanAlias(raw) {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '')
+    .replace(/[^A-Z0-9\-_]/g, '');
+}
+/** Busca artículo por REF HERA-* o por scan_alias (case-insensitive). */
+function findArticuloByScanCode(code) {
+  const up = normalizeScanAlias(code);
+  if (!up) return null;
+  return (state.articulos || []).find((a) => {
+    const ref = normalizeScanAlias(a.codigo || a.ref || '');
+    const alias = normalizeScanAlias(a.scanAlias || '');
+    return ref === up || (alias && alias === up);
+  }) || null;
+}
 function openScannerOverlay(){
   document.getElementById('scanner-overlay').classList.add('active');
   const inp=document.getElementById('scanner-input');
@@ -4145,7 +4164,7 @@ function openScannerOverlay(){
       const code=inp.value.trim();
       if(code){
         closeScannerOverlay();
-        const art=(state.articulos||[]).find(a=>a.codigo===code);
+        const art=findArticuloByScanCode(code);
         if(art)promptTallaYAgregar(art.id);
         else notify('warning','⚠️','No encontrado','Código: '+code,{duration:3000});
       }
@@ -4156,10 +4175,13 @@ function closeScannerOverlay(){document.getElementById('scanner-overlay').classL
 function handlePOSScan(e){
   if(e.key==='Enter'){
     const val=e.target.value.trim();
-    const art=(state.articulos||[]).find(a=>a.codigo===val);
+    const art=findArticuloByScanCode(val);
     if(art){promptTallaYAgregar(art.id);e.target.value=''}
+    else if(val) notify('warning','⚠️','No encontrado','Código: '+val,{duration:3000});
   }
 }
+window.findArticuloByScanCode=findArticuloByScanCode;
+window.normalizeScanAlias=normalizeScanAlias;
 
 // Ticket POS 80mm: template/CSS en pos-receipt-print.js (AppPosReceipt).
 function printReceipt(factura) {
@@ -4209,15 +4231,18 @@ function renderArticulos(){
 
 function renderArticulosList(){
   const search=(document.getElementById('art-search')?.value||'').toLowerCase();
-  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+a.categoria).toLowerCase().includes(search));
+  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+(a.scanAlias||'')+a.categoria).toLowerCase().includes(search));
   const artTbody = document.getElementById('art-tbody'); if(!artTbody) return;
   artTbody.innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
     const thumb = a.imagen ? `<div style="width:36px;height:36px;border-radius:8px;background:url('${a.imagen}') center/cover;border:1px solid var(--border)"></div>` : `<div style="font-size:24px">👙</div>`;
    const tituloLabel = {propia:'🏷️ Propia',contado:'💵 Contado',credito:'💳 Crédito'};
+   const aliasHtml = a.scanAlias
+     ? `<div style="font-size:10px;color:var(--accent);margin-top:2px">🔫 ${a.scanAlias}</div>`
+     : '';
    return `<tr>
         <td style="width:50px">${thumb}</td>
-        <td>${a.codigo || '—'}</td>
+        <td>${a.codigo || '—'}${aliasHtml}</td>
         <td style="font-weight:700">${a.nombre}</td>
         <td><span class="badge badge-info">${a.categoria || '—'}</span></td>
         <td>${a.tituloMercancia ? `<span class="badge badge-warn">${tituloLabel[a.tituloMercancia]||a.tituloMercancia}</span>` : '—'}</td>
@@ -4470,6 +4495,13 @@ function openArticuloModal(id){
 
             <div class="form-row">
                 <div class="form-group"><label class="form-label">REFERENCIA (REF) — formato HERA-13003</label><input class="form-control" id="m-art-codigo" value="${art?.codigo || ''}" placeholder="HERA-13003"></div>
+                <div class="form-group">
+                  <label class="form-label">ALIAS ESCANEO (bodega / pistola)</label>
+                  <input class="form-control" id="m-art-scan-alias" value="${art?.scanAlias || ''}" placeholder="Ej: BAÑO-ROJO-S o 13003" autocomplete="off">
+                  <div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.35;">Código corto para etiquetas y POS. No cambia el REF HERA ni Woo/Falabella.</div>
+                </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group"><label class="form-label">COLECCIÓN / TEMPORADA</label><input class="form-control" id="m-art-coleccion" value="${art?.coleccion || ''}" placeholder="Ej: Verano 2026"></div>
             </div>
 
@@ -4814,6 +4846,30 @@ async function saveArticulo(existingId, options) {
       if (dup) return alert(`La referencia ${refID} ya existe en otro artículo.`);
     }
 
+    const scanAliasRaw = document.getElementById('m-art-scan-alias')?.value || '';
+    const scanAlias = normalizeScanAlias(scanAliasRaw);
+    if (scanAliasRaw.trim() && !scanAlias) {
+      return alert('El alias de escaneo solo admite letras, números, guion y guion bajo.');
+    }
+    if (scanAlias) {
+      if (scanAlias === refID) {
+        // Mismo valor que el REF: no hace falta guardar alias duplicado
+      } else {
+        const clash = (state.articulos || []).find((a) => {
+          if (a.id === existingId) return false;
+          const otherRef = normalizeScanAlias(a.ref || a.codigo || '');
+          const otherAlias = normalizeScanAlias(a.scanAlias || '');
+          return otherRef === scanAlias || otherAlias === scanAlias;
+        });
+        if (clash) {
+          return alert(
+            `El alias "${scanAlias}" ya está en uso (${clash.codigo || clash.nombre}). Elige otro.`,
+          );
+        }
+      }
+    }
+    const scanAliasDb = scanAlias && scanAlias !== refID ? scanAlias : null;
+
     // Preparamos el objeto EXACTO para la tabla 'products' de Supabase
     const tituloMercancia = document.getElementById('m-art-titulo-mercancia')?.value || '';
     const proveedorId = document.getElementById('m-art-proveedor')?.value || null;
@@ -4857,6 +4913,7 @@ async function saveArticulo(existingId, options) {
         id: existingId || dbId(),
         ref: refID,
         sku: refID,
+        scan_alias: scanAliasDb,
         name: nombre,
         seccion: document.getElementById('m-art-seccion').value,
         categoria: document.getElementById('m-art-cat').value,
@@ -5093,7 +5150,8 @@ async function saveArticulo(existingId, options) {
         const prevArt = artIdx >= 0 ? state.articulos[artIdx] : {};
         const falabellaPatch = falabellaResult && falabellaResult.falabellaPatch ? falabellaResult.falabellaPatch : null;
         const artLocal = {
-          id: productId, codigo: refID, ref: refID, nombre: nombre, name: nombre,
+          id: productId, codigo: refID, ref: refID, scanAlias: scanAliasDb || '',
+          nombre: nombre, name: nombre,
           categoria: productData.categoria, seccion: productData.seccion,
           descripcion: productData.description,
           precioVenta: productData.price, price: productData.price,
