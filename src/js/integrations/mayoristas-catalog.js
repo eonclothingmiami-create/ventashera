@@ -38,7 +38,7 @@
       const s = String(x || '').trim();
       if (!s) continue;
       if (!out.includes(s)) out.push(s);
-      if (out.length >= 15) break;
+      if (out.length >= 40) break;
     }
     return out;
   }

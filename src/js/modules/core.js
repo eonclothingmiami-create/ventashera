@@ -375,6 +375,8 @@ const CUENTAS_BANCARIAS = ['Nequi','Bancolombia','Daviplata','Bancolombia 2'];
 try { window.CUENTAS_BANCARIAS = CUENTAS_BANCARIAS; } catch (e) {}
 let histFilters = { canal: '', cat: '', start: '', end: '' };
 let _tempGaleria = []; let _portadaIndex = 0;
+/** Tope de fotos/videos por producto en el ERP (canales externos recortan aparte: Woo 6, Falabella 8). */
+const MAX_GALLERY_MEDIA = 40;
   let _tempLogoBase64 = null; // Almacena el logo procesado para 80mm
 
 // ===== CONSTANTS =====
@@ -4484,10 +4486,10 @@ function openArticuloModal(id){
 
             <!-- Ficha siempre visible -->
             <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:16px;">
-                <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
+                <label class="form-label">📸 GALERÍA MULTIMEDIA <span id="m-art-galeria-count" style="font-weight:500;opacity:.7;font-size:11px"></span></label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
                     <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br>
-                    <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada.</span>
+                    <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada. Hasta ${MAX_GALLERY_MEDIA} archivos (Woo/Falabella usan solo las primeras).</span>
                     <input type="file" multiple accept="image/*,video/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="uploadGalleryImages(this)">
                 </div>
                 <div id="m-art-galeria-visual" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;"></div>
@@ -4707,6 +4709,10 @@ function removeMainImg(){
 function renderGaleriaVisual(){
     const container = document.getElementById('m-art-galeria-visual');
     if(!container) return;
+    const countEl = document.getElementById('m-art-galeria-count');
+    if (countEl) {
+      countEl.textContent = `(${_tempGaleria.length}/${MAX_GALLERY_MEDIA})`;
+    }
     container.innerHTML = _tempGaleria.map((url, idx) => {
         const esVideo = url.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
         const media = esVideo 
@@ -4780,12 +4786,22 @@ async function uploadGalleryImages(input) {
   const files = input.files;
   if (!files.length) return;
 
+  if (_tempGaleria.length >= MAX_GALLERY_MEDIA) {
+    notify('warning', '📸', 'Límite', `Máximo ${MAX_GALLERY_MEDIA} archivos por producto.`, { duration: 4000 });
+    input.value = '';
+    return;
+  }
+
   showLoadingOverlay('connecting');
 
   try {
     let added = 0;
+    let hitLimit = false;
     for (let i = 0; i < files.length; i++) {
-      if (_tempGaleria.length >= 15) break;
+      if (_tempGaleria.length >= MAX_GALLERY_MEDIA) {
+        hitLimit = true;
+        break;
+      }
       let file = files[i];
 
       if (file.type.startsWith('image/')) {
@@ -4812,11 +4828,17 @@ async function uploadGalleryImages(input) {
 
     renderGaleriaVisual();
     showLoadingOverlay('hide');
-    notify('success', '📸', 'Completado', `Subidos ${added} archivos.`);
+    if (hitLimit) {
+      notify('warning', '📸', 'Parcial', `Subidos ${added}. Tope ${MAX_GALLERY_MEDIA} alcanzado.`, { duration: 5000 });
+    } else {
+      notify('success', '📸', 'Completado', `Subidos ${added} archivos.`);
+    }
 
   } catch (e) {
     showLoadingOverlay('hide');
     notify('danger', '⚠️', 'Error', e.message);
+  } finally {
+    try { input.value = ''; } catch (_) {}
   }
 }
 async function saveArticulo(existingId, options) {
