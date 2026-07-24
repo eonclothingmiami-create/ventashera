@@ -802,19 +802,15 @@ ${extraProductDataXml}
         } else {
           const brandRows = parseBrandsFromGetBrandsResponse(gbRes.parsed);
           if (brandRows.length === 0) {
-            if (autoGenericBrand) {
-              brand = 'GENERICO';
-              logStructured('getbrands_empty_fallback_generico', { productId });
-            } else {
-              const zmsg =
-                'GetBrands no devolvió marcas (lista vacía). No se envió el feed. Revisa permisos API o el formato de respuesta.';
-              await patchProductRow(productId, {
-                falabella_sync_status: 'error_validacion',
-                falabella_last_error: zmsg,
-                falabella_last_sync_at: new Date().toISOString(),
-              });
-              return json({ ok: false, error: zmsg, syncStatus: 'error_validacion' }, 502);
-            }
+            // GetBrands vacío = problema de cuenta/permisos/formato, no del producto.
+            // Nunca bloquear el feed: continuar con GENERICO (o la marca pedida si ya es GENERICO).
+            const prev = brand;
+            brand = 'GENERICO';
+            logStructured('getbrands_empty_continue_generico', {
+              productId,
+              brandRequested: prev,
+              note: 'GetBrands devolvió 0 marcas; se envía ProductCreate con GENERICO',
+            });
           } else if (!brandMatchesFalabellaList(brand, brandRows)) {
             logStructured('brand_not_in_catalog_fallback_generico', {
               productId,
