@@ -172,6 +172,58 @@
     return data || [];
   }
 
+  function landingPreviewUrl(postId) {
+    const id = String(postId || '').trim();
+    if (!id) return catalogBase() + 'contenido.html';
+    return `${catalogBase()}contenido.html?id=${encodeURIComponent(id)}`;
+  }
+
+  async function authHeaders() {
+    const client = sb();
+    const {
+      data: { session },
+    } = await client.auth.getSession();
+    if (!session?.access_token) throw new Error('Sesión no disponible. Vuelve a iniciar sesión.');
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    };
+    const anon = global.AppRepository?.SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || '';
+    if (anon) headers.apikey = anon;
+    return headers;
+  }
+
+  /**
+   * Publica el post vía Edge Function catalog-content-publish.
+   * @param {string} postId
+   * @param {{ sendPush?: boolean }} [opts]
+   */
+  async function publishPost(postId, opts) {
+    const id = String(postId || '').trim();
+    if (!id) throw new Error('post_id required');
+    const sendPush = !!(opts && opts.sendPush);
+    const headers = await authHeaders();
+    const res = await fetch(publishEndpoint(), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ post_id: id, send_push: sendPush }),
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_) {
+      data = null;
+    }
+    if (!res.ok) {
+      const errCode = data?.error || `HTTP ${res.status}`;
+      const err = new Error(String(errCode));
+      err.status = res.status;
+      err.payload = data;
+      throw err;
+    }
+    return data || { ok: true };
+  }
+
   async function upsertKnowledgeLink(row) {
     const client = sb();
     const payload = {

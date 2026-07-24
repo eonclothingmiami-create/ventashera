@@ -1,4 +1,4 @@
-// ERP → Catálogo mayoristas: sync + push (Smart Digest), con idempotencia (event_id).
+// ERP â†’ CatÃ¡logo mayoristas: sync + push (Smart Digest), con idempotencia (event_id).
 (function initMayoristasCatalogIntegration(global) {
   const DEFAULT_CATALOG_URL = 'https://eonclothingonline.com/mayoristas/';
 
@@ -38,7 +38,7 @@
       const s = String(x || '').trim();
       if (!s) continue;
       if (!out.includes(s)) out.push(s);
-      if (out.length >= 15) break;
+      if (out.length >= 40) break;
     }
     return out;
   }
@@ -61,8 +61,8 @@
     const r = String(ref || '').trim();
     const label = n || r || 'este modelo';
     return {
-      title: '🔥 Nuevo en Hera — ¡te lo vas a querer!',
-      body: `${label} acaba de llegar. Es de esos que se agotan rápido… ¿lo ves antes que se acabe?`,
+      title: 'ðŸ”¥ Nuevo en Hera â€” Â¡te lo vas a querer!',
+      body: `${label} acaba de llegar. Es de esos que se agotan rÃ¡pidoâ€¦ Â¿lo ves antes que se acabe?`,
     };
   }
 
@@ -149,7 +149,7 @@
   }
 
   /**
-   * Publica en catálogo mayoristas y encola/envía push FCM.
+   * Publica en catÃ¡logo mayoristas y encola/envÃ­a push FCM.
    * Returns { ok, sync, push? }.
    */
   global.mayoristasPublishCatalogProduct = async function ({

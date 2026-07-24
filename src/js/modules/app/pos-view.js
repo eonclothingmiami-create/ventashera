@@ -203,7 +203,7 @@
       <div class="pos-products">
         <div class="search-bar">
           <span class="search-icon">🔍</span>
-          <input type="text" id="pos-search" placeholder="Buscar artículo o escanear..." oninput="filterPOSProducts()" onkeydown="handlePOSScan(event)">
+          <input type="text" id="pos-search" placeholder="Buscar, REF o alias de pistola..." oninput="filterPOSProducts()" onkeydown="handlePOSScan(event)">
           <button class="btn btn-sm btn-secondary scanner-btn" onclick="openScannerOverlay()" title="Escanear código de barras">📡</button>
         </div>
         <div class="tabs" id="pos-cat-tabs"></div>
@@ -408,7 +408,7 @@
     const el = global.document.getElementById('pos-product-grid');
     if (!el) return;
     let items = (state.articulos || []).filter((a) => a.activo !== false);
-    if (posFilter) items = items.filter((a) => (a.nombre + a.codigo + a.categoria).toLowerCase().includes(posFilter));
+    if (posFilter) items = items.filter((a) => (a.nombre + a.codigo + (a.scanAlias || '') + a.categoria).toLowerCase().includes(posFilter));
     if (posCatFilter) items = items.filter((a) => a.categoria === posCatFilter);
 
     el.innerHTML = items.map((a) => {
@@ -419,7 +419,8 @@
       const bgImg = (a.imagen && !esVideo) ? `background-image: linear-gradient(to top, rgba(0,0,0,0.8), transparent), url('${a.imagen}'); background-size: cover; background-position: center; color: white; border: none;` : '';
       const videoEl = esVideo ? `<video src="${a.imagen}" autoplay muted loop playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:12px;z-index:0;"></video><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.8),transparent);border-radius:12px;z-index:1;"></div>` : '';
       const videoIcon = (a.video || esVideo) ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border-radius:50%;padding:4px;font-size:12px;z-index:2;">▶️</div>` : '';
-      return `<div class="product-card ${out ? 'no-stock' : low ? 'low-stock' : ''}" style="position:relative; min-height:140px; display:flex; flex-direction:column; justify-content:flex-end; ${esVideo ? 'color:white;border:none;' : bgImg}" onclick="promptTallaYAgregar('${a.id}')">${videoEl}${videoIcon}${!a.imagen && !esVideo ? `<div class="p-emoji">${a.emoji || '👙'}</div>` : ''}<div class="p-name" style="position:relative;z-index:2;${(a.imagen || esVideo) ? 'text-shadow:0 1px 3px rgba(0,0,0,0.8);' : ''}">${a.nombre}</div><div class="p-price" style="position:relative;z-index:2;${(a.imagen || esVideo) ? 'color:#00e5b4;text-shadow:0 1px 2px rgba(0,0,0,0.8);' : ''}">${fmt(a.precioVenta)}</div><div class="p-stock" style="position:relative;z-index:2;${(a.imagen || esVideo) ? 'color:#ddd;' : ''}">${out ? '❌ Agotado' : stock + ' en stock' + (low ? ' ⚠️' : '')}</div>${a.codigo && !a.imagen && !esVideo ? '<div style="font-size:9px;color:var(--meta);margin-top:2px">' + a.codigo + '</div>' : ''}</div>`;
+      const codeLabel = a.scanAlias || a.codigo || '';
+      return `<div class="product-card ${out ? 'no-stock' : low ? 'low-stock' : ''}" style="position:relative; min-height:140px; display:flex; flex-direction:column; justify-content:flex-end; ${esVideo ? 'color:white;border:none;' : bgImg}" onclick="promptTallaYAgregar('${a.id}')">${videoEl}${videoIcon}${!a.imagen && !esVideo ? `<div class="p-emoji">${a.emoji || '👙'}</div>` : ''}<div class="p-name" style="position:relative;z-index:2;${(a.imagen || esVideo) ? 'text-shadow:0 1px 3px rgba(0,0,0,0.8);' : ''}">${a.nombre}</div><div class="p-price" style="position:relative;z-index:2;${(a.imagen || esVideo) ? 'color:#00e5b4;text-shadow:0 1px 2px rgba(0,0,0,0.8);' : ''}">${fmt(a.precioVenta)}</div><div class="p-stock" style="position:relative;z-index:2;${(a.imagen || esVideo) ? 'color:#ddd;' : ''}">${out ? '❌ Agotado' : stock + ' en stock' + (low ? ' ⚠️' : '')}</div>${codeLabel && !a.imagen && !esVideo ? '<div style="font-size:9px;color:var(--meta);margin-top:2px">' + codeLabel + '</div>' : ''}</div>`;
     }).join('') || '<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
   }
 
