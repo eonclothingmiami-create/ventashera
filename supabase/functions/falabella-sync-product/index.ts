@@ -22,7 +22,7 @@
  *   FALABELLA_TAX_PERCENTAGE — obligatorio en Colombia (ej. 19)
  *   FALABELLA_SYNC_IMAGES — opcional: `0` o `false` desactiva el paso Action=Image tras ProductCreate OK (por defecto activo).
  *   FALABELLA_SKIP_BRAND_CHECK — `1` o `true`: omite GetBrands antes de ProductCreate (solo emergencias; riesgo de rechazo en feed).
- *   FALABELLA_AUTO_GENERIC_BRAND — default `true`: si GetBrands vacío o marca no listada → usa GENERICO y continúa (modo checkbox ML).
+ *   FALABELLA_AUTO_GENERIC_BRAND — default `true`: si marca no listada → usa Genérico (u otra genérica) **exacta de GetBrands**; si no hay, falla antes del feed.
  *   FALABELLA_FEED_POLL_ATTEMPTS — default 18 (máx. 50). FALABELLA_FEED_POLL_BASE_MS (default 2000), FALABELLA_FEED_POLL_MAX_MS (default 14000), FALABELLA_FEED_POLL_BACKOFF (default 1.45).
  * Auto-mapa (sin maquetador UI): `_shared/falabella-auto-map.ts` — categoría ERP→3199/3188, color básico, talla, ProductData moda.
  * Moda / mínimo Falabella (Color, ColorBasico, Talla en el XML del producto):
@@ -67,7 +67,8 @@ import {
   interpretFeedPollResult,
   fetchGetBrandsJson,
   parseBrandsFromGetBrandsResponse,
-  brandMatchesFalabellaList,
+  pickFallbackBrandFromCatalog,
+  resolveBrandNameForFeed,
   prevalidateProductCreateFields,
   buildValidationErrorMessage,
 } from '../_shared/falabella-common.ts';
@@ -767,74 +768,75 @@ ${extraProductDataXml}
         utcTimestampIso8601,
       });
       if (!gbRes.ok || !gbRes.parsed) {
-        if (autoGenericBrand) {
-          brand = 'GENERICO';
-          logStructured('getbrands_http_fail_fallback_generico', { productId });
-        } else {
-          const gmsg =
-            'Falabella GetBrands: no se pudo validar la marca (error de red o respuesta inválida). Reintenta.';
-          logStructured('getbrands_http_fail', { productId, httpOk: gbRes.ok });
-          await patchProductRow(productId, {
-            falabella_sync_status: 'error_validacion',
-            falabella_last_error: gmsg.slice(0, 2000),
-            falabella_last_sync_at: new Date().toISOString(),
-          });
-          return json({ ok: false, error: gmsg, syncStatus: 'error_validacion' }, 502);
-        }
+        const gmsg =
+          'Falabella GetBrands: no se pudo validar la marca (error de red o respuesta inválida). Reintenta.';
+        logStructured('getbrands_http_fail', { productId, httpOk: gbRes.ok });
+        await patchProductRow(productId, {
+          falabella_sync_status: 'error_validacion',
+          falabella_last_error: gmsg.slice(0, 2000),
+          falabella_last_sync_at: new Date().toISOString(),
+        });
+        return json({ ok: false, error: gmsg, syncStatus: 'error_validacion' }, 502);
       } else {
         const gbErr = gbRes.parsed.ErrorResponse as Record<string, unknown> | undefined;
         if (gbErr) {
-          if (autoGenericBrand) {
-            brand = 'GENERICO';
-            logStructured('getbrands_api_error_fallback_generico', { productId });
-          } else {
-            const gh = gbErr.Head as Record<string, unknown> | undefined;
-            const gem = gh?.ErrorMessage;
-            const gmsg = typeof gem === 'string' ? gem : 'GetBrands ErrorResponse';
-            logStructured('getbrands_api_error', { productId });
-            await patchProductRow(productId, {
-              falabella_sync_status: 'error',
-              falabella_last_error: `GetBrands: ${String(gmsg).slice(0, 1900)}`,
-              falabella_last_sync_at: new Date().toISOString(),
-            });
-            return json({ ok: false, error: gmsg, falabella: gbRes.parsed }, 502);
-          }
+          const gh = gbErr.Head as Record<string, unknown> | undefined;
+          const gem = gh?.ErrorMessage;
+          const gmsg = typeof gem === 'string' ? gem : 'GetBrands ErrorResponse';
+          logStructured('getbrands_api_error', { productId });
+          await patchProductRow(productId, {
+            falabella_sync_status: 'error',
+            falabella_last_error: `GetBrands: ${String(gmsg).slice(0, 1900)}`,
+            falabella_last_sync_at: new Date().toISOString(),
+          });
+          return json({ ok: false, error: gmsg, falabella: gbRes.parsed }, 502);
         } else {
           const brandRows = parseBrandsFromGetBrandsResponse(gbRes.parsed);
           if (brandRows.length === 0) {
-            if (autoGenericBrand) {
-              brand = 'GENERICO';
-              logStructured('getbrands_empty_fallback_generico', { productId });
-            } else {
-              const zmsg =
-                'GetBrands no devolvió marcas (lista vacía). No se envió el feed. Revisa permisos API o el formato de respuesta.';
-              await patchProductRow(productId, {
-                falabella_sync_status: 'error_validacion',
-                falabella_last_error: zmsg,
-                falabella_last_sync_at: new Date().toISOString(),
-              });
-              return json({ ok: false, error: zmsg, syncStatus: 'error_validacion' }, 502);
-            }
-          } else if (!brandMatchesFalabellaList(brand, brandRows)) {
-            logStructured('brand_not_in_catalog_fallback_generico', {
-              productId,
-              brandRequested: brand,
-              catalogSize: brandRows.length,
-              autoGenericBrand,
+            const zmsg =
+              'GetBrands no devolvió marcas (lista vacía). No se envió el feed. Revisa permisos API o el formato de respuesta.';
+            await patchProductRow(productId, {
+              falabella_sync_status: 'error_validacion',
+              falabella_last_error: zmsg,
+              falabella_last_sync_at: new Date().toISOString(),
             });
-            if (autoGenericBrand) {
-              brand = 'GENERICO';
+            return json({ ok: false, error: zmsg, syncStatus: 'error_validacion' }, 502);
+          }
+
+          const canonical = resolveBrandNameForFeed(brand, brandRows);
+          if (canonical) {
+            brand = canonical;
+            logStructured('brand_ok', { productId, brand, catalogSize: brandRows.length });
+          } else if (autoGenericBrand) {
+            const fb = pickFallbackBrandFromCatalog(brandRows);
+            if (fb) {
+              const prev = brand;
+              brand = (fb.name || fb.globalId || '').trim();
+              logStructured('brand_fallback_from_catalog', {
+                productId,
+                brandRequested: prev,
+                brand,
+                catalogSize: brandRows.length,
+              });
             } else {
+              const samples = brandRows
+                .map((b) => b.name || b.globalId)
+                .filter(Boolean)
+                .slice(0, 10);
               const bmsg =
-                'Marca no registrada en Falabella; usar GENÉRICO o solicitar alta de marca en Seller Center. La marca enviada no aparece en GetBrands (nombre o GlobalIdentifier).';
+                `Marca "${brand}" no está en GetBrands y no hay Genérico/Sin marca en tu catálogo Falabella. ` +
+                `Configura el secret FALABELLA_BRAND con una marca aprobada` +
+                (samples.length ? ` (ej.: ${samples.join(', ')})` : '') +
+                ` o solicita el alta en Seller Center.`;
               await patchProductRow(productId, {
                 falabella_sync_status: 'error_validacion',
-                falabella_last_error: bmsg,
+                falabella_last_error: bmsg.slice(0, 2000),
                 falabella_last_sync_at: new Date().toISOString(),
                 falabella_sync_audit_json: jsonForDb({
                   phase: 'brand_check',
                   brandRequested: brand,
                   brandsReturned: brandRows.length,
+                  brandSamples: samples,
                   at: new Date().toISOString(),
                 }),
               });
@@ -844,13 +846,36 @@ ${extraProductDataXml}
                   error: bmsg,
                   syncStatus: 'error_validacion',
                   validation: 'brand_not_in_getbrands',
+                  brandSamples: samples,
                   sellerSku: sku,
                 },
                 400,
               );
             }
           } else {
-            logStructured('brand_ok', { productId, brand, catalogSize: brandRows.length });
+            const bmsg =
+              'Marca no registrada en Falabella; usar Genérico del catálogo GetBrands o solicitar alta de marca en Seller Center.';
+            await patchProductRow(productId, {
+              falabella_sync_status: 'error_validacion',
+              falabella_last_error: bmsg,
+              falabella_last_sync_at: new Date().toISOString(),
+              falabella_sync_audit_json: jsonForDb({
+                phase: 'brand_check',
+                brandRequested: brand,
+                brandsReturned: brandRows.length,
+                at: new Date().toISOString(),
+              }),
+            });
+            return json(
+              {
+                ok: false,
+                error: bmsg,
+                syncStatus: 'error_validacion',
+                validation: 'brand_not_in_getbrands',
+                sellerSku: sku,
+              },
+              400,
+            );
           }
         }
       }
