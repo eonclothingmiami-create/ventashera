@@ -4922,12 +4922,13 @@ async function saveArticulo(existingId, options) {
     const coloresStr = document.getElementById('m-art-colores')?.value || '';
     const colorsArr = coloresStr.split(',').map((c) => c.trim()).filter(Boolean);
 
-    let falabella_product_data_json = { channelProfile: 'generic' };
+    let falabella_product_data_json = {};
     if (existingId) {
       const prevFj = (state.articulos || []).find((a) => a.id === existingId)?.falabellaProductDataJson;
       if (prevFj && typeof prevFj === 'object') {
-        falabella_product_data_json = { ...prevFj, channelProfile: 'generic' };
+        falabella_product_data_json = { ...prevFj };
         delete falabella_product_data_json.falabellaDraft;
+        delete falabella_product_data_json.channelProfile;
       }
     }
 

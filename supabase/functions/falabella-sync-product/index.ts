@@ -656,9 +656,14 @@ Deno.serve(async (req) => {
       'PackageLength',
       'PackageWeight',
       'TaxPercentage',
+      // Metadatos internos del ERP — no son FeedName de Falabella
+      'channelProfile',
+      'falabellaDraft',
+      'autoMap',
+      'mapTrace',
     ]);
     const mergedExtraOnly = Object.fromEntries(
-      Object.entries(mergedAll).filter(([k]) => !reservedProductData.has(k)),
+      Object.entries(mergedAll).filter(([k]) => !reservedProductData.has(k) && !/^_/.test(k)),
     );
     const extraProductDataXml = productDataGroupToXml(mergedExtraOnly);
 

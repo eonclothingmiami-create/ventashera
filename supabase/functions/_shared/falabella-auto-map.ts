@@ -89,15 +89,44 @@ const COLOR_BASICO_RULES: { re: RegExp; value: string }[] = [
   { re: /\b(azul|blue|marino|navy|celeste|turquesa)\b/i, value: 'Azul' },
   { re: /\b(verde|green|oliva|menta|esmeralda)\b/i, value: 'Verde' },
   { re: /\b(rojo|red|vinotinto|burgundy|guinda)\b/i, value: 'Rojo' },
-  { re: /\b(rosa|pink|fucsia|fucsia|magenta)\b/i, value: 'Rosa' },
+  { re: /\b(rosa|pink|fucsia|fuscia|magenta)\b/i, value: 'Rosa' },
   { re: /\b(amarillo|yellow|mostaza|dorado|gold)\b/i, value: 'Amarillo' },
   { re: /\b(naranja|orange|terracota|coral)\b/i, value: 'Naranja' },
   { re: /\b(morado|violeta|lila|purple|uva)\b/i, value: 'Morado' },
   { re: /\b(gris|gray|grey|plata|silver)\b/i, value: 'Gris' },
   { re: /\b(beige|camel|arena|nude|crema|taupe|khaki|caqui)\b/i, value: 'Beige' },
-  { re: /\b(cafe|marron|brown|chocolate|cognac)\b/i, value: 'Cafe' },
+  { re: /\b(cafe|café|marron|marrón|brown|chocolate|cognac)\b/i, value: 'Cafe' },
   { re: /\b(unico|única|unica|multicolo|print|sublimad|abstract|floral|animal)\b/i, value: 'Multicolor' },
 ];
+
+/** Normaliza etiquetas ERP a valores de variación más aceptables en moda FACO. */
+export function normalizeColorVariation(raw: string): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const u = normalizeKey(s).replace(/\s+/g, '');
+  const aliases: Record<string, string> = {
+    fuscia: 'Fucsia',
+    fucsia: 'Fucsia',
+    fuchsia: 'Fucsia',
+    cafe: 'Cafe',
+    café: 'Cafe',
+    marron: 'Cafe',
+    marrón: 'Cafe',
+    negro: 'Negro',
+    blanco: 'Blanco',
+    rojo: 'Rojo',
+    azul: 'Azul',
+    rosa: 'Rosa',
+    verde: 'Verde',
+  };
+  if (aliases[u]) return aliases[u];
+  // Title-case simple
+  return s
+    .split(/\s+/)
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''))
+    .join(' ')
+    .slice(0, 40);
+}
 
 export function normalizeKey(s: string): string {
   return String(s || '')
@@ -300,6 +329,8 @@ export function buildFalabellaAutoMap(input: AutoMapInput): FalabellaAutoMapResu
   if (!color) {
     color = 'UNICO';
     colorSource = 'fallback.UNICO';
+  } else {
+    color = normalizeColorVariation(color);
   }
 
   let colorBasico = String(body.colorBasico || env.defaultColorBasico || '').trim();
