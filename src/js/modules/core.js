@@ -607,7 +607,6 @@ function applyIntegrationChannelListedState(art) {
   }
 }
 
-
 /** Cada canal es independiente: no comparte estado con otros; fallo no bloquea el siguiente. Ver docs/INTEGRACIONES_CANALES.md */
 /** @returns {{ note: string, patch: Record<string, string> }} patch = columnas snake_case en `products` */
 async function postSaveMercadoLibreIntegration(productId, catalogVisibleBool) {
@@ -1627,10 +1626,11 @@ async function hydrateArticulosFromSupabase() {
       ? p.falabella_product_data_json
       : {};
     const integIds = integrationIdsFromProductRow(p);
-    return {
+      return {
       id: p.id,
       codigo: p.ref || '',
       ref: p.ref || '',
+      scanAlias: (p.scan_alias || '').trim(),
       nombre: p.name || '',
       name: p.name || '',
       categoria: p.categoria || '',
@@ -4487,7 +4487,7 @@ function openArticuloModal(id){
 
             <!-- Ficha siempre visible -->
             <div style="background:rgba(255,255,255,0.03); padding:20px; border-radius:12px; border:1px solid var(--border); margin-bottom:16px;">
-                <label class="form-label">📸 GALERÍA MULTIMEDIA</label>
+                <label class="form-label">📸 GALERÍA MULTIMEDIA <span id="m-art-galeria-count" style="font-weight:500;opacity:.7;font-size:11px"></span></label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
                     <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br>
                     <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada. Hasta ${MAX_GALLERY_MEDIA} archivos (Woo/Falabella usan solo las primeras).</span>
@@ -4648,7 +4648,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
             <div class="form-group" data-integration-channel="falabella" style="margin-top: 8px; padding: 10px; background: rgba(100,80,200,0.1); border-radius: 8px; border: 1px solid rgba(100,80,200,0.35);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-falabella" style="width: 18px; height: 18px;">
-    🏬 Falabella Seller Center al guardar
+    🏬 Publicar en Falabella al guardar
   </label>
   <div style="font-size:11px;color:var(--text2);margin:4px 0 0 28px;line-height:1.35;">Como Mercado Libre: solo chulear. El Edge mapea categoría, marca (GENERICO si hace falta), color/talla y attrs moda.</div>
   <div id="art-sync-falabella-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
@@ -4710,6 +4710,10 @@ function removeMainImg(){
 function renderGaleriaVisual(){
     const container = document.getElementById('m-art-galeria-visual');
     if(!container) return;
+    const countEl = document.getElementById('m-art-galeria-count');
+    if (countEl) {
+      countEl.textContent = `(${_tempGaleria.length}/${MAX_GALLERY_MEDIA})`;
+    }
     container.innerHTML = _tempGaleria.map((url, idx) => {
         const esVideo = url.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
         const media = esVideo 
@@ -4783,12 +4787,22 @@ async function uploadGalleryImages(input) {
   const files = input.files;
   if (!files.length) return;
 
+  if (_tempGaleria.length >= MAX_GALLERY_MEDIA) {
+    notify('warning', '📸', 'Límite', `Máximo ${MAX_GALLERY_MEDIA} archivos por producto.`, { duration: 4000 });
+    input.value = '';
+    return;
+  }
+
   showLoadingOverlay('connecting');
 
   try {
     let added = 0;
+    let hitLimit = false;
     for (let i = 0; i < files.length; i++) {
-      if (_tempGaleria.length >= MAX_GALLERY_MEDIA) break;
+      if (_tempGaleria.length >= MAX_GALLERY_MEDIA) {
+        hitLimit = true;
+        break;
+      }
       let file = files[i];
 
       if (file.type.startsWith('image/')) {
@@ -4815,11 +4829,17 @@ async function uploadGalleryImages(input) {
 
     renderGaleriaVisual();
     showLoadingOverlay('hide');
-    notify('success', '📸', 'Completado', `Subidos ${added} archivos.`);
+    if (hitLimit) {
+      notify('warning', '📸', 'Parcial', `Subidos ${added}. Tope ${MAX_GALLERY_MEDIA} alcanzado.`, { duration: 5000 });
+    } else {
+      notify('success', '📸', 'Completado', `Subidos ${added} archivos.`);
+    }
 
   } catch (e) {
     showLoadingOverlay('hide');
     notify('danger', '⚠️', 'Error', e.message);
+  } finally {
+    try { input.value = ''; } catch (_) {}
   }
 }
 async function saveArticulo(existingId, options) {
@@ -4855,7 +4875,9 @@ async function saveArticulo(existingId, options) {
       return alert('El alias de escaneo solo admite letras, números, guion y guion bajo.');
     }
     if (scanAlias) {
-      if (scanAlias !== refID) {
+      if (scanAlias === refID) {
+        // Mismo valor que el REF: no hace falta guardar alias duplicado
+      } else {
         const clash = (state.articulos || []).find((a) => {
           if (a.id === existingId) return false;
           const otherRef = normalizeScanAlias(a.ref || a.codigo || '');
@@ -5152,7 +5174,8 @@ async function saveArticulo(existingId, options) {
         const prevArt = artIdx >= 0 ? state.articulos[artIdx] : {};
         const falabellaPatch = falabellaResult && falabellaResult.falabellaPatch ? falabellaResult.falabellaPatch : null;
         const artLocal = {
-          id: productId, codigo: refID, ref: refID, scanAlias: scanAliasDb || '', nombre: nombre, name: nombre,
+          id: productId, codigo: refID, ref: refID, scanAlias: scanAliasDb || '',
+          nombre: nombre, name: nombre,
           categoria: productData.categoria, seccion: productData.seccion,
           descripcion: productData.description,
           precioVenta: productData.price, price: productData.price,
