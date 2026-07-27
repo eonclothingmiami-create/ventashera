@@ -81,32 +81,43 @@ async function signIn() {
 
   const email = process.env.HERA_ERP_EMAIL?.trim();
   const password = process.env.HERA_ERP_PASSWORD?.trim();
-  if (!email || !password) {
-    throw new Error(
-      'Falta auth. Definí HERA_ERP_EMAIL + HERA_ERP_PASSWORD o SUPABASE_ACCESS_TOKEN.',
-    );
+  if (email && password) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.access_token) {
+      throw new Error(
+        `Login falló (${res.status}): ${body.error_description || body.msg || body.error || 'sin token'}`,
+      );
+    }
+    return body.access_token;
   }
 
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email, password }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.access_token) {
-    throw new Error(
-      `Login falló (${res.status}): ${body.error_description || body.msg || body.error || 'sin token'}`,
-    );
+  // Batch: service role (worker must accept it)
+  const serviceKey = resolveServiceKey();
+  if (serviceKey) {
+    console.log('Auth: service_role (batch)');
+    return serviceKey;
   }
-  return body.access_token;
+
+  throw new Error(
+    'Falta auth. Definí HERA_ERP_EMAIL + HERA_ERP_PASSWORD, SUPABASE_ACCESS_TOKEN, o SUPABASE_SERVICE_ROLE_KEY.',
+  );
 }
 
 function authHeaders(accessToken) {
+  // When batching with service_role, send it as both apikey and Bearer.
+  const isService = accessToken && accessToken !== SUPABASE_ANON_KEY &&
+    (accessToken.startsWith('eyJ') && accessToken.length > 200);
+  const key = isService ? accessToken : SUPABASE_ANON_KEY;
   return {
-    apikey: SUPABASE_ANON_KEY,
+    apikey: key,
     Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
   };

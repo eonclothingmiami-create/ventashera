@@ -322,15 +322,54 @@ export function parseBrandsFromGetBrandsResponse(parsed: Record<string, unknown>
   return out;
 }
 
-export function brandMatchesFalabellaList(brandRequested: string, brands: BrandRow[]): boolean {
+export function findBrandInCatalog(brandRequested: string, brands: BrandRow[]): BrandRow | null {
   const target = normalizeBrandKey(brandRequested);
-  if (!target) return false;
+  if (!target) return null;
   for (const b of brands) {
-    if (normalizeBrandKey(b.name) === target) return true;
-    if (b.globalId && normalizeBrandKey(b.globalId) === target) return true;
-    if (b.globalId && target === normalizeBrandKey(b.globalId.replace(/_/g, ' '))) return true;
+    if (normalizeBrandKey(b.name) === target) return b;
+    if (b.globalId && normalizeBrandKey(b.globalId) === target) return b;
+    if (b.globalId && target === normalizeBrandKey(b.globalId.replace(/_/g, ' '))) return b;
   }
-  return false;
+  return null;
+}
+
+export function brandMatchesFalabellaList(brandRequested: string, brands: BrandRow[]): boolean {
+  return findBrandInCatalog(brandRequested, brands) != null;
+}
+
+/** Preferencias para fallback cuando la marca pedida no está en GetBrands. */
+const GENERIC_BRAND_KEYS = [
+  'generico',
+  'sin marca',
+  'generic',
+  'unbranded',
+  'no brand',
+  'otros',
+  'other',
+];
+
+/**
+ * Devuelve una marca del catálogo GetBrands usable como fallback (p. ej. "Genérico").
+ * Nunca inventa el string "GENERICO": ProductCreate exige el Name exacto del Seller Center.
+ */
+export function pickFallbackBrandFromCatalog(brands: BrandRow[]): BrandRow | null {
+  if (!brands.length) return null;
+  for (const key of GENERIC_BRAND_KEYS) {
+    const hit = findBrandInCatalog(key, brands);
+    if (hit) return hit;
+  }
+  for (const b of brands) {
+    const n = normalizeBrandKey(b.name);
+    if (n.includes('generico') || n.includes('sin marca')) return b;
+  }
+  return null;
+}
+
+/** Nombre canónico a enviar en ProductCreate (Name del catálogo si existe). */
+export function resolveBrandNameForFeed(brandRequested: string, brands: BrandRow[]): string | null {
+  const hit = findBrandInCatalog(brandRequested, brands);
+  if (!hit) return null;
+  return (hit.name || hit.globalId || '').trim() || null;
 }
 
 export type PrevalidateProductCreateInput = {
