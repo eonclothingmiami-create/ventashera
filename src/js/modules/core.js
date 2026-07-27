@@ -4866,16 +4866,33 @@ async function saveArticulo(existingId, options) {
     if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
 
     if (window.ProductRefUtil) {
+      const prevArtRef = existingId
+        ? String(
+            (state.articulos || []).find((a) => a.id === existingId)?.ref ||
+              (state.articulos || []).find((a) => a.id === existingId)?.codigo ||
+              '',
+          )
+            .trim()
+            .toUpperCase()
+        : '';
       if (!window.ProductRefUtil.isNormalizedHeraRef(refID)) {
-        const used = new Set(
-          (state.articulos || [])
-            .filter((a) => a.id !== existingId)
-            .map((a) => String(a.ref || a.codigo || '').trim().toUpperCase())
-            .filter(Boolean),
-        );
-        refID = window.ProductRefUtil.normalizeProductRef(refID, used);
-        const refInput = document.getElementById('m-art-codigo');
-        if (refInput) refInput.value = refID;
+        if (!existingId) {
+          // Solo en alta: normalizar a HERA-XXXXX
+          const used = new Set(
+            (state.articulos || [])
+              .map((a) => String(a.ref || a.codigo || '').trim().toUpperCase())
+              .filter(Boolean),
+          );
+          refID = window.ProductRefUtil.normalizeProductRef(refID, used);
+          const refInput = document.getElementById('m-art-codigo');
+          if (refInput) refInput.value = refID;
+        } else if (prevArtRef && refID === prevArtRef) {
+          // Edición: conservar REF legacy (HERA-151, etc.) — no regenerar
+        } else {
+          return alert(
+            'La referencia debe ser HERA-XXXX (4 a 6 dígitos). Si no quieres cambiarla, deja el REF actual.',
+          );
+        }
       }
       const dup = (state.articulos || []).find(
         (a) =>
@@ -5000,11 +5017,29 @@ async function saveArticulo(existingId, options) {
     try {
         showLoadingOverlay('connecting');
         
-        // 1. UPSERT del producto
-        const { error } = await supabaseClient
+        // 1. UPSERT / UPDATE del producto
+        // En edición: si el REF no cambió, no lo enviamos en el UPDATE (evita chocar
+        // con FKs a products.ref como product_search_docs_ref_fkey).
+        let persistError = null;
+        if (existingId) {
+          const prevRef = String(prevArtForNotify?.ref || prevArtForNotify?.codigo || '')
+            .trim()
+            .toUpperCase();
+          const patch = { ...productData };
+          if (prevRef && prevRef === refID) {
+            delete patch.ref;
+            delete patch.sku;
+          }
+          delete patch.id;
+          const { error } = await supabaseClient.from('products').update(patch).eq('id', productId);
+          persistError = error;
+        } else {
+          const { error } = await supabaseClient
             .from('products')
             .upsert(productData, { onConflict: 'id' });
-        if (error) throw error;
+          persistError = error;
+        }
+        if (persistError) throw persistError;
 
         // 1a. Forzar columna visible (evita que quede true si el upsert no aplicó false; catálogo web debe consultar visible=true)
         const { error: visUpdErr } = await supabaseClient
