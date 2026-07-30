@@ -20,12 +20,33 @@
     return [];
   }
 
+  // Consecutivo numérico del documento (POS-01486 -> 1486). Sirve de desempate estable.
+  function docConsecutivo(d) {
+    const m = String((d && d.numero) || '').match(/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : -1;
+  }
+
+  /**
+   * Ordena de más reciente a más antiguo. Antes se usaba `.reverse()` sobre el arreglo
+   * tal como venía de Supabase, cuyo orden es por `id` (UUID aleatorio): la lista de
+   * Facturas mezclaba marzo, julio y junio en filas consecutivas.
+   */
+  function compareDocsMasRecientePrimero(a, b) {
+    const fa = String((a && a.fecha) || '');
+    const fb = String((b && b.fecha) || '');
+    if (fa !== fb) return fb < fa ? -1 : 1;
+    const ca = String((a && a.createdAt) || '');
+    const cb = String((b && b.createdAt) || '');
+    if (ca !== cb) return cb < ca ? -1 : 1;
+    return docConsecutivo(b) - docConsecutivo(a);
+  }
+
   function getFilteredItems(state, collection, pageId) {
     const q = (document.getElementById(pageId + '-search')?.value || '').toLowerCase();
     const desde = document.getElementById(pageId + '-desde')?.value || '';
     const hasta = document.getElementById(pageId + '-hasta')?.value || '';
     const baseItems = normalizeCollectionList(state?.[collection]);
-    let items = [...baseItems].reverse();
+    let items = [...baseItems].sort(compareDocsMasRecientePrimero);
     if (q) {
       items = items.filter((d) => {
         const base =

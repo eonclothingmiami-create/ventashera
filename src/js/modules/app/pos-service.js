@@ -58,37 +58,6 @@
       }
     }
     cart[idx].qty += delta;
-    // #region agent log
-    try {
-      const _line = cart[idx];
-      const _artId = _line && _line.articuloId;
-      const _art = (state.articulos || []).find((a) => a.id === _artId);
-      const _stock = _art ? (_art.stock || 0) : 0;
-      const _totalSameArt = cart
-        .filter((c) => c.articuloId === _artId)
-        .reduce((a, c) => a + (c.qty || 0), 0);
-      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
-        body: JSON.stringify({
-          sessionId: 'fd0bf3',
-          runId: 'run1',
-          hypothesisId: 'C',
-          location: 'pos-service.js:39',
-          message: 'updateCartQty applied without stock check',
-          data: {
-            idx,
-            delta,
-            newQtyThisLine: _line ? _line.qty : null,
-            totalQtyAllSizesSameArticle: _totalSameArt,
-            productStock: _stock,
-            oversold: _totalSameArt > _stock,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    } catch (e) {}
-    // #endregion
     if (cart[idx].qty <= 0) cart.splice(idx, 1);
     return true;
   }

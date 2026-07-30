@@ -243,12 +243,6 @@
       error = e;
     }
 
-    // #region agent log
-    try {
-      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-post-fix',hypothesisId:'H3',location:'pos-repository.js:createPosSaleAtomicV2:rpc',message:'atomic POS RPC result',data:{operationId:String(operationId),invoiceId:String(factura.id),ok:!error&&data?.ok===true,serverInvoiceNumber:data?.invoice_number||null,errorCode:error?.code||null,errorMessage:error?.message||null},timestamp:Date.now()})}).catch(()=>{});
-    } catch (_) {}
-    // #endregion
-
     if (error || !data?.ok) {
       return { ok: false, error: error || new Error('La transacción POS no fue confirmada') };
     }
@@ -259,6 +253,97 @@
       request,
       caja,
     };
+  }
+
+  /**
+   * Anula una venta POS con `cancel_pos_sale_v2`: devuelve stock, revierte el
+   * ingreso en caja y marca la factura como anulada en una sola transacción.
+   * Si algo falla no queda nada aplicado a medias.
+   */
+  async function cancelPosSaleAtomicV2(ctx) {
+    const o = ctx || {};
+    const { factura, supabaseClient, idGen } = o;
+    const nextId =
+      typeof idGen === 'function'
+        ? idGen
+        : () => (global.AppId?.uuid ? global.AppId.uuid() : crypto.randomUUID());
+
+    if (!supabaseClient || !factura || !factura.id) {
+      return { ok: false, error: new Error('cancelPosSaleAtomicV2: contexto incompleto') };
+    }
+
+    const request = {
+      operation_id: nextId(),
+      invoice_id: String(factura.id),
+      reason: String(o.reason || '').trim() || 'Anulación desde POS',
+    };
+
+    let data = null;
+    let error = null;
+    try {
+      const result = await supabaseClient.rpc('cancel_pos_sale_v2', { p_request: request });
+      data = result.data;
+      error = result.error;
+    } catch (e) {
+      error = e;
+    }
+
+    if (error || !data?.ok) {
+      return { ok: false, error: error || new Error('La anulación no fue confirmada') };
+    }
+
+    return { ok: true, data, request };
+  }
+
+  /**
+   * Cobra una factura manual con `pay_manual_invoice_v1`: ingreso en caja ligado a la
+   * factura, líneas de venta y estado 'pagada' en una sola transacción.
+   */
+  async function payManualInvoiceV1(ctx) {
+    const o = ctx || {};
+    const { state, factura, supabaseClient, idGen } = o;
+    const nextId =
+      typeof idGen === 'function'
+        ? idGen
+        : () => (global.AppId?.uuid ? global.AppId.uuid() : crypto.randomUUID());
+
+    if (!supabaseClient || !factura || !factura.id) {
+      return { ok: false, error: new Error('payManualInvoiceV1: contexto incompleto') };
+    }
+
+    const caja =
+      (state?.cajas || []).find((c) => String(c.id) === String(o.cajaId)) ||
+      global.AppCajaLogic?.resolveCajaForPos?.(state, 'bodega_main', '') ||
+      (state?.cajas || []).find((c) => c.estado === 'abierta');
+    if (!caja) {
+      return { ok: false, error: new Error('No hay una caja abierta para registrar el cobro') };
+    }
+
+    const bucket = String(o.bucket || 'efectivo');
+    const request = {
+      operation_id: nextId(),
+      invoice_id: String(factura.id),
+      caja_id: caja.id,
+      session_id: caja.sesionActivaId || null,
+      bucket,
+      method: String(o.metodo || bucket),
+    };
+
+    let data = null;
+    let error = null;
+    try {
+      const result = await supabaseClient.rpc('pay_manual_invoice_v1', { p_request: request });
+      data = result.data;
+      error = result.error;
+    } catch (e) {
+      error = e;
+    }
+
+    if (error || !data?.ok) {
+      return { ok: false, error: error || new Error('El cobro no fue confirmado') };
+    }
+
+    return { ok: true, data, caja };
   }
 
   async function persistPosSale(saveRecord, factura, ventaRecord) {
@@ -1232,15 +1317,23 @@
    * @param {Array<object>} rows  state.saleItems (cada fila con `invoiceId`)
    * @param {Array<object>} facturas  state.facturas (con `id` y `estado`)
    */
-  function filterSaleItemsExcluyendoAnuladas(rows, facturas) {
+  function filterSaleItemsExcluyendoAnuladas(rows, facturas, opts) {
+    const o = opts || {};
     const list = Array.isArray(rows) ? rows : [];
-    const anuladas = new Set(
+    const excluidas = new Set(
       (Array.isArray(facturas) ? facturas : [])
-        .filter((f) => f && f.estado === 'anulada')
+        .filter((f) => {
+          if (!f) return false;
+          if (f.estado === 'anulada' && o.includeAnuladas !== true) return true;
+          // Una factura manual en borrador todavía no se cobró: contarla inflaba
+          // Consolidado frente a Facturas y Trazabilidad.
+          if (f.estado === 'borrador' && o.includeBorradores !== true) return true;
+          return false;
+        })
         .map((f) => String(f.id)),
     );
-    if (anuladas.size === 0) return list.slice();
-    return list.filter((r) => !anuladas.has(String(r && r.invoiceId)));
+    if (excluidas.size === 0) return list.slice();
+    return list.filter((r) => !excluidas.has(String(r && r.invoiceId)));
   }
 
   /**
@@ -1248,18 +1341,19 @@
    * IMPORTANTE: sale_items NO se borra al anular una factura; por eso, por defecto,
    * este helper EXCLUYE las líneas de facturas anuladas (cruza por `invoiceId` contra
    * `state.facturas`). Todo reporte futuro sobre sale_items debe pasar por aquí.
-   * Usa `{ includeAnuladas: true }` solo si explícitamente quieres contarlas.
+   * También excluye las facturas manuales en borrador, que aún no se han cobrado.
+   * Usa `{ includeAnuladas: true }` o `{ includeBorradores: true }` para contarlas.
    * Tolera `state.saleItems` / `state.facturas` vacíos o inexistentes.
    * @param {object} state  estado global (usa state.saleItems y state.facturas)
-   * @param {{includeAnuladas?:boolean}} [options]
+   * @param {{includeAnuladas?:boolean, includeBorradores?:boolean}} [options]
    * @returns {Array<object>} copia de las filas (no muta el estado)
    */
   function getSaleItemsReportRows(state, options) {
     const o = options || {};
     const s = state || {};
     const rows = Array.isArray(s.saleItems) ? s.saleItems : [];
-    if (o.includeAnuladas === true) return rows.slice();
-    return filterSaleItemsExcluyendoAnuladas(rows, Array.isArray(s.facturas) ? s.facturas : []);
+    if (o.includeAnuladas === true && o.includeBorradores === true) return rows.slice();
+    return filterSaleItemsExcluyendoAnuladas(rows, Array.isArray(s.facturas) ? s.facturas : [], o);
   }
 
   global.AppSaleItemsReports = {
@@ -1279,6 +1373,8 @@
     isPosFacturaShape,
     applyLocalInventoryMovement,
     createPosSaleAtomicV2,
+    cancelPosSaleAtomicV2,
+    payManualInvoiceV1,
     persistPosSale,
     computeSaleLineKey,
     buildSaleItemRows,

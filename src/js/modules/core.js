@@ -1390,19 +1390,33 @@ async function erpRestFetch(url) {
   });
 }
 
+// Tablas donde `created_at` no existe: se resuelve al primer intento y se recuerda.
+const _fetchAllRowsOrderCache = new Map();
+
 async function fetchAllRows(table, select = '*') {
   const PAGE = 1000;
   let page = 0;
   let all = [];
+  // OFFSET sin ORDER BY puede omitir/repetir filas cuando hay escrituras entre páginas.
+  // Se ordena por fecha de creación (no por id) porque los id son UUID aleatorios y
+  // las vistas que hacen `.reverse()` mostraban los registros en desorden.
+  let order = _fetchAllRowsOrderCache.get(table) || 'created_at.asc,id.asc';
   while(true) {
     const from = page * PAGE;
-    // OFFSET sin ORDER BY puede omitir/repetir filas cuando hay escrituras entre páginas.
-    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&order=id.asc&limit=${PAGE}&offset=${from}`;
+    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&order=${order}&limit=${PAGE}&offset=${from}`;
     const resp = await erpRestFetch(url);
     if(!resp.ok) {
       const errText = await resp.text();
+      if (order !== 'id.asc' && (resp.status === 400 || /created_at/.test(errText))) {
+        _fetchAllRowsOrderCache.set(table, 'id.asc');
+        order = 'id.asc';
+        page = 0;
+        all = [];
+        continue;
+      }
       throw new Error(`[${table}] ${resp.status}: ${errText}`);
     }
+    _fetchAllRowsOrderCache.set(table, order);
     const data = await resp.json();
     if(!data || data.length === 0) break;
     all = all.concat(data);
@@ -1553,13 +1567,6 @@ async function loadSaleItemsIntoState() {
       console.warn('sale_items:', e2.message);
     }
   }
-  // #region agent log
-  try {
-    const _dbgToday = today();
-    const _dbgTodayRows = (state.saleItems || []).filter((r) => String(r.fecha || '').slice(0, 10) === _dbgToday);
-    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-pre-fix',hypothesisId:'H1',location:'core.js:loadSaleItemsIntoState:exit',message:'sale_items snapshot loaded',data:{totalRows:(state.saleItems||[]).length,today:_dbgToday,todayRows:_dbgTodayRows.length,todayInvoiceIds:new Set(_dbgTodayRows.map((r)=>String(r.invoiceId||''))).size,todayTotal:_dbgTodayRows.reduce((a,r)=>a+(Number(r.subtotal)||0),0)},timestamp:Date.now()})}).catch(()=>{});
-  } catch (_) {}
-  // #endregion
 }
 try {
   window.loadSaleItemsIntoState = loadSaleItemsIntoState;
@@ -2088,6 +2095,7 @@ async function hydrateVentasFacturasTesSliceFromSupabase(opts) {
       id: f.id,
       numero: f.number || '',
       fecha: (f.fecha || f.created_at) ? (f.fecha || f.created_at).split('T')[0] : today(),
+      createdAt: f.created_at || null,
       cliente: f.customer_name || '',
       telefono: f.customer_phone || '',
       subtotal: parseFloat(f.subtotal) || 0,
@@ -2145,26 +2153,6 @@ async function hydrateVentasFacturasTesSliceFromSupabase(opts) {
     await loadSaleItemsIntoState();
   }
 
-  // #region agent log
-  try {
-    const _dbgToday = today();
-    const _dbgInv = (state.facturas || []).filter((f) => f.fecha === _dbgToday && f.estado !== 'anulada');
-    const _dbgMoney = (state.tes_movimientos || []).filter((m) => String(m.fecha || '').slice(0,10) === _dbgToday && m.tipo === 'ingreso' && m.categoria === 'venta_pos');
-    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-pre-fix',hypothesisId:'H2-H5',location:'core.js:hydrateVentasFacturasTesSliceFromSupabase:exit',message:'ventas slice snapshot loaded',data:{today:_dbgToday,ventasRows:(state.ventas||[]).length,invoiceRows:(state.facturas||[]).length,moneyRows:(state.tes_movimientos||[]).length,todayActiveInvoices:_dbgInv.length,todayInvoiceTotal:_dbgInv.reduce((a,f)=>a+(Number(f.total)||0),0),todayMoneyRows:_dbgMoney.length,todayMoneyTotal:_dbgMoney.reduce((a,m)=>a+(Number(m.valor)||0),0)},timestamp:Date.now()})}).catch(()=>{});
-  } catch (_) {}
-  // #endregion
-  // #region agent log
-  try {
-    const _verifyDay = today();
-    const _verifyLines = (state.saleItems || []).filter((r) => String(r.fecha || '').slice(0,10) === _verifyDay);
-    const _verifyInvoices = (state.facturas || []).filter((f) => f.fecha === _verifyDay && f.estado !== 'anulada');
-    const _verifyMoney = (state.tes_movimientos || []).filter((m) => String(m.fecha || '').slice(0,10) === _verifyDay && m.tipo === 'ingreso' && m.categoria === 'venta_pos');
-    const _invoiceTotal = _verifyInvoices.reduce((a,f)=>a+(Number(f.total)||0),0);
-    const _lineTotal = _verifyLines.reduce((a,r)=>a+(Number(r.subtotal)||0),0);
-    const _moneyTotal = _verifyMoney.reduce((a,m)=>a+(Number(m.valor)||0),0);
-    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-post-fix',hypothesisId:'H1-H5',location:'core.js:hydrateVentasFacturasTesSliceFromSupabase:reconcile',message:'daily sources reconciled',data:{day:_verifyDay,invoiceCount:_verifyInvoices.length,invoiceTotal:_invoiceTotal,lineInvoiceCount:new Set(_verifyLines.map((r)=>String(r.invoiceId||''))).size,lineTotal:_lineTotal,moneyRows:_verifyMoney.length,moneyTotal:_moneyTotal,invoiceVsLines:_invoiceTotal-_lineTotal,invoiceVsMoney:_invoiceTotal-_moneyTotal},timestamp:Date.now()})}).catch(()=>{});
-  } catch (_) {}
-  // #endregion
   return { ok: true };
 }
 
@@ -2382,6 +2370,7 @@ async function loadState() {
       } catch(e) { itemsParsed = []; }
       return {
         id:f.id,numero:f.number||'',fecha:(f.fecha||f.created_at)?(f.fecha||f.created_at).split('T')[0]:today(),
+        createdAt:f.created_at||null,
         cliente:f.customer_name||'',telefono:f.customer_phone||'',
         subtotal:parseFloat(f.subtotal)||0,iva:parseFloat(f.iva)||0,flete:parseFloat(f.flete)||0,total:parseFloat(f.total)||0,
         items:(itemsParsed||[]).map(i=>{
@@ -3647,35 +3636,6 @@ async function procesarVentaPOSInterno(opts) {
   if (!o.skipSyncForm) syncPOSFormState();
   const cart = state.pos_cart || [];
   if(cart.length === 0) return;
-  // #region agent log
-  const _dbgSeq = (window.__dbgVentaSeq = (window.__dbgVentaSeq || 0) + 1);
-  const _dbgPrevEntryAt = window.__dbgVentaLastEntryAt || 0;
-  window.__dbgVentaLastEntryAt = Date.now();
-  try {
-    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
-      body: JSON.stringify({
-        sessionId: 'fd0bf3',
-        runId: 'run1',
-        hypothesisId: 'B',
-        location: 'core.js:3586',
-        message: 'procesarVentaPOS ENTRY',
-        data: {
-          seq: _dbgSeq,
-          msSincePrevEntry: _dbgPrevEntryAt ? Date.now() - _dbgPrevEntryAt : null,
-          committedSoFar: window.__dbgVentaCommitted || 0,
-          entriesWithoutCommit: _dbgSeq - (window.__dbgVentaCommitted || 0),
-          cartLines: cart.length,
-          cartUnits: cart.reduce((a, i) => a + (i.qty || 0), 0),
-          canal: posFormState && posFormState.canal,
-          metodo: posFormState && posFormState.metodo,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  } catch (e) {}
-  // #endregion
   if (_sbConnected && typeof ensureAntiDesyncBefore === 'function') {
     const ad = await ensureAntiDesyncBefore('pos');
     if (!ad.ok) return;
@@ -3935,11 +3895,6 @@ async function procesarVentaPOSInterno(opts) {
   // Persistencia principal: POS siempre registra factura + venta
   // Ya fue confirmada por create_pos_sale_v2. No repetir escrituras REST.
   const persistedOK = true;
-  // #region agent log
-  try {
-    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-pre-fix',hypothesisId:'H3',location:'core.js:procesarVentaPOSInterno:primary-persist',message:'POS primary persistence result',data:{invoiceId:String(factura?.id||''),invoiceNumber:String(numFactura||''),persistedOK,willContinueSideEffects:true},timestamp:Date.now()})}).catch(()=>{});
-  } catch (_) {}
-  // #endregion
   if(!persistedOK){
     ventaRecord.syncPending = true;
     ventaRecord.syncError = 'factura_venta';
@@ -4028,32 +3983,6 @@ async function procesarVentaPOSInterno(opts) {
   saveConfig('game', state.game);
   saveConfig('consecutivos', state.consecutivos);
 
-  // #region agent log
-  window.__dbgVentaCommitted = (window.__dbgVentaCommitted || 0) + 1;
-  try {
-    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
-      body: JSON.stringify({
-        sessionId: 'fd0bf3',
-        runId: 'run1',
-        hypothesisId: 'B',
-        location: 'core.js:3889',
-        message: 'procesarVentaPOS about to clear cart (sale committed)',
-        data: {
-          seq: _dbgSeq,
-          numFactura,
-          total,
-          totalHasFractionalCents: Math.round(total) !== total,
-          committedCount: window.__dbgVentaCommitted,
-          cartStillNotEmptyAtCommit: (state.pos_cart || []).length,
-          facturasTotal: (state.facturas || []).length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  } catch (e) {}
-  // #endregion
   state.pos_cart=[];
   const _keepBod = posFormState.bodegaId || window.AppCajaLogic?.getPosBodegaId?.() || 'bodega_main';
   const _keepCaja = posFormState.cajaId || window.AppCajaLogic?.getPosCajaId?.() || '';
@@ -4244,8 +4173,10 @@ async function convertirVentaCatalogoAPos(catalogRowId) {
   }
 }
 
-/** Anula venta POS: stock, stock_moves (neto vendido), factura.estado — no revierte ingreso en caja. */
-async function anularVentaPOS(facturaId){
+let _anulacionPosEnCurso = false;
+
+/** Anula venta POS con `cancel_pos_sale_v2`: stock, caja y factura en una sola transacción. */
+async function anularVentaPOS(facturaId, motivo){
   const id = String(facturaId);
   const factura = (state.facturas||[]).find(f=>String(f.id)===id);
   if(!factura){
@@ -4261,81 +4192,65 @@ async function anularVentaPOS(facturaId){
     notify('warning','⚠️','Solo POS','Solo se pueden anular ventas POS desde esta acción.',{duration:4000});
     return;
   }
-  const rawItems = Array.isArray(factura.items)?factura.items:[];
-  const cart = rawItems.map(i=>({
-    articuloId:i.articuloId||i.id,
-    qty:Math.abs(parseInt(i.qty||i.cantidad,10)||0),
-    nombre:i.nombre||'',
-    talla:i.talla||''
-  })).filter(i=>i.articuloId&&i.qty>0);
-  if(cart.length===0){
-    notify('warning','⚠️','Ítems','La factura no tiene líneas para revertir.',{duration:4000});
+  if(_anulacionPosEnCurso){
+    notify('warning','⏳','Anulación en curso','Espera a que termine la anulación anterior.',{duration:4000});
     return;
   }
+  if(!_sbConnected || !window.AppPosRepository?.cancelPosSaleAtomicV2){
+    notify('danger','📡','Sin conexión','No se puede anular sin la transacción segura de Supabase.',{duration:8000});
+    return;
+  }
+  _anulacionPosEnCurso = true;
   try{
-    if(window.AppPosRepository?.restoreStockAfterPosAnulacion){
-      await window.AppPosRepository.restoreStockAfterPosAnulacion(state,cart,supabaseClient,_sbConnected);
-    }
-    if(window.AppPosRepository?.registerPosAnulacionStockMoves){
-      await window.AppPosRepository.registerPosAnulacionStockMoves({
-        state,cart,factura,facturaId:factura.id,numFactura:factura.numero||'',fechaActual:today(),dbId,
-        supabaseClient,sbConnected:_sbConnected,
-        posFormState:{bodegaId:posFormState?.bodegaId||window.AppCajaLogic?.getPosBodegaId?.()||'bodega_main'},
-        notify
-      });
-    }
-    factura.estado='anulada';
-    factura.posStockAnulacionAplicada=true;
-    const _okFactura = await saveRecord('facturas',factura.id,factura);
-    const venta=(state.ventas||[]).find(v=>String(v.id)===id);
-    // El stock ya se devolvió en Supabase. Si la factura no quedó 'anulada' en BD,
-    // al recargar la venta vuelve activa y se puede volver a anular (stock inflado).
-    if(!_okFactura){
-      factura.estado='pagada';
-      factura.posStockAnulacionAplicada=false;
-      notify('danger','⚠️','Anulación incompleta',`${factura.numero||id}: se devolvió el stock pero NO se pudo guardar la anulación. Revisa la conexión y vuelve a intentarlo ANTES de anular de nuevo.`,{duration:12000});
-      renderHistorial();
-      updateNavBadges();
+    const res = await window.AppPosRepository.cancelPosSaleAtomicV2({
+      factura,
+      reason: motivo,
+      supabaseClient,
+      idGen: dbId
+    });
+    if(!res.ok){
+      notify('danger','⚠️','Venta no anulada',res.error?.message||'Supabase rechazó la anulación. No se devolvió stock ni se movió caja.',{duration:10000});
       return;
     }
-    // #region agent log
-    try {
-      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
-        body: JSON.stringify({
-          sessionId: 'fd0bf3',
-          runId: 'run1',
-          hypothesisId: 'D',
-          location: 'core.js:4121',
-          message: 'anularVentaPOS persistence outcome',
-          data: {
-            numero: factura.numero || id,
-            saveFacturaReturned: _okFactura,
-            stockAlreadyRestoredInDb: true,
-            ventaRowFoundInMemory: !!venta,
-            ventaRowPersisted: false,
-            ventasMapperHasAnuladaColumn: !!(
-              window.COLLECTION_MAP && window.COLLECTION_MAP.ventas
-            ),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    } catch (e) {}
-    // #endregion
+    (res.data.stocks||[]).forEach((row)=>{
+      const art=(state.articulos||[]).find(a=>String(a.id)===String(row.id));
+      if(art) art.stock = Number(row.stock)||0;
+    });
+    factura.estado='anulada';
+    factura.posStockAnulacionAplicada=true;
+    // La BD ya aplicó todo: recargar caja y movimientos evita mostrar saldos viejos.
+    try{
+      const active = document.querySelector('.page.active')?.id?.replace('page-','');
+      await hydrateCajasMinimalFromSupabase();
+      await hydrateVentasFacturasTesSliceFromSupabase({
+        includeVentasCatalogo: active === 'ventas_catalogo',
+        includeSaleItems: active === 'ventas_consolidado'
+      });
+    }catch(e){
+      console.warn('anularVentaPOS refresh:',e);
+    }
     if (typeof renderTesPagosProv === 'function') renderTesPagosProv();
     renderHistorial();
     updateNavBadges();
-    notify('success','✅','Venta anulada',`${factura.numero||id} — stock y vendido POS (referencia) actualizados. Revisa caja si hubo ingreso.`,{duration:7000});
+    const avisos = [];
+    avisos.push(res.data.stock_manual_required
+      ? 'no había stock que devolver (productos borrados del catálogo)'
+      : 'stock devuelto');
+    avisos.push(res.data.cash_manual_required
+      ? 'sin ingreso en caja ligado: revísalo manualmente'
+      : 'caja revertida');
+    notify('success','✅','Venta anulada',`${res.data.invoice_number||factura.numero||id} — ${avisos.join(' · ')}.`,{duration:8000});
   }catch(e){
     console.warn('anularVentaPOS:',e);
     notify('danger','⚠️','Error',e.message||String(e),{duration:6000});
+  }finally{
+    _anulacionPosEnCurso = false;
   }
 }
 function anularVentaPOSConfirm(facturaId){
-  if(!confirm('¿Anular esta venta POS? Se devolverá stock, se revertirá el vendido POS (referencia) y la factura quedará anulada. El ingreso en caja debe ajustarse manualmente si aplica.'))return;
-  anularVentaPOS(facturaId);
+  if(!confirm('¿Anular esta venta POS? Se devolverá el stock, se revertirá el ingreso en caja y la factura quedará anulada. Todo se aplica junto o no se aplica nada.'))return;
+  const motivo = prompt('Motivo de la anulación (opcional):') || '';
+  anularVentaPOS(facturaId, motivo);
 }
 window.anularVentaPOS=anularVentaPOS;
 window.anularVentaPOSConfirm=anularVentaPOSConfirm;
@@ -5830,7 +5745,15 @@ function renderDocumentList(pageId,title,collection,tipo,fields){
     const raw = state?.[collection];
     const rawType = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw;
     const safeArray = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.values(raw) : [];
-    let items=[...safeArray].reverse();
+    // Ordenar por fecha, no por el orden de llegada: los id son UUID aleatorios.
+    const consec=(d)=>{const m=String((d&&d.numero)||'').match(/(\d+)\s*$/);return m?parseInt(m[1],10):-1;};
+    let items=[...safeArray].sort((a,b)=>{
+      const fa=String((a&&a.fecha)||''),fb=String((b&&b.fecha)||'');
+      if(fa!==fb) return fb<fa?-1:1;
+      const ca=String((a&&a.createdAt)||''),cb=String((b&&b.createdAt)||'');
+      if(ca!==cb) return cb<ca?-1:1;
+      return consec(b)-consec(a);
+    });
 
     // Aplicar filtros
     if(q) items=items.filter(d=>(d?.numero||'').toLowerCase().includes(q)||(d?.cliente||'').toLowerCase().includes(q));
@@ -6121,17 +6044,55 @@ function viewDoc(collection,id){
     <div class="btn-group" style="margin-top:16px;flex-wrap:wrap;gap:8px">
       <button type="button" class="btn btn-primary btn-sm" onclick="printDoc('${collection}','${id}')">🖨 Imprimir</button>
       ${collection === 'cotizaciones' || collection === 'facturas' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="downloadDocPdf('${collection}','${id}')">📄 Descargar PDF</button>` : ''}
-      ${doc.estado!=='pagada'?`<button type="button" class="btn btn-sm" style="background:rgba(74,222,128,.15);color:var(--green);border:1px solid rgba(74,222,128,.3)" onclick="changeDocStatus('${collection}','${id}','pagada')">✓ Marcar Pagada</button>`:''}
+      ${doc.estado!=='pagada'?`<button type="button" class="btn btn-sm" style="background:rgba(74,222,128,.15);color:var(--green);border:1px solid rgba(74,222,128,.3)" onclick="changeDocStatus('${collection}','${id}','pagada')">${collection==='facturas'?'💵 Cobrar':'✓ Marcar Pagada'}</button>`:''}
       ${doc.estado!=='anulada'?`<button type="button" class="btn btn-sm btn-danger" onclick="changeDocStatus('${collection}','${id}','anulada')">✕ Anular</button>`:''}
     </div>
   `);
 }
 
-function changeDocStatus(collection,id,newStatus){
+async function changeDocStatus(collection,id,newStatus){
   const doc=(state[collection]||[]).find(d=>d.id===id);if(!doc)return;
+  // Cobrar una factura manual mueve dinero: va por RPC transaccional, no por saveRecord.
+  const esCobroManual = collection==='facturas' && newStatus==='pagada' && doc.estado==='borrador';
+  if(esCobroManual){
+    if(!_sbConnected || !window.AppPosRepository?.payManualInvoiceV1){
+      notify('danger','📡','Sin conexión','No se puede cobrar sin la transacción segura de Supabase.',{duration:8000});
+      return;
+    }
+    const metodo = (prompt('Método de pago (efectivo, transferencia, tarjeta, addi, digital, otro):','efectivo')||'').trim().toLowerCase();
+    if(!metodo) return;
+    const res = await window.AppPosRepository.payManualInvoiceV1({
+      state, factura:doc, bucket:metodo, metodo, supabaseClient, idGen:dbId
+    });
+    if(!res.ok){
+      notify('danger','⚠️','Cobro no registrado',res.error?.message||'Supabase rechazó el cobro. No se movió caja ni cambió el estado.',{duration:10000});
+      return;
+    }
+    doc.estado='pagada';
+    if(res.caja && res.data.cash){
+      res.caja.saldo = Number(res.data.cash.saldo)||0;
+      res.caja.saldosMetodo = res.data.cash.saldos_metodo || res.caja.saldosMetodo || {};
+    }
+    try{
+      const active = document.querySelector('.page.active')?.id?.replace('page-','');
+      await hydrateVentasFacturasTesSliceFromSupabase({
+        includeVentasCatalogo: active === 'ventas_catalogo',
+        includeSaleItems: true
+      });
+    }catch(e){
+      console.warn('changeDocStatus refresh:',e);
+    }
+    closeModal();
+    renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
+    notify('success','✅','Factura cobrada',`${doc.numero} · ${fmt(res.data.total)} — ingreso registrado en caja.`,{duration:7000});
+    return;
+  }
   doc.estado=newStatus;
-  
-  saveRecord(collection, doc.id, doc);
+  const ok = await saveRecord(collection, doc.id, doc);
+  if(!ok){
+    notify('danger','⚠️','No se guardó',`${doc.numero}: el estado no quedó guardado en la base. Revisa la conexión.`,{duration:9000});
+    return;
+  }
   closeModal();
   renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
   notify('success','✅','Estado actualizado',doc.numero+' → '+newStatus,{duration:3000});

@@ -31,33 +31,6 @@
     const fromTemp = (global._tempGaleria || []).filter((u) => u && !isVideoUrl(u));
     const art = getEditingArt();
     const fromState = (art?.images || art?.galeria || []).filter((u) => u && !isVideoUrl(u));
-    // #region agent log
-    try {
-      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
-        body: JSON.stringify({
-          sessionId: 'fd0bf3',
-          runId: 'run1',
-          hypothesisId: 'E',
-          location: 'product-color-media.js:31',
-          message: 'imageUrlsFromGallery reads window._tempGaleria',
-          data: {
-            windowTempGaleriaType: typeof global._tempGaleria,
-            windowTempGaleriaLen: Array.isArray(global._tempGaleria)
-              ? global._tempGaleria.length
-              : null,
-            windowPortadaIndexType: typeof global._portadaIndex,
-            editingArtIdFromWindow: global._editingArticuloId || null,
-            fromTempLen: fromTemp.length,
-            fallbackStateLen: fromState.length,
-            usedFallback: fromTemp.length === 0 && fromState.length > 0,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    } catch (e) {}
-    // #endregion
     if (fromTemp.length) return fromTemp;
     if (fromState.length) return fromState;
     if (art?.imagen && !isVideoUrl(art.imagen)) return [art.imagen];
