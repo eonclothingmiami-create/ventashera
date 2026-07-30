@@ -7,7 +7,7 @@ import {
   normalizeCustomer,
   normalizeItems,
 } from "../_shared/ventas_catalogo_map.ts";
-import { catalogOrderAuthOk } from "../_shared/catalog_order_auth.ts";
+import { catalogOrderClientAuthOk } from "../_shared/catalog_order_auth.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return json({ ok: false, error: "POST only" }, 405);
   }
-  if (!catalogOrderAuthOk(req)) {
+  if (!await catalogOrderClientAuthOk(req)) {
     return json({ ok: false, error: "Unauthorized" }, 401);
   }
 
