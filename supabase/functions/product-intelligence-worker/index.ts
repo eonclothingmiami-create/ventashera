@@ -253,7 +253,7 @@ async function processGenerationJob(
       model: chat.model,
       prompt_version: PROMPT_VERSIONS[module],
       provider: provider.id,
-      created_by: userId,
+      created_by: userId || null,
     })
     .select("*")
     .single();
@@ -404,14 +404,38 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const {
-    data: { user },
-    error: authErr,
-  } = await userClient.auth.getUser();
-  if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+  const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+  let user: { id: string } | null = null;
+
+  function isServiceRoleJwt(token: string): boolean {
+    try {
+      const payloadPart = token.split(".")[1];
+      if (!payloadPart) return false;
+      const json = atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/"));
+      const payload = JSON.parse(json) as { role?: string };
+      return payload.role === "service_role";
+    } catch {
+      return false;
+    }
+  }
+
+  // Batch scripts may authenticate with the service role key/JWT.
+  if (
+    bearer &&
+    ((serviceKey && bearer === serviceKey) || isServiceRoleJwt(bearer))
+  ) {
+    user = { id: "" }; // system batch — created_by stays null below
+  } else {
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const {
+      data: { user: u },
+      error: authErr,
+    } = await userClient.auth.getUser();
+    if (authErr || !u) return json({ error: "Unauthorized" }, 401);
+    user = u;
+  }
 
   let body: {
     action?: string;
