@@ -90,11 +90,12 @@ async function deleteProductFromSupabase(codigo) {
       if (!supabaseClient || typeof supabaseClient.rpc !== 'function') {
         throw new Error('Supabase client no disponible para RPC delete_product_full');
       }
-      const { error } = await supabaseClient.rpc('delete_product_full', { p_product_id: productId });
+      const { data, error } = await supabaseClient.rpc('delete_product_full', { p_product_id: productId });
       if (error) throw error;
-      return { success: true };
+      if (data && data.ok === false) throw new Error(data.message || 'No se pudo eliminar el producto');
+      return { success: true, action: data?.action || 'deleted' };
     }
-    return { success: true };
+    return { success: true, action: 'missing' };
   } catch (err) {
     console.error('❌ Error eliminando de Supabase:', err);
     return { success: false, error: err.message };
@@ -1622,7 +1623,7 @@ async function hydrateArticulosFromSupabase() {
       googleMerchantOfferId: integIds.googleMerchantOfferId,
       pinterestCatalogItemId: integIds.pinterestCatalogItemId
     };
-  });
+  }).filter((a) => a.activo !== false);
   try {
     const t = (state.articulos || []).find((a) => /pijama\s+corta\s+juli/i.test(String(a?.nombre || a?.name || '')));
     if (t) {
@@ -2279,7 +2280,7 @@ async function loadState() {
         metaCommerceRetailerId:integIds.metaCommerceRetailerId,
         googleMerchantOfferId:integIds.googleMerchantOfferId,
         pinterestCatalogItemId:integIds.pinterestCatalogItemId};
-    });
+    }).filter((a) => a.activo !== false);
 
     // Clientes / Empleados / Proveedores
     // Cargar clientes con paginación (pueden ser miles)
@@ -4309,7 +4310,7 @@ function openCashDrawer(){
 // ===== ARTÍCULOS / INVENTARIO =====
 // ===================================================================
 function renderArticulos(){
-  const items=state.articulos||[];
+  const items=(state.articulos||[]).filter((a) => a.activo !== false);
   document.getElementById('articulos-content').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div class="search-bar" style="flex:1;max-width:400px;margin:0"><span class="search-icon">🔍</span><input type="text" id="art-search" placeholder="Buscar artículo..." oninput="renderArticulosList()"></div>
@@ -4328,7 +4329,10 @@ function renderArticulos(){
 
 function renderArticulosList(){
   const search=(document.getElementById('art-search')?.value||'').toLowerCase();
-  let items=(state.articulos||[]).filter(a=>(a.nombre+a.codigo+(a.scanAlias||'')+a.categoria).toLowerCase().includes(search));
+  let items=(state.articulos||[]).filter(a=>{
+    if (a.activo === false) return false;
+    return (a.nombre+a.codigo+(a.scanAlias||'')+a.categoria).toLowerCase().includes(search);
+  });
   const artTbody = document.getElementById('art-tbody'); if(!artTbody) return;
   artTbody.innerHTML=items.map(a=>{
     const stock=getArticuloStock(a.id);const low=stock<=a.stockMinimo;
@@ -4367,6 +4371,7 @@ async function deleteArticulo(id){
 
   try {
     showLoadingOverlay('connecting');
+    let action = 'deleted';
 
     if (_sbConnected) {
       if (typeof window.requestWooCommerceDeleteProduct === 'function') {
@@ -4382,15 +4387,15 @@ async function deleteArticulo(id){
       if (!supabaseClient || typeof supabaseClient.rpc !== 'function') {
         throw new Error('Supabase client no disponible para RPC delete_product_full');
       }
-      const { error } = await supabaseClient.rpc('delete_product_full', { p_product_id: id });
+      const { data, error } = await supabaseClient.rpc('delete_product_full', { p_product_id: id });
       if (error) throw error;
+      if (data && data.ok === false) throw new Error(data.message || 'No se pudo eliminar el artículo');
+      action = data?.action || 'deleted';
     }
 
+    // Sale del catálogo/POS igual que un borrado; si fue archivado, el historial queda en DB.
     state.articulos = (state.articulos || []).filter(a => a.id !== id);
     state.pos_cart = (state.pos_cart || []).filter(i => i.articuloId !== id);
-    state.inv_movimientos = (state.inv_movimientos || []).filter(m => m.articuloId !== id);
-    state.inv_ajustes = (state.inv_ajustes || []).filter(a => a.articuloId !== id);
-    state.inv_traslados = (state.inv_traslados || []).filter(t => t.articuloId !== id);
 
     renderArticulosList();
     renderDashboard();
@@ -4398,6 +4403,9 @@ async function deleteArticulo(id){
 
     showLoadingOverlay('hide');
     notify('success', '🗑️', 'Artículo eliminado', art.nombre, { duration: 2500 });
+    if (action === 'archived') {
+      console.info('[deleteArticulo] archivado (conserva historial):', art.nombre, id);
+    }
   } catch (err) {
     showLoadingOverlay('hide');
     console.error('deleteArticulo error:', err);
