@@ -26,7 +26,7 @@ window.GoogleMerchantConfig = {
 /**
  * Sincroniza un producto con Merchant Center (upsert por offerId + país + idioma + canal).
  * @param {string} productId - UUID en `products`
- * @param {{ gtin?: string }} [extra] - Opcional: GTIN/EAN 8–14 dígitos (como insert.py de Google).
+ * @param {object} [extra] - Opcional: gtin y action (`upsert` o `delete`).
  * @returns {Promise<object>}
  */
 window.requestGoogleMerchantSync = async function requestGoogleMerchantSync(
@@ -44,6 +44,9 @@ window.requestGoogleMerchantSync = async function requestGoogleMerchantSync(
     headers.Authorization = 'Bearer ' + anon;
   }
   const payload = { productId };
+  if (extra && extra.action === 'delete') {
+    payload.action = 'delete';
+  }
   if (extra && typeof extra === 'object' && extra.gtin) {
     const g = String(extra.gtin).replace(/\D/g, '');
     if (g.length >= 8 && g.length <= 14) payload.gtin = g;

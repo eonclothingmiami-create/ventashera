@@ -4366,7 +4366,7 @@ function renderArticulosList(){
 }
 
 /**
- * Baja el artículo de cada canal donde esté publicado antes de archivarlo.
+ * Baja el artículo de cada canal donde esté publicado después de archivarlo.
  * Woo (papelera), Meta (DELETE) y Falabella (status inactive) tienen endpoint de baja;
  * el catálogo web y el feed de Pinterest se limpian solos porque filtran active/visible.
  */
@@ -4377,11 +4377,17 @@ async function unpublishArticuloFromChannels(art) {
   if (typeof window.requestWooCommerceDeleteProduct === 'function') {
     canales.push(['woo', () => window.requestWooCommerceDeleteProduct(id)]);
   }
+  if (art.mercadolibreItemId && typeof window.requestMercadoLibreSync === 'function') {
+    canales.push(['mercadolibre', () => window.requestMercadoLibreSync(id, { action: 'deactivate' })]);
+  }
   if (art.metaCommerceRetailerId && typeof window.requestMetaCommerceSync === 'function') {
     canales.push(['meta', () => window.requestMetaCommerceSync(id, { method: 'DELETE' })]);
   }
   if (art.falabellaSellerSku && typeof window.requestFalabellaProductUpdate === 'function') {
     canales.push(['falabella', () => window.requestFalabellaProductUpdate(id, { status: 'inactive' })]);
+  }
+  if (art.googleMerchantOfferId && typeof window.requestGoogleMerchantSync === 'function') {
+    canales.push(['google', () => window.requestGoogleMerchantSync(id, { action: 'delete' })]);
   }
   for (const [canal, run] of canales) {
     try {
@@ -4390,15 +4396,6 @@ async function unpublishArticuloFromChannels(art) {
     } catch (err) {
       console.warn('[unpublish:' + canal + ']', err);
     }
-  }
-  if (art.mercadolibreItemId || art.googleMerchantOfferId) {
-    notify(
-      'warning',
-      '🛒',
-      'Bajar publicación manualmente',
-      `${art.nombre}: sigue publicado en ${[art.mercadolibreItemId ? 'Mercado Libre' : '', art.googleMerchantOfferId ? 'Google Merchant' : ''].filter(Boolean).join(' y ')}.`,
-      { duration: 12000 },
-    );
   }
 }
 
@@ -4413,7 +4410,6 @@ async function deleteArticulo(id){
     let action = 'deleted';
 
     if (_sbConnected) {
-      await unpublishArticuloFromChannels(art);
       if (!supabaseClient || typeof supabaseClient.rpc !== 'function') {
         throw new Error('Supabase client no disponible para RPC delete_product_full');
       }
@@ -4421,6 +4417,7 @@ async function deleteArticulo(id){
       if (error) throw error;
       if (data && data.ok === false) throw new Error(data.message || 'No se pudo eliminar el artículo');
       action = data?.action || 'deleted';
+      await unpublishArticuloFromChannels(art);
     }
 
     // Sale del catálogo/POS igual que un borrado; si fue archivado, el historial queda en DB.
