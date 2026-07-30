@@ -55,7 +55,9 @@
     const raw = m.createdAt || m.created_at || m.fecha;
     if (raw == null || raw === '') return '—';
     const s = String(raw);
-    const datePart = normFechaMov(s);
+    // `fecha` es el día contable. Cortar `created_at` en UTC mostraba el día
+    // siguiente para ventas nocturnas de Colombia, aunque el filtro era correcto.
+    const datePart = normFechaMov(m.fecha || s);
     const fd = typeof formatDate === 'function' ? formatDate(datePart) : datePart;
     const hasTime = !!(m.createdAt || m.created_at) || s.includes('T');
     if (!hasTime) return fd;

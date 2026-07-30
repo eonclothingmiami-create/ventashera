@@ -84,6 +84,183 @@
     }
   }
 
+  /**
+   * Transacción POS canónica V2: factura + venta + stock + caja + líneas en un solo RPC.
+   * El consecutivo se reserva dentro de Postgres, por lo que dos terminales no pueden
+   * reutilizar el mismo número. Si cualquier paso falla, Postgres revierte todo.
+   */
+  async function createPosSaleAtomicV2(ctx) {
+    const o = ctx || {};
+    const {
+      state,
+      cart,
+      factura,
+      ventaRecord,
+      posFormState,
+      supabaseClient,
+      idGen,
+    } = o;
+    const nextId =
+      typeof idGen === 'function'
+        ? idGen
+        : () => (global.AppId?.uuid ? global.AppId.uuid() : crypto.randomUUID());
+
+    if (!supabaseClient || !factura || !ventaRecord || !Array.isArray(cart) || !cart.length) {
+      return { ok: false, error: new Error('createPosSaleAtomicV2: contexto incompleto') };
+    }
+
+    if (String(factura.id) !== String(ventaRecord.id)) {
+      return { ok: false, error: new Error('createPosSaleAtomicV2: factura y venta no comparten id') };
+    }
+
+    const bodegaId =
+      posFormState?.bodegaId ||
+      global.AppCajaLogic?.getPosBodegaId?.() ||
+      'bodega_main';
+    const cajaPreferida =
+      posFormState?.cajaId ||
+      global.AppCajaLogic?.getPosCajaId?.() ||
+      '';
+    const caja =
+      global.AppCajaLogic?.resolveCajaForPos?.(state, bodegaId, cajaPreferida) ||
+      (state.cajas || []).find((c) => c.estado === 'abierta');
+
+    if (!caja) {
+      return { ok: false, error: new Error('No hay una caja abierta enlazada a la bodega') };
+    }
+
+    global.AppCajaLogic?.normalizeCaja?.(caja);
+    const total = Number(factura.total) || 0;
+    const metodo = String(posFormState?.metodo || factura.metodo || 'efectivo');
+    const concepto = buildPosIngresoConcepto(factura.numero || '', cart);
+    const movements = [];
+
+    if (metodo === 'mixto') {
+      const efectivo = Math.max(0, Number(posFormState?.mixtoEfectivo) || 0);
+      const transferencia = Math.max(0, Number(posFormState?.mixtoTransferencia) || 0);
+      if (efectivo > 0) {
+        movements.push({
+          id: nextId(),
+          value: efectivo,
+          bucket: 'efectivo',
+          method: 'efectivo',
+          concept: '',
+        });
+      }
+      if (transferencia > 0) {
+        movements.push({
+          id: nextId(),
+          value: transferencia,
+          bucket: 'transferencia',
+          method: 'transferencia',
+          concept: '',
+        });
+      }
+    } else {
+      movements.push({
+        id: nextId(),
+        value: total,
+        bucket:
+          global.AppCajaLogic?.resolvePosSaleBucket?.(posFormState, state) ||
+          'efectivo',
+        method: metodo,
+        // Vacío: el RPC compone el concepto con el consecutivo reservado en BD.
+        concept: '',
+      });
+    }
+
+    const operationId = nextId();
+    const request = {
+      operation_id: operationId,
+      invoice: {
+        id: factura.id,
+        fecha: factura.fecha,
+        customer_name: factura.cliente || '',
+        customer_phone: factura.telefono || '',
+        subtotal: Number(factura.subtotal) || 0,
+        iva: Number(factura.iva) || 0,
+        flete: Number(factura.flete) || 0,
+        total,
+        canal: factura.canal || 'vitrina',
+        metodo_pago: metodo,
+        guia: factura.guia || '',
+        empresa: factura.empresa || '',
+        transportadora: factura.transportadora || '',
+        ciudad: factura.ciudad || '',
+        direccion: factura.direccion || '',
+        cedula_cliente: factura.cedulaCliente || '',
+        comprobante: factura.comprobante || '',
+        es_separado: !!factura.esSeparado,
+        tipo_pago: factura.tipoPago || ventaRecord.tipoPago || 'contado',
+      },
+      sale: {
+        id: ventaRecord.id,
+        invoice_id: factura.id,
+        canal: ventaRecord.canal || factura.canal || 'vitrina',
+        cliente: ventaRecord.cliente || '',
+        telefono: ventaRecord.telefono || '',
+        guia: ventaRecord.guia || '',
+        empresa: ventaRecord.empresa || '',
+        transportadora: ventaRecord.transportadora || '',
+        ciudad: ventaRecord.ciudad || '',
+        direccion: ventaRecord.direccion || '',
+        cedula_cliente: ventaRecord.cedulaCliente || '',
+        comprobante: ventaRecord.comprobante || '',
+        liquidado: !!ventaRecord.liquidado,
+        fecha_liquidacion: ventaRecord.fechaLiquidacion || null,
+        es_separado: !!ventaRecord.esSeparado,
+        estado_entrega: ventaRecord.estadoEntrega || 'Pendiente',
+        metodo_pago: metodo,
+        tipo_pago: ventaRecord.tipoPago || 'contado',
+        es_contraentrega: !!ventaRecord.esContraEntrega,
+      },
+      lines: cart.map((item) => ({
+        product_id: item.articuloId,
+        name: item.nombre || '',
+        size: item.talla || '',
+        qty: Math.abs(parseInt(item.qty, 10) || 0),
+        unit_price: Number(item.precio) || 0,
+        bodega_id: bodegaId,
+        move_id: nextId(),
+        note: `${item.nombre || 'Ítem'} · Talla: ${item.talla || '—'}`,
+      })),
+      cash: {
+        caja_id: caja.id,
+        session_id: caja.sesionActivaId || null,
+        movements,
+      },
+    };
+
+    let data = null;
+    let error = null;
+    try {
+      const result = await supabaseClient.rpc('create_pos_sale_v2', {
+        p_request: request,
+      });
+      data = result.data;
+      error = result.error;
+    } catch (e) {
+      error = e;
+    }
+
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-post-fix',hypothesisId:'H3',location:'pos-repository.js:createPosSaleAtomicV2:rpc',message:'atomic POS RPC result',data:{operationId:String(operationId),invoiceId:String(factura.id),ok:!error&&data?.ok===true,serverInvoiceNumber:data?.invoice_number||null,errorCode:error?.code||null,errorMessage:error?.message||null},timestamp:Date.now()})}).catch(()=>{});
+    } catch (_) {}
+    // #endregion
+
+    if (error || !data?.ok) {
+      return { ok: false, error: error || new Error('La transacción POS no fue confirmada') };
+    }
+
+    return {
+      ok: true,
+      data,
+      request,
+      caja,
+    };
+  }
+
   async function persistPosSale(saveRecord, factura, ventaRecord) {
     // Canónico: primero public.invoices (factura.id = UUID fila factura), luego public.ventas con invoice_id = ese UUID.
     // ventas.id sigue siendo PK operativa (text); no se migra a uuid en este sprint.
@@ -1101,6 +1278,7 @@
     preparePosSaleForPersist,
     isPosFacturaShape,
     applyLocalInventoryMovement,
+    createPosSaleAtomicV2,
     persistPosSale,
     computeSaleLineKey,
     buildSaleItemRows,

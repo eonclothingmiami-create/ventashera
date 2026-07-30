@@ -1396,7 +1396,8 @@ async function fetchAllRows(table, select = '*') {
   let all = [];
   while(true) {
     const from = page * PAGE;
-    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&limit=${PAGE}&offset=${from}`;
+    // OFFSET sin ORDER BY puede omitir/repetir filas cuando hay escrituras entre páginas.
+    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&order=id.asc&limit=${PAGE}&offset=${from}`;
     const resp = await erpRestFetch(url);
     if(!resp.ok) {
       const errText = await resp.text();
@@ -1525,7 +1526,7 @@ async function loadSaleItemsIntoState() {
     });
   };
   try {
-    const rows = await fetchAllRowsFiltered('sale_items', '*', 'order=fecha_hora.asc');
+    const rows = await fetchAllRowsFiltered('sale_items', '*', 'order=fecha_hora.asc,id.asc');
     pushRows(rows);
   } catch (e) {
     console.warn('sale_items (REST paginado):', e.message);
@@ -1537,6 +1538,7 @@ async function loadSaleItemsIntoState() {
           .from('sale_items')
           .select('*')
           .order('fecha_hora', { ascending: true })
+          .order('id', { ascending: true })
           .range(off, off + PAGE - 1);
         if (error) {
           console.warn('sale_items (SDK):', error.message);
@@ -1551,6 +1553,13 @@ async function loadSaleItemsIntoState() {
       console.warn('sale_items:', e2.message);
     }
   }
+  // #region agent log
+  try {
+    const _dbgToday = today();
+    const _dbgTodayRows = (state.saleItems || []).filter((r) => String(r.fecha || '').slice(0, 10) === _dbgToday);
+    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-pre-fix',hypothesisId:'H1',location:'core.js:loadSaleItemsIntoState:exit',message:'sale_items snapshot loaded',data:{totalRows:(state.saleItems||[]).length,today:_dbgToday,todayRows:_dbgTodayRows.length,todayInvoiceIds:new Set(_dbgTodayRows.map((r)=>String(r.invoiceId||''))).size,todayTotal:_dbgTodayRows.reduce((a,r)=>a+(Number(r.subtotal)||0),0)},timestamp:Date.now()})}).catch(()=>{});
+  } catch (_) {}
+  // #endregion
 }
 try {
   window.loadSaleItemsIntoState = loadSaleItemsIntoState;
@@ -1963,7 +1972,7 @@ const _VENTAS_SLICE_PAGE_IDS = new Set([
   'dashboard', 'ordenes', 'facturas', 'notas_credito', 'notas_debito', 'remisiones',
   'devoluciones', 'pendientes', 'separados', 'logistica', 'anticipos_clientes',
   'cotizaciones', 'tes_cajas', 'tes_dinero', 'ingresos_egresos', 'recompensas',
-  'alertas', 'historial', 'ventas_catalogo'
+  'alertas', 'historial', 'ventas_catalogo', 'ventas_consolidado'
 ]);
 
 async function hydrateVentasFacturasTesSliceFromSupabase(opts) {
@@ -2126,9 +2135,36 @@ async function hydrateVentasFacturasTesSliceFromSupabase(opts) {
     categoria: m.categoria || '',
     bucket: m.bucket || '',
     sesionId: m.sesion_id || null,
-    refAbonoProvId: m.ref_abono_prov_id || null
+    refAbonoProvId: m.ref_abono_prov_id || null,
+    invoiceId: m.invoice_id || null,
+    operationId: m.operation_id || null,
+    reversalOfId: m.reversal_of_id || null
   }));
 
+  if (opts && opts.includeSaleItems) {
+    await loadSaleItemsIntoState();
+  }
+
+  // #region agent log
+  try {
+    const _dbgToday = today();
+    const _dbgInv = (state.facturas || []).filter((f) => f.fecha === _dbgToday && f.estado !== 'anulada');
+    const _dbgMoney = (state.tes_movimientos || []).filter((m) => String(m.fecha || '').slice(0,10) === _dbgToday && m.tipo === 'ingreso' && m.categoria === 'venta_pos');
+    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-pre-fix',hypothesisId:'H2-H5',location:'core.js:hydrateVentasFacturasTesSliceFromSupabase:exit',message:'ventas slice snapshot loaded',data:{today:_dbgToday,ventasRows:(state.ventas||[]).length,invoiceRows:(state.facturas||[]).length,moneyRows:(state.tes_movimientos||[]).length,todayActiveInvoices:_dbgInv.length,todayInvoiceTotal:_dbgInv.reduce((a,f)=>a+(Number(f.total)||0),0),todayMoneyRows:_dbgMoney.length,todayMoneyTotal:_dbgMoney.reduce((a,m)=>a+(Number(m.valor)||0),0)},timestamp:Date.now()})}).catch(()=>{});
+  } catch (_) {}
+  // #endregion
+  // #region agent log
+  try {
+    const _verifyDay = today();
+    const _verifyLines = (state.saleItems || []).filter((r) => String(r.fecha || '').slice(0,10) === _verifyDay);
+    const _verifyInvoices = (state.facturas || []).filter((f) => f.fecha === _verifyDay && f.estado !== 'anulada');
+    const _verifyMoney = (state.tes_movimientos || []).filter((m) => String(m.fecha || '').slice(0,10) === _verifyDay && m.tipo === 'ingreso' && m.categoria === 'venta_pos');
+    const _invoiceTotal = _verifyInvoices.reduce((a,f)=>a+(Number(f.total)||0),0);
+    const _lineTotal = _verifyLines.reduce((a,r)=>a+(Number(r.subtotal)||0),0);
+    const _moneyTotal = _verifyMoney.reduce((a,m)=>a+(Number(m.valor)||0),0);
+    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-post-fix',hypothesisId:'H1-H5',location:'core.js:hydrateVentasFacturasTesSliceFromSupabase:reconcile',message:'daily sources reconciled',data:{day:_verifyDay,invoiceCount:_verifyInvoices.length,invoiceTotal:_invoiceTotal,lineInvoiceCount:new Set(_verifyLines.map((r)=>String(r.invoiceId||''))).size,lineTotal:_lineTotal,moneyRows:_verifyMoney.length,moneyTotal:_moneyTotal,invoiceVsLines:_invoiceTotal-_lineTotal,invoiceVsMoney:_invoiceTotal-_moneyTotal},timestamp:Date.now()})}).catch(()=>{});
+  } catch (_) {}
+  // #endregion
   return { ok: true };
 }
 
@@ -2154,7 +2190,8 @@ async function tickBackgroundVentasSliceRefresh() {
   _bgVentasRefreshInFlight = true;
   try {
     const r = await hydrateVentasFacturasTesSliceFromSupabase({
-      includeVentasCatalogo: active === 'ventas_catalogo'
+      includeVentasCatalogo: active === 'ventas_catalogo',
+      includeSaleItems: active === 'ventas_consolidado'
     });
     if (r.ok) pulseVentasSliceUI();
   } catch (e) {
@@ -2579,7 +2616,7 @@ async function loadState() {
     }
 
     // Tesorería
-    state.tes_movimientos = (tesMov||[]).map(m=>({id:m.id,cajaId:m.caja_id,tipo:m.tipo,valor:parseFloat(m.valor)||0,concepto:m.concepto||'',fecha:m.fecha,createdAt:m.created_at||m.createdAt||null,metodo:m.metodo||'efectivo',categoria:m.categoria||'',bucket:m.bucket||'',sesionId:m.sesion_id||null,refAbonoProvId:m.ref_abono_prov_id||null}));
+    state.tes_movimientos = (tesMov||[]).map(m=>({id:m.id,cajaId:m.caja_id,tipo:m.tipo,valor:parseFloat(m.valor)||0,concepto:m.concepto||'',fecha:m.fecha,createdAt:m.created_at||m.createdAt||null,metodo:m.metodo||'efectivo',categoria:m.categoria||'',bucket:m.bucket||'',sesionId:m.sesion_id||null,refAbonoProvId:m.ref_abono_prov_id||null,invoiceId:m.invoice_id||null,operationId:m.operation_id||null,reversalOfId:m.reversal_of_id||null}));
 
     state.tes_cierres_caja = [];
     try {
@@ -2729,7 +2766,7 @@ const COLLECTION_MAP = {
     row.proxima_apertura_saldos = d.proximaAperturaSaldos && typeof d.proximaAperturaSaldos === 'object' ? d.proximaAperturaSaldos : {};
     return row;
   }},
-  'tes_movimientos': { table:'tes_movimientos', mapFn:(d)=>({id:d.id,caja_id:d.cajaId||null,tipo:d.tipo||'',valor:d.valor||0,concepto:d.concepto||'',fecha:d.fecha||null,metodo:d.metodo||'efectivo',categoria:d.categoria||null,bucket:d.bucket||null,sesion_id:d.sesionId||null,ref_abono_prov_id:d.refAbonoProvId!=null&&d.refAbonoProvId!==''?d.refAbonoProvId:null}) },
+  'tes_movimientos': { table:'tes_movimientos', mapFn:(d)=>({id:d.id,caja_id:d.cajaId||null,tipo:d.tipo||'',valor:d.valor||0,concepto:d.concepto||'',fecha:d.fecha||null,metodo:d.metodo||'efectivo',categoria:d.categoria||null,bucket:d.bucket||null,sesion_id:d.sesionId||null,ref_abono_prov_id:d.refAbonoProvId!=null&&d.refAbonoProvId!==''?d.refAbonoProvId:null,invoice_id:d.invoiceId||d.facturaId||null,operation_id:d.operationId||null,reversal_of_id:d.reversalOfId||null}) },
   'tes_cierres_caja': { table:'tes_cierres_caja', mapFn:(d)=>({
     id:d.id,caja_id:d.cajaId,caja_nombre:d.cajaNombre||'',
     fecha_cierre:d.fechaCierre||today(),
@@ -3818,6 +3855,61 @@ async function procesarVentaPOSInterno(opts) {
     };
   }
 
+  // Única ruta de escritura válida: el RPC crea factura, venta, stock, caja y
+  // sale_items dentro de una sola transacción y reserva el consecutivo en Postgres.
+  // Si falla, no se permite continuar con efectos parciales.
+  if (!_sbConnected || !window.AppPosRepository?.createPosSaleAtomicV2) {
+    notify(
+      'danger',
+      '📡',
+      'POS sin conexión',
+      'No se puede registrar una venta sin la transacción segura de Supabase.',
+      { duration: 8000 }
+    );
+    return;
+  }
+
+  const atomicPosResult = await window.AppPosRepository.createPosSaleAtomicV2({
+    state,
+    cart,
+    factura,
+    ventaRecord,
+    posFormState,
+    supabaseClient,
+    idGen: dbId,
+  });
+  if (!atomicPosResult.ok) {
+    notify(
+      'danger',
+      '⚠️',
+      'Venta no registrada',
+      atomicPosResult.error?.message || 'Supabase rechazó la transacción. No se descontó stock ni se movió caja.',
+      { duration: 9000 }
+    );
+    return;
+  }
+
+  numFactura = String(atomicPosResult.data.invoice_number || numFactura);
+  factura.numero = numFactura;
+  ventaRecord.desc = numFactura;
+  ventaRecord.invoiceId = factura.id;
+  const serverConsec = parseInt(numFactura.replace(/\D/g, ''), 10);
+  if (Number.isFinite(serverConsec)) {
+    state.consecutivos.factura = Math.max(
+      Number(state.consecutivos.factura) || 1,
+      serverConsec + 1
+    );
+  }
+  (atomicPosResult.data.stocks || []).forEach((row) => {
+    const art = (state.articulos || []).find((a) => String(a.id) === String(row.id));
+    if (art) art.stock = Number(row.stock) || 0;
+  });
+  if (atomicPosResult.data.cash && atomicPosResult.caja) {
+    atomicPosResult.caja.saldo = Number(atomicPosResult.data.cash.saldo) || 0;
+    atomicPosResult.caja.saldosMetodo =
+      atomicPosResult.data.cash.saldos_metodo || atomicPosResult.caja.saldosMetodo || {};
+  }
+
   // Guardar en state local
   if(!Array.isArray(state.facturas)) state.facturas = [];
   if(!Array.isArray(state.ventas)) state.ventas = [];
@@ -3841,19 +3933,13 @@ async function procesarVentaPOSInterno(opts) {
   }
 
   // Persistencia principal: POS siempre registra factura + venta
-  let persistedOK = false;
-  if (window.AppPosRepository?.persistPosSale) {
-    persistedOK = await window.AppPosRepository.persistPosSale(saveRecord, factura, ventaRecord);
-  } else {
-    if (window.AppPosRepository?.preparePosSaleForPersist) {
-      window.AppPosRepository.preparePosSaleForPersist(factura, ventaRecord);
-    } else {
-      ventaRecord.invoiceId = factura.id;
-    }
-    const facturaSaved = await saveRecord('facturas', factura.id, factura);
-    const ventaSaved = await saveRecord('ventas', ventaRecord.id, ventaRecord);
-    persistedOK = facturaSaved && ventaSaved;
-  }
+  // Ya fue confirmada por create_pos_sale_v2. No repetir escrituras REST.
+  const persistedOK = true;
+  // #region agent log
+  try {
+    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fd0bf3'},body:JSON.stringify({sessionId:'fd0bf3',runId:'reconcile-pre-fix',hypothesisId:'H3',location:'core.js:procesarVentaPOSInterno:primary-persist',message:'POS primary persistence result',data:{invoiceId:String(factura?.id||''),invoiceNumber:String(numFactura||''),persistedOK,willContinueSideEffects:true},timestamp:Date.now()})}).catch(()=>{});
+  } catch (_) {}
+  // #endregion
   if(!persistedOK){
     ventaRecord.syncPending = true;
     ventaRecord.syncError = 'factura_venta';
@@ -3863,7 +3949,7 @@ async function procesarVentaPOSInterno(opts) {
   }
 
   // stock_moves primero; solo tras insert OK se descuenta stock (pos-repository). Luego caja.
-  if(_sbConnected){
+  if(_sbConnected && !atomicPosResult.ok){
     try {
       if (window.AppPosRepository?.registerPosSaleSideEffects) {
         await window.AppPosRepository.registerPosSaleSideEffects({
@@ -3902,7 +3988,7 @@ async function procesarVentaPOSInterno(opts) {
   }
 
   // sale_items: capa canónica de líneas (NO bloquea la venta; no toca stock/caja).
-  if (_sbConnected && window.AppPosRepository?.persistSaleItems) {
+  if (_sbConnected && !atomicPosResult.ok && window.AppPosRepository?.persistSaleItems) {
     try {
       const rSI = await window.AppPosRepository.persistSaleItems({
         supabaseClient, factura, ventaRecord, source: 'pos', idGen: dbId
