@@ -194,6 +194,8 @@ let state = {
   inv_traslados: [],      
   cotizaciones: [],
   ordenes_venta: [],
+  prefacturas: [],
+  commercialDocuments: [],
   facturas: [],
   notas_credito: [],
   notas_debito: [],
@@ -2217,6 +2219,15 @@ async function loadState() {
       ventas = v || [];
     }
 
+    let commercialDocs = [];
+    try {
+      commercialDocs = await fetchAllRows('commercial_documents');
+    } catch (e) {
+      console.warn('commercial_documents:', e.message);
+      const { data: docs } = await supabaseClient.from('commercial_documents').select('*');
+      commercialDocs = docs || [];
+    }
+
     // Productos + imágenes + tallas + colores
     const mediaByProduct = {};
     (mediaRows||[]).forEach(m=>{if(!mediaByProduct[m.product_id])mediaByProduct[m.product_id]=[];mediaByProduct[m.product_id].push(m)});
@@ -2293,6 +2304,43 @@ async function loadState() {
       comprobante:v.comprobante||'',
       invoiceId:v.invoice_id!=null&&String(v.invoice_id).trim()!==''?String(v.invoice_id):null,
       stockProductsPendingLines:Array.isArray(v.stock_products_pending)?v.stock_products_pending:[]}));
+
+    const mapCommercialDoc = (d) => ({
+      id:d.id,
+      numero:d.number||'',
+      documentType:d.document_type||'',
+      estado:d.status||'draft',
+      fecha:d.document_date||today(),
+      validUntil:d.valid_until||null,
+      cliente:d.customer_name||'',
+      telefono:d.customer_phone||'',
+      cedulaCliente:d.customer_document||'',
+      direccion:d.customer_address||'',
+      canal:d.channel||'vitrina',
+      observaciones:d.notes||'',
+      items:Array.isArray(d.items)?d.items.map(i=>({
+        articuloId:i.product_id||i.articuloId||i.id||'',
+        nombre:i.name||i.nombre||'',
+        talla:i.size||i.talla||'',
+        cantidad:Number(i.qty||i.cantidad)||1,
+        qty:Number(i.qty||i.cantidad)||1,
+        precio:Number(i.unit_price||i.precio)||0,
+        price:Number(i.unit_price||i.precio)||0
+      })):[],
+      subtotal:Number(d.subtotal)||0,
+      iva:Number(d.tax)||0,
+      flete:Number(d.shipping)||0,
+      total:Number(d.total)||0,
+      parentId:d.parent_id||null,
+      convertedInvoiceId:d.converted_invoice_id||null,
+      metadata:d.metadata||{},
+      createdAt:d.created_at||null,
+      tipo:d.document_type==='proforma'?'proforma':d.document_type
+    });
+    state.commercialDocuments = (commercialDocs||[]).map(mapCommercialDoc);
+    state.cotizaciones = state.commercialDocuments.filter(d=>d.documentType==='quotation');
+    state.ordenes_venta = state.commercialDocuments.filter(d=>d.documentType==='sales_order');
+    state.prefacturas = state.commercialDocuments.filter(d=>d.documentType==='proforma');
 
     // Facturas
     state.facturas = (facturas||[]).map(f=>{
@@ -2827,7 +2875,7 @@ function showPage(id){
 function renderPage(id){
   const renderers={
     dashboard:renderDashboard, pos:renderPOS, ventas_catalogo:renderVentasCatalogo, cotizaciones:renderCotizaciones,
-    ordenes:renderOrdenes, facturas:renderFacturas, notas_credito:renderNotasCredito,
+    ordenes:renderOrdenes, prefacturas:renderPrefacturas, facturas:renderFacturas, notas_credito:renderNotasCredito,
     notas_debito:renderNotasDebito, remisiones:renderRemisiones, devoluciones:renderDevoluciones,
     anticipos_clientes:renderAnticiposClientes, pendientes:renderPendientes, ingresos_egresos:renderIngresosEgresosPage, logistica:renderLogistica, usu_clientes:renderUsuClientes, usu_empleados:renderUsuEmpleados, usu_proveedores:renderUsuProveedores,
     articulos:renderArticulos, inv_trazabilidad:renderInvTrazabilidad,
@@ -3460,7 +3508,86 @@ function clearPOSCart(){
  * factura, descuento de stock e ingreso en caja.
  */
 let _ventaPosEnCurso = false;
+let _posSourceCommercialDocumentId = null;
 function ventaPosEnCurso(){ return _ventaPosEnCurso; }
+
+async function crearPrefacturaDesdePOS(){
+  syncPOSFormState();
+  const cart=state.pos_cart||[];
+  if(!cart.length){
+    notify('warning','🧮','Carrito vacío','Agrega productos antes de generar la prefactura.',{duration:4500});
+    return;
+  }
+  if(!_sbConnected || !supabaseClient){
+    notify('danger','📡','Sin conexión','No se puede guardar la prefactura.',{duration:6000});
+    return;
+  }
+  const subtotal=cart.reduce((a,i)=>a+(Number(i.precio)||0)*(Number(i.qty)||0),0);
+  const tax=posFormState.applyIva?subtotal*0.19:0;
+  const shipping=posFormState.applyFlete?Number(posFormState.flete)||0:0;
+  if(!confirm(`¿Generar prefactura por ${fmt(subtotal+tax+shipping)}? No moverá caja ni inventario.`)) return;
+  const request={
+    document_type:'proforma',
+    status:'issued',
+    document_date:today(),
+    customer_name:posFormState.cliente||'',
+    customer_phone:posFormState.telefono||'',
+    customer_document:posFormState.cedula||'',
+    customer_address:posFormState.direccion||'',
+    channel:posFormState.canal||'vitrina',
+    tax,shipping,
+    notes:'Generada desde el modal de Venta POS',
+    metadata:{origin:'pos_draft'},
+    items:cart.map(i=>({
+      product_id:i.articuloId,
+      name:i.nombre||'',
+      size:i.talla||'',
+      qty:Number(i.qty)||1,
+      unit_price:Number(i.precio)||0
+    }))
+  };
+  const {data,error}=await supabaseClient.rpc('create_commercial_document_v1',{p_request:request});
+  if(error || !data?.ok){
+    notify('danger','⚠️','Prefactura no creada',error?.message||'Supabase rechazó el documento.',{duration:9000});
+    return;
+  }
+  state.pos_cart=[];
+  await loadState();
+  showPage('prefacturas');
+  notify('success','🧮','Prefactura creada',`${data.number} · No movió caja ni inventario.`,{duration:6500});
+}
+window.crearPrefacturaDesdePOS=crearPrefacturaDesdePOS;
+
+function cargarPrefacturaEnPOS(id){
+  const doc=(state.prefacturas||[]).find(d=>String(d.id)===String(id));
+  if(!doc || doc.estado!=='issued'){
+    notify('warning','🧮','Prefactura','No está disponible para facturar.',{duration:4500});
+    return;
+  }
+  state.pos_cart=(doc.items||[]).map(i=>({
+    articuloId:i.articuloId,
+    nombre:i.nombre,
+    talla:i.talla||'',
+    qty:Number(i.qty||i.cantidad)||1,
+    precio:Number(i.precio||i.price)||0
+  }));
+  posFormState={
+    ...posFormState,
+    cliente:doc.cliente||'',
+    telefono:doc.telefono||'',
+    cedula:doc.cedulaCliente||'',
+    direccion:doc.direccion||'',
+    canal:doc.canal||'vitrina',
+    applyIva:Number(doc.iva)>0,
+    applyFlete:Number(doc.flete)>0,
+    flete:Number(doc.flete)||0
+  };
+  _posSourceCommercialDocumentId=doc.id;
+  showPage('pos');
+  renderPOS();
+  notify('info','🧮','Prefactura cargada',`${doc.numero}: revisa el método de pago y pulsa Cobrar.`,{duration:6500});
+}
+window.cargarPrefacturaEnPOS=cargarPrefacturaEnPOS;
 try { window.ventaPosEnCurso = ventaPosEnCurso; } catch (e) {}
 
 async function procesarVentaPOS(opts) {
@@ -3684,6 +3811,7 @@ async function procesarVentaPOSInterno(opts) {
     posFormState,
     supabaseClient,
     idGen: dbId,
+    sourceDocumentId: _posSourceCommercialDocumentId,
   });
   if (!atomicPosResult.ok) {
     notify(
@@ -3695,6 +3823,7 @@ async function procesarVentaPOSInterno(opts) {
     );
     return;
   }
+  _posSourceCommercialDocumentId = null;
 
   numFactura = String(atomicPosResult.data.invoice_number || numFactura);
   factura.numero = numFactura;
@@ -5520,15 +5649,54 @@ async function saveDoc(collection,tipo){
     return;
   }
   return window.AppDocumentsModule.saveDoc({
-      state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt,
+      state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt, loadState,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; }
     });
 }
 
+async function transitionCommercialDocument(id, action){
+  if(!_sbConnected || !supabaseClient){
+    notify('danger','📡','Sin conexión','La transición requiere conexión con Supabase.',{duration:7000});
+    return;
+  }
+  const labels={
+    quote_to_order:'convertir esta cotización en una Orden confirmada y reservar inventario',
+    confirm_order:'confirmar esta Orden y reservar inventario',
+    order_to_proforma:'generar una Prefactura desde esta Orden',
+    cancel:'cancelar este documento'
+  };
+  if(!confirm(`¿Deseas ${labels[action]||action}?`)) return;
+  const rpc=action==='confirm_order'?'confirm_sales_order_v1':'transition_commercial_document_v1';
+  const args=action==='confirm_order'
+    ? {p_document_id:id}
+    : {p_document_id:id,p_action:action};
+  const {data,error}=await supabaseClient.rpc(rpc,args);
+  if(error || !data?.ok){
+    notify('danger','⚠️','No se pudo completar',error?.message||'Transición rechazada.',{duration:9000});
+    return;
+  }
+  await loadState();
+  const page=action==='quote_to_order'?'ordenes':action==='order_to_proforma'?'prefacturas':document.querySelector('.page.active')?.id?.replace('page-','');
+  showPage(page);
+  notify('success','✅','Flujo actualizado',`${data.number||''}`,{duration:5000});
+}
+window.transitionCommercialDocument=transitionCommercialDocument;
+
 
 function viewDoc(collection,id){
   const doc=(state[collection]||[]).find(d=>d.id===id);if(!doc)return;
+  const isCommercial=!!doc.documentType;
+  const commercialActions=
+    doc.documentType==='quotation'&&!['accepted','cancelled','expired'].includes(doc.estado)
+      ? `<button class="btn btn-primary btn-sm" onclick="closeModal();transitionCommercialDocument('${id}','quote_to_order')">→ Crear Orden</button>`
+    : doc.documentType==='sales_order'&&doc.estado==='draft'
+      ? `<button class="btn btn-primary btn-sm" onclick="closeModal();transitionCommercialDocument('${id}','confirm_order')">✓ Confirmar y reservar</button>`
+    : doc.documentType==='sales_order'&&doc.estado==='confirmed'
+      ? `<button class="btn btn-primary btn-sm" onclick="closeModal();transitionCommercialDocument('${id}','order_to_proforma')">→ Crear Proforma</button>`
+    : doc.documentType==='proforma'&&doc.estado==='issued'
+      ? `<button class="btn btn-primary btn-sm" onclick="closeModal();cargarPrefacturaEnPOS('${id}')">→ Facturar en POS</button>`
+    : '';
   openModal(`
     <div class="modal-title">${doc.numero}<button class="modal-close" onclick="closeModal()">×</button></div>
     <div class="grid-2" style="margin-bottom:16px">
@@ -5545,9 +5713,9 @@ function viewDoc(collection,id){
     ${doc.observaciones?'<div style="margin-top:12px;font-size:12px;color:var(--text2)">'+doc.observaciones+'</div>':''}
     <div class="btn-group" style="margin-top:16px;flex-wrap:wrap;gap:8px">
       <button type="button" class="btn btn-primary btn-sm" onclick="printDoc('${collection}','${id}')">🖨 Imprimir</button>
-      ${collection === 'cotizaciones' || collection === 'facturas' ? `<button type="button" class="btn btn-secondary btn-sm" onclick="downloadDocPdf('${collection}','${id}')">📄 Descargar PDF</button>` : ''}
-      ${doc.estado!=='pagada'?`<button type="button" class="btn btn-sm" style="background:rgba(74,222,128,.15);color:var(--green);border:1px solid rgba(74,222,128,.3)" onclick="changeDocStatus('${collection}','${id}','pagada')">${collection==='facturas'?'💵 Cobrar':'✓ Marcar Pagada'}</button>`:''}
-      ${doc.estado!=='anulada'?`<button type="button" class="btn btn-sm btn-danger" onclick="changeDocStatus('${collection}','${id}','anulada')">✕ Anular</button>`:''}
+      ${['cotizaciones','prefacturas','facturas'].includes(collection) ? `<button type="button" class="btn btn-secondary btn-sm" onclick="downloadDocPdf('${collection}','${id}')">📄 Descargar PDF</button>` : ''}
+      ${isCommercial?commercialActions:(doc.estado!=='pagada'?`<button type="button" class="btn btn-sm" style="background:rgba(74,222,128,.15);color:var(--green);border:1px solid rgba(74,222,128,.3)" onclick="changeDocStatus('${collection}','${id}','pagada')">${collection==='facturas'?'💵 Cobrar':'✓ Marcar Pagada'}</button>`:'')}
+      ${isCommercial?(doc.estado!=='cancelled'&&doc.estado!=='converted'?`<button type="button" class="btn btn-sm btn-danger" onclick="closeModal();transitionCommercialDocument('${id}','cancel')">✕ Cancelar</button>`:''):(doc.estado!=='anulada'?`<button type="button" class="btn btn-sm btn-danger" onclick="changeDocStatus('${collection}','${id}','anulada')">✕ Anular</button>`:'')}
     </div>
   `);
 }
@@ -5622,7 +5790,7 @@ function printDoc(collection,id){
 
 /** PDF descargable (Cotizaciones / Facturas). Usa totales guardados en el documento + jsPDF en cliente. */
 async function downloadDocPdf(collection, id) {
-  if (collection !== 'cotizaciones' && collection !== 'facturas') return;
+  if (!['cotizaciones','prefacturas','facturas'].includes(collection)) return;
   const doc = (state[collection] || []).find((d) => String(d.id) === String(id));
   if (!doc) {
     notify('warning', 'PDF', 'No encontrado', 'No hay documento en la sesión actual. Recarga si hace falta.', { duration: 5000 });
@@ -5644,6 +5812,7 @@ async function downloadDocPdf(collection, id) {
 
 function renderCotizaciones(){_docItems=[];renderDocumentList('cotizaciones','Cotización','cotizaciones','cotizacion')}
 function renderOrdenes(){_docItems=[];renderDocumentList('ordenes','Orden de Venta','ordenes_venta','orden')}
+function renderPrefacturas(){_docItems=[];renderDocumentList('prefacturas','Prefactura / Proforma','prefacturas','prefactura')}
 function renderFacturas(){_docItems=[];renderDocumentList('facturas','Factura','facturas','factura')}
 function renderNotasCredito(){_docItems=[];renderDocumentList('notas_credito','Nota Crédito','notas_credito','nc')}
 function renderNotasDebito(){_docItems=[];renderDocumentList('notas_debito','Nota Débito','notas_debito','nd')}

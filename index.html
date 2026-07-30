@@ -79,18 +79,18 @@
 <script defer src="./src/js/modules/app/caja-logic.js?v=20260328legacycaja"></script>
 <script defer src="./src/js/modules/app/state.js?v=20260327caja1"></script>
 <script defer src="./src/js/modules/app/pos-service.js?v=20260730blind1"></script>
-<script defer src="./src/js/modules/app/pos-repository.js?v=20260730blind1"></script>
-<script defer src="./src/js/modules/app/pos-view.js?v=20260730blind1"></script>
+<script defer src="./src/js/modules/app/pos-repository.js?v=20260730commercial2"></script>
+<script defer src="./src/js/modules/app/pos-view.js?v=20260730commercial2"></script>
 <script defer src="./src/js/modules/app/pos-controller.js?v=20260322pos3"></script>
 <script defer src="./src/js/modules/app/users-module.js?v=20260710nomliq1"></script>
-<script defer src="./src/js/modules/app/documents-module.js?v=20260730facthoy1"></script>
-<script defer src="./src/js/modules/app/document-pdf.js?v=20260328pdf"></script>
+<script defer src="./src/js/modules/app/documents-module.js?v=20260730commercial3"></script>
+<script defer src="./src/js/modules/app/document-pdf.js?v=20260730commercial3"></script>
 <script defer src="./src/js/modules/app/inventory-module.js?v=20260531cxpremoval1"></script>
 <script defer src="./src/js/modules/app/nomina-params.js?v=20260710nomliq1"></script>
 <script defer src="./src/js/modules/app/nomina-module.js?v=20260710nomliq1"></script>
 <script defer src="./src/js/modules/app/treasury-module.js?v=20260730trace1"></script>
 <script defer src="./src/js/modules/app/ingresos-egresos-module.js?v=20260326iefecha"></script>
-<script defer src="./src/js/modules/app/ventas-consolidado-module.js?v=20260531costo1"></script>
+<script defer src="./src/js/modules/app/ventas-consolidado-module.js?v=20260730commercial2"></script>
 <script defer src="./src/js/modules/app/cxp-proveedores-module.js?v=20260531cxpkpis1"></script>
 <script defer src="./src/js/modules/app/game-system-module.js?v=20260503canalpend"></script>
 <script defer src="./src/js/modules/app/separados-module.js?v=20260322comp2"></script>
@@ -102,7 +102,7 @@
 <script defer src="./src/js/modules/app/product-intelligence-module.js?v=20260720pi3"></script>
 <script defer src="./src/js/modules/app/ai-center-module.js?v=20260720ai4"></script>
 <script defer src="./src/js/utils/product-ref.js?v=20260720heraref1"></script>
-<script defer src="./src/js/modules/core.js?v=20260730clean1"></script><script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
+<script defer src="./src/js/modules/core.js?v=20260730commercial3"></script><script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
 
 </head>
 <body>
@@ -201,6 +201,7 @@
     <div class="nav-item" onclick="showPage('separados')"><span class="nav-icon">🛍️</span>Ver Separados</div>
     <div class="nav-item" onclick="showPage('cotizaciones')"><span class="nav-icon">📋</span>Cotizaciones</div>
     <div class="nav-item" onclick="showPage('ordenes')"><span class="nav-icon">📄</span>Órdenes de Venta</div>
+    <div class="nav-item" onclick="showPage('prefacturas')"><span class="nav-icon">🧮</span>Prefacturas / Proforma</div>
     <div class="nav-item" onclick="showPage('facturas')"><span class="nav-icon">🧾</span>Facturas</div>
     <div class="nav-item" onclick="showPage('ventas_consolidado')"><span class="nav-icon">📈</span>Consolidado</div>
     <div class="nav-item" onclick="showPage('notas_credito')"><span class="nav-icon">↩</span>Notas Crédito</div>
@@ -280,6 +281,7 @@
 </div>
   <div class="page" id="page-cotizaciones"><div class="page-title">Cotizaciones</div><div id="cotizaciones-content"></div></div>
   <div class="page" id="page-ordenes"><div class="page-title">Órdenes de Venta</div><div id="ordenes-content"></div></div>
+  <div class="page" id="page-prefacturas"><div class="page-title">Prefacturas / Proforma</div><div id="prefacturas-content"></div></div>
   <div class="page" id="page-facturas"><div class="page-title">Facturas de Venta</div><div id="facturas-content"></div></div>
   <div class="page" id="page-ventas_consolidado"><div class="page-title">Consolidado de ventas</div><div id="ventas_consolidado-content"></div></div>
   <div class="page" id="page-notas_credito"><div class="page-title">Notas Crédito de Venta</div><div id="notas_credito-content"></div></div>

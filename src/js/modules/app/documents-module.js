@@ -64,7 +64,12 @@
       hasta = hoy;
     }
 
-    const baseItems = normalizeCollectionList(state?.[collection]);
+    const baseItems = collection === 'facturas'
+      ? [
+          ...normalizeCollectionList(state?.facturas),
+          ...normalizeCollectionList(state?.prefacturas).map((d) => ({ ...d, _docCollection: 'prefacturas' }))
+        ]
+      : normalizeCollectionList(state?.[collection]);
     let items = [...baseItems].sort(compareDocsMasRecientePrimero);
     if (q) {
       items = items.filter((d) => {
@@ -85,32 +90,60 @@
     const { state, pageId, title, collection, tipo, formatDate, fmt } = ctx;
     const el = document.getElementById(pageId + '-content'); if (!el) return;
     const { items, q, desde, hasta } = getFilteredItems(state, collection, pageId);
-    const total = normalizeCollectionList(state?.[collection]).length;
+    const total = collection === 'facturas'
+      ? normalizeCollectionList(state?.facturas).length + normalizeCollectionList(state?.prefacturas).length
+      : normalizeCollectionList(state?.[collection]).length;
     const tbodyId = pageId + '-doc-tbody';
     const contId = pageId + '-doc-count';
     const origenBadge = (d) => {
+      if (collection === 'prefacturas' || d.documentType === 'proforma' || d.tipo === 'proforma') {
+        return '<span class="badge badge-warn" style="font-size:9px">PROFORMA · NO FISCAL</span>';
+      }
       if (collection !== 'facturas') return '';
       const t = (d.tipo || 'pos').toLowerCase();
       if (t === 'pos') return '<span class="badge badge-inter" style="font-size:9px">POS</span>';
       if (t === 'manual') return '<span class="badge badge-warn" style="font-size:9px">Manual</span>';
       return `<span class="badge badge-vitrina" style="font-size:9px">${String(d.tipo || '—')}</span>`;
     };
+    const statusLabel = (s) => ({
+      draft:'borrador',sent:'enviada',accepted:'aceptada',confirmed:'confirmada',
+      issued:'emitida',converted:'convertida',cancelled:'cancelada',expired:'vencida'
+    }[s] || s || 'borrador');
+    const actionButtons = (d) => {
+      if (d.documentType === 'quotation' && !['accepted','cancelled','expired'].includes(d.estado)) {
+        return `<button type="button" class="btn btn-xs btn-primary" onclick="transitionCommercialDocument('${d.id}','quote_to_order')">→ Orden</button>`;
+      }
+      if (d.documentType === 'sales_order' && d.estado === 'confirmed') {
+        return `<button type="button" class="btn btn-xs btn-primary" onclick="transitionCommercialDocument('${d.id}','order_to_proforma')">→ Proforma</button>`;
+      }
+      if (d.documentType === 'sales_order' && d.estado === 'draft') {
+        return `<button type="button" class="btn btn-xs btn-primary" onclick="transitionCommercialDocument('${d.id}','confirm_order')">✓ Confirmar / reservar</button>`;
+      }
+      if (d.documentType === 'proforma' && d.estado === 'issued') {
+        return `<button type="button" class="btn btn-xs btn-primary" onclick="cargarPrefacturaEnPOS('${d.id}')">→ Facturar</button>`;
+      }
+      return '';
+    };
     const colspanList = collection === 'facturas' ? 8 : 6;
-    const rowsHtml = items.map((d) => `<tr>
+    const rowsHtml = items.map((d) => {
+      const rowCollection = d._docCollection || collection;
+      return `<tr>
     <td style="font-weight:700">${d.numero || '—'} ${origenBadge(d)}</td>
     ${collection === 'facturas' ? `<td style="font-size:11px;color:var(--text2)">${d.canal === 'local' ? '🛵' : d.canal === 'inter' ? '📦' : '🏪'} ${d.canal || 'vitrina'}</td>` : ''}
     <td>${formatDate(d.fecha)}</td>
     <td>${d.cliente || '—'}</td>
     ${collection === 'facturas' ? `<td style="vertical-align:top">${fmtComprobanteFacturaCell(d.comprobante)}</td>` : ''}
     <td style="color:var(--accent);font-weight:700">${fmt(d.total || 0)}</td>
-    <td><span class="badge badge-${d.estado === 'pagada' || d.estado === 'aprobada' ? 'ok' : d.estado === 'anulada' ? 'pend' : 'warn'}">${d.estado || 'borrador'}</span></td>
+    <td><span class="badge badge-${['pagada','aprobada','accepted','confirmed','issued','converted'].includes(d.estado) ? 'ok' : ['anulada','cancelled','expired'].includes(d.estado) ? 'pend' : 'warn'}">${statusLabel(d.estado)}</span></td>
     <td><div class="btn-group" style="flex-wrap:wrap;gap:4px">
-      <button type="button" class="btn btn-xs btn-secondary" onclick="viewDoc('${collection}','${d.id}')">👁</button>
-      <button type="button" class="btn btn-xs btn-secondary" onclick="printDoc('${collection}','${d.id}')">🖨</button>
-      ${collection === 'cotizaciones' || collection === 'facturas' ? `<button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF" onclick="downloadDocPdf('${collection}','${d.id}')">📄 PDF</button>` : ''}
-      <button type="button" class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d.id}')">✕</button>
+      <button type="button" class="btn btn-xs btn-secondary" onclick="viewDoc('${rowCollection}','${d.id}')">👁</button>
+      <button type="button" class="btn btn-xs btn-secondary" onclick="printDoc('${rowCollection}','${d.id}')">🖨</button>
+      ${['cotizaciones','prefacturas','facturas'].includes(rowCollection) ? `<button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF" onclick="downloadDocPdf('${rowCollection}','${d.id}')">📄 PDF</button>` : ''}
+      ${actionButtons(d)}
+      ${d.documentType ? `<button type="button" class="btn btn-xs btn-danger" onclick="transitionCommercialDocument('${d.id}','cancel')">✕</button>` : `<button type="button" class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d.id}')">✕</button>`}
     </div></td>
-  </tr>`).join('') || `<tr><td colspan="${colspanList}" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>`;
+  </tr>`;
+    }).join('') || `<tr><td colspan="${colspanList}" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>`;
 
     if (document.getElementById(tbodyId)) {
       document.getElementById(tbodyId).innerHTML = rowsHtml;
@@ -141,6 +174,9 @@
     </div>
     <div class="card" style="margin-bottom:12px;padding:12px 14px;font-size:12px;color:var(--text2)">
       ${collection === 'facturas' ? '<b>Orden:</b> más recientes primero (fecha y hora). Al abrir se muestra <b>solo el día de hoy</b>; usa las fechas o Limpiar para ver histórico. POS y + Factura viven en la misma tabla (<code>invoices</code>).' : ''}
+      ${collection === 'cotizaciones' ? '<b>Cotización:</b> propuesta comercial. No reserva inventario, no mueve caja y no es una venta.' : ''}
+      ${collection === 'ordenes_venta' ? '<b>Orden confirmada:</b> compromiso de compra. Reserva inventario, pero no descuenta existencias ni mueve caja.' : ''}
+      ${collection === 'prefacturas' ? '<b>Prefactura / Proforma:</b> vista previa no fiscal. No descuenta inventario ni mueve caja; se factura desde el POS.' : ''}
     </div>
     <div class="card">
       <div class="card-title">${title.toUpperCase()} — <span id="${contId}">${items.length} de ${total}</span></div>
@@ -153,10 +189,10 @@
 
   function openDocModal(ctx) {
     const { state, openModal, addDocItem, collection, tipo, today, fmt } = ctx;
-    const tipos = { cotizacion: 'Cotización', orden: 'Orden de Venta', factura: 'Factura', nc: 'Nota Crédito', nd: 'Nota Débito', remision: 'Remisión', devolucion: 'Devolución', anticipo_cliente: 'Anticipo Cliente' };
+    const tipos = { cotizacion: 'Cotización', orden: 'Orden de Venta', prefactura: 'Prefactura / Proforma', factura: 'Factura', nc: 'Nota Crédito', nd: 'Nota Débito', remision: 'Remisión', devolucion: 'Devolución', anticipo_cliente: 'Anticipo Cliente' };
     const label = tipos[tipo] || tipo;
     const facturasRef = normalizeCollectionList(state?.facturas);
-    const ivaToggleCollections = new Set(['cotizaciones', 'ordenes_venta', 'facturas']);
+    const ivaToggleCollections = new Set(['cotizaciones', 'ordenes_venta', 'prefacturas', 'facturas']);
     const showIvaToggle = ivaToggleCollections.has(collection);
     const ivaCheckedByDefault = collection !== 'facturas';
     openModal(`
@@ -280,7 +316,7 @@
   }
 
   async function saveDoc(ctx) {
-    const { state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt } = ctx;
+    const { state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt, loadState } = ctx;
     const nextId = typeof dbId === 'function' ? dbId : uid;
     const fecha = document.getElementById('m-doc-fecha').value || today();
     const cliente = document.getElementById('m-doc-cliente').value.trim();
@@ -315,6 +351,42 @@
         precio: p
       };
     });
+    const commercialType = {
+      cotizaciones:'quotation',
+      ordenes_venta:'sales_order',
+      prefacturas:'proforma'
+    }[collection] || null;
+    if (commercialType) {
+      const request = {
+        document_type:commercialType,
+        status:commercialType === 'proforma' ? 'issued' : 'draft',
+        document_date:fecha,
+        customer_name:cliente,
+        notes:obs,
+        tax:iva,
+        shipping:0,
+        channel:'vitrina',
+        items:itemsNormalized.map(i=>({
+          product_id:i.articuloId && i.articuloId !== 'custom' ? i.articuloId : null,
+          name:i.nombre,
+          size:i.talla||'',
+          qty:i.cantidad,
+          unit_price:i.precio
+        }))
+      };
+      const {data,error}=await supabaseClient.rpc('create_commercial_document_v1',{p_request:request});
+      if(error || !data?.ok){
+        notify('danger','⚠️','Documento no creado',error?.message||'Supabase rechazó el documento.',{duration:9000});
+        return;
+      }
+      ctx.setDocItems([]);
+      closeModal();
+      if(typeof loadState === 'function') await loadState();
+      const page=commercialType==='quotation'?'cotizaciones':commercialType==='sales_order'?'ordenes':'prefacturas';
+      if(typeof global.showPage === 'function') global.showPage(page);
+      notify('success','✅','Documento creado',`${data.number} · ${fmt(data.total)}`,{duration:4000});
+      return;
+    }
     const docTipo = collection === 'facturas' ? 'manual' : tipo;
     const docData = {
       id: nextId(),

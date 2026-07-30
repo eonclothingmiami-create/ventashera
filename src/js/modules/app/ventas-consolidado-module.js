@@ -91,15 +91,38 @@
 
   // ---- fuente de datos (central; fallback seguro) ----
   function getBaseRows(includeAnuladas) {
+    let sales = [];
     if (typeof global.getSaleItemsReportRows === 'function') {
       try {
-        return global.getSaleItemsReportRows(includeAnuladas ? { includeAnuladas: true } : undefined) || [];
+        sales = global.getSaleItemsReportRows(includeAnuladas ? { includeAnuladas: true } : undefined) || [];
       } catch (e) {
         console.warn('[VentasConsolidado] getSaleItemsReportRows:', e && e.message);
       }
     }
     const st = (_ctx && _ctx.state) || global.state || {};
-    return Array.isArray(st.saleItems) ? st.saleItems.slice() : [];
+    if (!sales.length) sales = Array.isArray(st.saleItems) ? st.saleItems.slice() : [];
+    const proformas = (Array.isArray(st.prefacturas) ? st.prefacturas : [])
+      .filter((d) => includeAnuladas || !['cancelled','converted'].includes(String(d.estado||'')))
+      .flatMap((d) => (d.items||[]).map((i,idx) => ({
+        id:`proforma:${d.id}:${idx}`,
+        invoiceId:d.id,
+        invoiceNumber:d.numero,
+        productId:i.articuloId||'',
+        productRef:'',
+        productName:i.nombre||'',
+        talla:i.talla||'',
+        qty:Number(i.qty||i.cantidad)||0,
+        unitPrice:Number(i.precio||i.price)||0,
+        subtotal:(Number(i.qty||i.cantidad)||0)*(Number(i.precio||i.price)||0),
+        canal:d.canal||'vitrina',
+        clienteNombre:d.cliente||'',
+        clienteTelefono:d.telefono||'',
+        fecha:d.fecha,
+        fechaHora:d.createdAt||`${d.fecha}T00:00:00`,
+        source:'proforma',
+        isProforma:true
+      })));
+    return sales.concat(proformas);
   }
 
   // ---- lectura de filtros desde el DOM (null-safe) ----
@@ -175,7 +198,16 @@
     let unidades = 0;
     const facturas = new Set();
     const porArticulo = Object.create(null);
+    let proformaCop = 0;
+    let proformaCount = 0;
+    const proformas = new Set();
     rows.forEach((r) => {
+      if (r.isProforma || r.source === 'proforma') {
+        proformaCop += Number(r.subtotal) || 0;
+        const pk=r.invoiceId||r.invoiceNumber;
+        if(pk) proformas.add(String(pk));
+        return;
+      }
       totalCop += Number(r.subtotal) || 0;
       const q = Number(r.qty) || 0;
       unidades += q;
@@ -186,6 +218,7 @@
       porArticulo[nombre] = (porArticulo[nombre] || 0) + q;
     });
     const numFacturas = facturas.size;
+    proformaCount = proformas.size;
     let topNombre = '—';
     let topQty = 0;
     Object.keys(porArticulo).forEach((k) => {
@@ -203,6 +236,8 @@
       ticketProm: numFacturas ? totalCop / numFacturas : 0,
       topNombre,
       topQty,
+      proformaCop,
+      proformaCount,
     };
   }
 
@@ -221,6 +256,7 @@
       card('Líneas', fmtNum(k.lineas)) +
       card('Facturas únicas', fmtNum(k.numFacturas)) +
       card('Ticket promedio', fmtCOP(k.ticketProm)) +
+      card('Proformas pendientes', fmtCOP(k.proformaCop), `${fmtNum(k.proformaCount)} documento(s) · no suma ventas`) +
       card('Top artículo (uds)', esc(k.topNombre), `${fmtNum(k.topQty)} uds`) +
       `</div>`
     );
@@ -235,7 +271,7 @@
         (r) => `<tr>
         <td>${esc(fmtFecha(rowFechaYmd(r)))}</td>
         <td style="color:var(--text2)">${esc(rowHora(r) || '—')}</td>
-        <td>${esc(r.invoiceNumber || '—')}</td>
+        <td>${esc(r.invoiceNumber || '—')}${r.isProforma ? '<div><span class="badge badge-warn" style="font-size:9px">PROFORMA · NO VENTA</span></div>' : ''}</td>
         <td>${esc(r.clienteNombre || '—')}${r.clienteTelefono ? `<div style="font-size:10px;color:var(--text2)">${esc(r.clienteTelefono)}</div>` : ''}</td>
         <td>${esc(r.productName || '—')}</td>
         <td style="color:var(--text2)">${esc(r.productRef || '—')}</td>
@@ -245,7 +281,7 @@
         <td style="text-align:right;color:var(--text2)">${fmtCOP(rowCostUnit(r))}</td>
         <td style="text-align:right;font-weight:700;color:var(--accent)">${fmtCOP(r.subtotal)}</td>
         <td>${esc(r.canal || '—')}</td>
-        <td style="text-align:right"><button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF de factura" data-vc-pdf data-vc-pdf-iid="${esc(r.invoiceId || '')}" data-vc-pdf-inum="${esc(r.invoiceNumber || '')}">PDF</button></td>
+        <td style="text-align:right">${r.isProforma ? '<span style="font-size:10px;color:var(--text2)">No fiscal</span>' : `<button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF de factura" data-vc-pdf data-vc-pdf-iid="${esc(r.invoiceId || '')}" data-vc-pdf-inum="${esc(r.invoiceNumber || '')}">PDF</button>`}</td>
       </tr>`,
       )
       .join('');

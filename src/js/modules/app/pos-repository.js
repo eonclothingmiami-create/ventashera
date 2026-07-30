@@ -172,6 +172,7 @@
     const operationId = nextId();
     const request = {
       operation_id: operationId,
+      source_document_id: o.sourceDocumentId || null,
       invoice: {
         id: factura.id,
         fecha: factura.fecha,

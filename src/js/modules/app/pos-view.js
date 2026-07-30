@@ -392,6 +392,7 @@
             </label>
           </div>
           <button class="btn btn-primary" style="width:100%" onclick="procesarVentaPOS()" ${cart.length === 0 || ventaEnCurso || (global.AppSyncGuard && global.AppSyncGuard.isBusy()) ? 'disabled' : ''} title="${ventaEnCurso ? 'Registrando la venta…' : (global.AppSyncGuard && global.AppSyncGuard.isBusy() ? global.AppSyncGuard.waitMessage : '')}">${ventaEnCurso ? '⏳ Registrando…' : `💰 Cobrar ${fmt(total)}`}</button>
+          <button class="btn btn-secondary" style="width:100%;margin-top:8px;border-color:var(--accent)" onclick="crearPrefacturaDesdePOS()" ${cart.length === 0 || ventaEnCurso ? 'disabled' : ''} title="Genera una proforma no fiscal: no mueve caja ni descuenta inventario">🧮 Generar prefactura ${fmt(total)}</button>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="previewReceipt()">🧾 Vista Previa</button>
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCashDrawer()">🏧 Abrir Cajón</button>

@@ -1,4 +1,4 @@
-// PDF descargable para Cotizaciones y Facturas (jsPDF + autoTable). Reutiliza totales del documento en estado.
+// PDF descargable para Cotizaciones, Prefacturas y Facturas (jsPDF + autoTable).
 (function initDocumentPdf(global) {
   function safeFileSegment(s) {
     return String(s ?? 'doc')
@@ -17,7 +17,7 @@
   /**
    * @param {object} ctx
    * @param {object} ctx.doc — registro cotización/factura del state
-   * @param {'cotizaciones'|'facturas'} ctx.collection
+   * @param {'cotizaciones'|'prefacturas'|'facturas'} ctx.collection
    * @param {object} ctx.state
    * @param {function} ctx.fmt — mismo formateo moneda que el ERP (COP)
    * @param {function} [ctx.notify]
@@ -27,11 +27,13 @@
     const meta =
       collection === 'cotizaciones'
         ? { docTitle: 'COTIZACIÓN', filePrefix: 'cotizacion' }
+        : collection === 'prefacturas'
+          ? { docTitle: 'PREFACTURA / PROFORMA', filePrefix: 'proforma' }
         : collection === 'facturas'
           ? { docTitle: 'FACTURA', filePrefix: 'factura' }
           : null;
     if (!meta) {
-      if (notify) notify('warning', 'PDF', 'No disponible', 'Solo cotizaciones y facturas.', { duration: 4000 });
+      if (notify) notify('warning', 'PDF', 'No disponible', 'Solo cotizaciones, prefacturas y facturas.', { duration: 4000 });
       return;
     }
     const JsPdfCtor = (global.jspdf && global.jspdf.jsPDF) || global.jsPDF;
@@ -119,6 +121,14 @@
       pdf.setTextColor(22, 24, 28);
       pdf.text(`No. ${numero}`, pageW - margin, y, { align: 'right' });
       y += 6;
+      if (collection === 'prefacturas') {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8);
+        pdf.setTextColor(190, 90, 0);
+        pdf.text('DOCUMENTO NO FISCAL · NO ES FACTURA DE VENTA', margin, y);
+        y += 5;
+        pdf.setTextColor(22, 24, 28);
+      }
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
       pdf.text(`Fecha: ${fecha}`, margin, y);
