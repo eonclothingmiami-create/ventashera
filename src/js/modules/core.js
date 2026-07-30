@@ -3583,6 +3583,35 @@ async function procesarVentaPOS(opts) {
   if (!o.skipSyncForm) syncPOSFormState();
   const cart = state.pos_cart || [];
   if(cart.length === 0) return;
+  // #region agent log
+  const _dbgSeq = (window.__dbgVentaSeq = (window.__dbgVentaSeq || 0) + 1);
+  const _dbgPrevEntryAt = window.__dbgVentaLastEntryAt || 0;
+  window.__dbgVentaLastEntryAt = Date.now();
+  try {
+    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
+      body: JSON.stringify({
+        sessionId: 'fd0bf3',
+        runId: 'run1',
+        hypothesisId: 'B',
+        location: 'core.js:3586',
+        message: 'procesarVentaPOS ENTRY',
+        data: {
+          seq: _dbgSeq,
+          msSincePrevEntry: _dbgPrevEntryAt ? Date.now() - _dbgPrevEntryAt : null,
+          committedSoFar: window.__dbgVentaCommitted || 0,
+          entriesWithoutCommit: _dbgSeq - (window.__dbgVentaCommitted || 0),
+          cartLines: cart.length,
+          cartUnits: cart.reduce((a, i) => a + (i.qty || 0), 0),
+          canal: posFormState && posFormState.canal,
+          metodo: posFormState && posFormState.metodo,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  } catch (e) {}
+  // #endregion
   if (_sbConnected && typeof ensureAntiDesyncBefore === 'function') {
     const ad = await ensureAntiDesyncBefore('pos');
     if (!ad.ok) return;
@@ -3886,6 +3915,32 @@ async function procesarVentaPOS(opts) {
   saveConfig('game', state.game);
   saveConfig('consecutivos', state.consecutivos);
 
+  // #region agent log
+  window.__dbgVentaCommitted = (window.__dbgVentaCommitted || 0) + 1;
+  try {
+    fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
+      body: JSON.stringify({
+        sessionId: 'fd0bf3',
+        runId: 'run1',
+        hypothesisId: 'B',
+        location: 'core.js:3889',
+        message: 'procesarVentaPOS about to clear cart (sale committed)',
+        data: {
+          seq: _dbgSeq,
+          numFactura,
+          total,
+          totalHasFractionalCents: Math.round(total) !== total,
+          committedCount: window.__dbgVentaCommitted,
+          cartStillNotEmptyAtCommit: (state.pos_cart || []).length,
+          facturasTotal: (state.facturas || []).length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  } catch (e) {}
+  // #endregion
   state.pos_cart=[];
   const _keepBod = posFormState.bodegaId || window.AppCajaLogic?.getPosBodegaId?.() || 'bodega_main';
   const _keepCaja = posFormState.cajaId || window.AppCajaLogic?.getPosCajaId?.() || '';
@@ -4118,9 +4173,35 @@ async function anularVentaPOS(facturaId){
     }
     factura.estado='anulada';
     factura.posStockAnulacionAplicada=true;
-    await saveRecord('facturas',factura.id,factura);
+    const _okFactura = await saveRecord('facturas',factura.id,factura);
     const venta=(state.ventas||[]).find(v=>String(v.id)===id);
     if(venta)venta.anulada=true;
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
+        body: JSON.stringify({
+          sessionId: 'fd0bf3',
+          runId: 'run1',
+          hypothesisId: 'D',
+          location: 'core.js:4121',
+          message: 'anularVentaPOS persistence outcome',
+          data: {
+            numero: factura.numero || id,
+            saveFacturaReturned: _okFactura,
+            stockAlreadyRestoredInDb: true,
+            ventaRowFoundInMemory: !!venta,
+            ventaRowPersisted: false,
+            ventasMapperHasAnuladaColumn: !!(
+              window.COLLECTION_MAP && window.COLLECTION_MAP.ventas
+            ),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+    // #endregion
     if (typeof renderTesPagosProv === 'function') renderTesPagosProv();
     renderHistorial();
     updateNavBadges();

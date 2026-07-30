@@ -90,6 +90,32 @@
       push({ id: m.id, nombre: m.nombre || m.id });
     });
 
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'fd0bf3' },
+        body: JSON.stringify({
+          sessionId: 'fd0bf3',
+          runId: 'run1',
+          hypothesisId: 'A',
+          location: 'pos-view.js:93',
+          message: 'mergeVitrinaMetodos result',
+          data: {
+            declaredIds: VITRINA_METODOS_CONTADO.map((m) => m.id),
+            renderedIds: out.map((m) => m.id),
+            tarjetaDebitoSurvived: out.some((m) => m.id === 'tarjeta_debito'),
+            tarjetaCreditoSurvived: out.some((m) => m.id === 'tarjeta_credito'),
+            droppedIds: VITRINA_METODOS_CONTADO.map((m) => m.id).filter(
+              (id) => !out.some((o) => o.id === id),
+            ),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+    // #endregion
+
     return out;
   }
 
