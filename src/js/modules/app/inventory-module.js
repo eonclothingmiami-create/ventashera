@@ -429,7 +429,9 @@
 
   function openAjusteModal(ctx) {
     const { state, openModal, getArticuloStock } = ctx;
-    global._ajusteArtsMeta = (state.articulos || []).map((a) => ({
+    global._ajusteArtsMeta = (state.articulos || [])
+      .filter((a) => a.activo !== false)
+      .map((a) => ({
       id: a.id,
       nombre: a.nombre || '',
       codigo: a.codigo || '',
@@ -649,7 +651,7 @@
     const { state, openModal } = ctx;
     openModal(`
     <div class="modal-title">Nuevo Traslado<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-tr-art">${(state.articulos || []).map((a) => '<option value="' + a.id + '">' + a.nombre + '</option>').join('')}</select></div>
+    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-tr-art">${(state.articulos || []).filter((a) => a.activo !== false).map((a) => '<option value="' + a.id + '">' + a.nombre + '</option>').join('')}</select></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">BODEGA ORIGEN</label><select class="form-control" id="m-tr-orig">${(state.bodegas || []).map((b) => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>
       <div class="form-group"><label class="form-label">BODEGA DESTINO</label><select class="form-control" id="m-tr-dest">${(state.bodegas || []).map((b) => '<option value="' + b.id + '">' + b.name + '</option>').join('')}</select></div>

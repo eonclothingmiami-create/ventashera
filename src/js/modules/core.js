@@ -120,6 +120,7 @@ async function importProductsFromSupabase() {
     };
 
     for (const p of products) {
+      if (p.active === false) continue;
       const refKey = (p.ref || '').toUpperCase();
       if (refKey && refsExistentes.has(refKey)) continue;
 
@@ -4248,6 +4249,7 @@ function findArticuloByScanCode(code) {
   const up = normalizeScanAlias(code);
   if (!up) return null;
   return (state.articulos || []).find((a) => {
+    if (a.activo === false) return false;
     const ref = normalizeScanAlias(a.codigo || a.ref || '');
     const alias = normalizeScanAlias(a.scanAlias || '');
     return ref === up || (alias && alias === up);
@@ -4363,6 +4365,43 @@ function renderArticulosList(){
     }).join('');
 }
 
+/**
+ * Baja el artículo de cada canal donde esté publicado antes de archivarlo.
+ * Woo (papelera), Meta (DELETE) y Falabella (status inactive) tienen endpoint de baja;
+ * el catálogo web y el feed de Pinterest se limpian solos porque filtran active/visible.
+ */
+async function unpublishArticuloFromChannels(art) {
+  if (!art) return;
+  const id = art.id;
+  const canales = [];
+  if (typeof window.requestWooCommerceDeleteProduct === 'function') {
+    canales.push(['woo', () => window.requestWooCommerceDeleteProduct(id)]);
+  }
+  if (art.metaCommerceRetailerId && typeof window.requestMetaCommerceSync === 'function') {
+    canales.push(['meta', () => window.requestMetaCommerceSync(id, { method: 'DELETE' })]);
+  }
+  if (art.falabellaSellerSku && typeof window.requestFalabellaProductUpdate === 'function') {
+    canales.push(['falabella', () => window.requestFalabellaProductUpdate(id, { status: 'inactive' })]);
+  }
+  for (const [canal, run] of canales) {
+    try {
+      const res = await run();
+      if (res && res.ok === false && !res.skipped) console.warn('[unpublish:' + canal + ']', res.error || res);
+    } catch (err) {
+      console.warn('[unpublish:' + canal + ']', err);
+    }
+  }
+  if (art.mercadolibreItemId || art.googleMerchantOfferId) {
+    notify(
+      'warning',
+      '🛒',
+      'Bajar publicación manualmente',
+      `${art.nombre}: sigue publicado en ${[art.mercadolibreItemId ? 'Mercado Libre' : '', art.googleMerchantOfferId ? 'Google Merchant' : ''].filter(Boolean).join(' y ')}.`,
+      { duration: 12000 },
+    );
+  }
+}
+
 async function deleteArticulo(id){
   const art = (state.articulos || []).find(a => a.id === id);
   if(!art) return;
@@ -4374,16 +4413,7 @@ async function deleteArticulo(id){
     let action = 'deleted';
 
     if (_sbConnected) {
-      if (typeof window.requestWooCommerceDeleteProduct === 'function') {
-        try {
-          const wooRes = await window.requestWooCommerceDeleteProduct(id);
-          if (wooRes && wooRes.ok === false && !wooRes.skipped) {
-            console.warn('[woo-delete]', wooRes.error || wooRes);
-          }
-        } catch (wooErr) {
-          console.warn('[woo-delete]', wooErr);
-        }
-      }
+      await unpublishArticuloFromChannels(art);
       if (!supabaseClient || typeof supabaseClient.rpc !== 'function') {
         throw new Error('Supabase client no disponible para RPC delete_product_full');
       }
