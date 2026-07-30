@@ -41,10 +41,29 @@
     return docConsecutivo(b) - docConsecutivo(a);
   }
 
+  function ymdHoy() {
+    if (typeof global.today === 'function') return global.today();
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function getFilteredItems(state, collection, pageId) {
-    const q = (document.getElementById(pageId + '-search')?.value || '').toLowerCase();
-    const desde = document.getElementById(pageId + '-desde')?.value || '';
-    const hasta = document.getElementById(pageId + '-hasta')?.value || '';
+    const searchEl = document.getElementById(pageId + '-search');
+    const desdeEl = document.getElementById(pageId + '-desde');
+    const hastaEl = document.getElementById(pageId + '-hasta');
+    const q = (searchEl?.value || '').toLowerCase();
+    let desde = desdeEl?.value || '';
+    let hasta = hastaEl?.value || '';
+
+    // Facturas: al abrir el módulo (primera pintura) filtra el día de hoy.
+    // Sin esto, al listar 1.400+ filas el desorden histórico se siente como "caos".
+    const firstPaint = !document.getElementById(pageId + '-doc-tbody');
+    if (collection === 'facturas' && firstPaint && !q && !desde && !hasta) {
+      const hoy = ymdHoy();
+      desde = hoy;
+      hasta = hoy;
+    }
+
     const baseItems = normalizeCollectionList(state?.[collection]);
     let items = [...baseItems].sort(compareDocsMasRecientePrimero);
     if (q) {
@@ -121,7 +140,7 @@
       </div>
     </div>
     <div class="card" style="margin-bottom:12px;padding:12px 14px;font-size:12px;color:var(--text2)">
-      ${collection === 'facturas' ? '<b>Un solo registro:</b> las facturas <b>POS</b> (POS-…) y las que crees con <b>+ Factura</b> se guardan en la misma tabla (<code>invoices</code>). El POS descuenta inventario; una factura manual solo registra el documento (sin salida de stock automática).' : ''}
+      ${collection === 'facturas' ? '<b>Orden:</b> más recientes primero (fecha y hora). Al abrir se muestra <b>solo el día de hoy</b>; usa las fechas o Limpiar para ver histórico. POS y + Factura viven en la misma tabla (<code>invoices</code>).' : ''}
     </div>
     <div class="card">
       <div class="card-title">${title.toUpperCase()} — <span id="${contId}">${items.length} de ${total}</span></div>

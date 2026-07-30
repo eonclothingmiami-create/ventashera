@@ -32,63 +32,11 @@ let _sbConnected = false;
 // ===================================================================
 
 async function supabaseCall(method, table, data = null, id = null, filters = null) {
-  if (window.AppRepository?.supabaseCall) {
-    return window.AppRepository.supabaseCall(method, table, data, id, filters);
+  if (!window.AppRepository?.supabaseCall) {
+    console.warn('[ERP] AppRepository.supabaseCall no cargado');
+    return;
   }
-  try {
-    let url = `${SUPABASE_URL}/rest/v1/${table}`;
-    let bearer = SUPABASE_ANON_KEY;
-    try {
-      if (supabaseClient?.auth?.getSession) {
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        if (session?.access_token) bearer = session.access_token;
-      }
-    } catch (_) { /* noop */ }
-    const headers = {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${bearer}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    };
-
-    if (method === 'GET') {
-      if (id) url += `?id=eq.${id}`;
-      else if (filters) {
-        const filterStr = Object.entries(filters).map(([k, v]) => `${k}=eq.${v}`).join('&');
-        url += `?${filterStr}`;
-      }
-      const resp = await fetch(url, { method: 'GET', headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.json();
-    }
-
-    if (method === 'POST') {
-      const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(data) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.json();
-    }
-
-    if (method === 'PATCH') {
-      if (!id) throw new Error('ID required for PATCH');
-      url += `?id=eq.${id}`;
-      const resp = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(data) });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return await resp.json();
-    }
-
-    if (method === 'DELETE') {
-      if (!id) throw new Error('ID required for DELETE');
-      url += `?id=eq.${id}`;
-      const resp = await fetch(url, { method: 'DELETE', headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return { success: true };
-    }
-
-    throw new Error(`Método ${method} no soportado`);
-  } catch (err) {
-    console.error(`Supabase error [${method} ${table}]:`, err);
-    throw err;
-  }
+  return window.AppRepository.supabaseCall(method, table, data, id, filters);
 }
 
 // ===================================================================
@@ -1365,29 +1313,14 @@ function getArticuloStock(artId, bodegaId) {
 
 // Carga paginada usando REST directo (evita DataCloneError del SDK)
 async function erpRestFetch(url) {
-  if (window.AppRepository?.fetchWithAuth) {
-    return window.AppRepository.fetchWithAuth(url, {
+  if (!window.AppRepository?.fetchWithAuth) {
+    console.warn('[ERP] AppRepository.fetchWithAuth no cargado');
+    return;
+  }
+  return window.AppRepository.fetchWithAuth(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
-  }
-  let bearer = SUPABASE_ANON_KEY;
-  try {
-    if (window.AuthSession?.getAuthBearer && supabaseClient) {
-      bearer = await window.AuthSession.getAuthBearer(supabaseClient, SUPABASE_ANON_KEY);
-    } else if (supabaseClient?.auth?.getSession) {
-      const { data: { session } } = await supabaseClient.auth.getSession();
-      if (session?.access_token) bearer = session.access_token;
-    }
-  } catch (_) { /* noop */ }
-  return fetch(url, {
-    method: 'GET',
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${bearer}`,
-      'Content-Type': 'application/json',
-    },
-  });
 }
 
 // Tablas donde `created_at` no existe: se resuelve al primer intento y se recuerda.
@@ -3265,47 +3198,14 @@ function renderDashboard(){
 // ===== POS (Point of Sale) =====
 // ===================================================================
 function syncPOSFormState() {
-  if (window.AppPosController?.syncFormState) {
-    window.AppPosController.syncFormState(state, posFormState);
+  if (!window.AppPosController?.syncFormState) {
+    console.warn('[ERP] AppPosController.syncFormState no cargado');
     return;
   }
-  const c = document.getElementById('pos-canal'); if(c) posFormState.canal = c.value;
-  const e = document.getElementById('pos-empresa'); if(e) posFormState.empresa = e.value;
-  const t = document.getElementById('pos-transportadora'); if(t) posFormState.transportadora = t.value;
-  const g = document.getElementById('pos-guia');
-  if(g) posFormState.guia = g.value;
-  else if (posFormState.canal === 'local') posFormState.guia = '';
-  const ci = document.getElementById('pos-ciudad');
-  if(ci) posFormState.ciudad = ci.value;
-  else if (posFormState.canal === 'local') posFormState.ciudad = '';
-  const dir = document.getElementById('pos-direccion'); if(dir) posFormState.direccion = dir.value;
-  else if (posFormState.canal !== 'inter' && posFormState.canal !== 'local') posFormState.direccion = '';
-  const comp = document.getElementById('pos-comprobante'); if(comp) posFormState.comprobante = comp.value;
-  const ced = document.getElementById('pos-cedula'); if(ced) posFormState.cedula = ced.value;
-  const cl = document.getElementById('pos-cliente'); if(cl) posFormState.cliente = cl.value;
-  const tel = document.getElementById('pos-telefono'); if(tel) posFormState.telefono = tel.value;
-  const m = document.getElementById('pos-metodo-pago'); if(m) posFormState.metodo = m.value;
-  const cta = document.getElementById('pos-cuenta'); if(cta) posFormState.cuenta = cta.value;
-  const iva = document.getElementById('pos-apply-iva'); if(iva) posFormState.applyIva = iva.checked;
-  const fleteChk = document.getElementById('pos-apply-flete');
-  if(fleteChk) posFormState.applyFlete = fleteChk.checked;
-  else if (posFormState.canal === 'local') posFormState.applyFlete = true;
-  const fleteVal = document.getElementById('pos-flete-valor'); if(fleteVal) posFormState.flete = parseFloat(fleteVal.value)||0;
-  const tipoPagoEl = document.getElementById('pos-tipo-pago'); if(tipoPagoEl) posFormState.tipoPago = tipoPagoEl.value;
-  const montoRec = document.getElementById('pos-monto-recibido'); if(montoRec) posFormState.montoRecibido = parseFloat(montoRec.value) || '';
-  const mixEfe = document.getElementById('pos-mixto-efectivo'); if(mixEfe) posFormState.mixtoEfectivo = parseFloat(mixEfe.value) || 0;
-  const mixTrf = document.getElementById('pos-mixto-transferencia'); if(mixTrf) posFormState.mixtoTransferencia = parseFloat(mixTrf.value) || 0;
-  const posBod = document.getElementById('pos-bodega'); if (posBod) { posFormState.bodegaId = posBod.value; try { window.AppCajaLogic?.setPosBodegaId?.(posBod.value); } catch (e) {} }
-  const posCaja = document.getElementById('pos-caja'); if (posCaja) { posFormState.cajaId = posCaja.value; try { window.AppCajaLogic?.setPosCajaId?.(posCaja.value); } catch (e) {} }
-  (document.querySelectorAll('[data-pos-price-idx]')||[]).forEach(inp=>{
-    const idx = parseInt(inp.getAttribute('data-pos-price-idx'),10);
-    if(Number.isInteger(idx) && state.pos_cart && state.pos_cart[idx]){
-      state.pos_cart[idx].precio = parseFloat(inp.value)||0;
-    }
-  });
+  window.AppPosController.syncFormState(state, posFormState);
 }
 
-  function calcularVuelto(total) {
+function calcularVuelto(total) {
   const recibido = parseFloat(document.getElementById('pos-monto-recibido').value) || 0;
   const display = document.getElementById('pos-vuelto-display');
   
@@ -3386,72 +3286,42 @@ function updatePOSCartPrice(idx, val) {
 }
 
 function toggleIVA() {
-    if (window.AppPosController?.toggleIVA) {
-        window.AppPosController.toggleIVA(posFormState, renderPOS);
+    if (!window.AppPosController?.toggleIVA) {
+        console.warn('[ERP] AppPosController.toggleIVA no cargado');
         return;
     }
-    const checkbox = document.getElementById('pos-apply-iva');
-    if (checkbox) {
-        posFormState.applyIva = checkbox.checked;
-        renderPOS();
-    }
+    window.AppPosController.toggleIVA(posFormState, renderPOS);
 }
   function toggleFlete() {
-  if (window.AppPosController?.toggleFlete) {
-    window.AppPosController.toggleFlete(posFormState, renderPOS);
+  if (!window.AppPosController?.toggleFlete) {
+    console.warn('[ERP] AppPosController.toggleFlete no cargado');
     return;
   }
-  const checkbox = document.getElementById('pos-apply-flete');
-  if(checkbox) posFormState.applyFlete = checkbox.checked;
-  else if (posFormState.canal === 'local') posFormState.applyFlete = true;
-  const val = document.getElementById('pos-flete-valor');
-  if(val) posFormState.flete = parseFloat(val.value)||0;
-  renderPOS();
+  window.AppPosController.toggleFlete(posFormState, renderPOS);
 }
 
 function handlePOSShippingUI() {
-  if (window.AppPosController?.handleShippingUI) {
-    window.AppPosController.handleShippingUI(state, posFormState);
+  if (!window.AppPosController?.handleShippingUI) {
+    console.warn('[ERP] AppPosController.handleShippingUI no cargado');
     return;
   }
-  const canal = document.getElementById('pos-canal').value;
-  posFormState.canal = canal;
-  const container = document.getElementById('pos-shipping-fields');
-  const empresaSel = document.getElementById('pos-empresa');
-  const transSel = document.getElementById('pos-transportadora');
-  
-  if(canal === 'vitrina') {
-    container.style.display = 'none';
-  } else {
-    container.style.display = 'flex';
-    if(canal === 'local') {
-      empresaSel.innerHTML = `<option value="">— Mensajería Local —</option><option value="MensLocal" ${posFormState.empresa==='MensLocal'?'selected':''}>Mensajería Propia</option><option value="Rappi" ${posFormState.empresa==='Rappi'?'selected':''}>Rappi</option><option value="Picap" ${posFormState.empresa==='Picap'?'selected':''}>Picap</option>`;
-      transSel.style.display = 'none';
-    } else if(canal === 'inter') {
-      empresaSel.innerHTML = `<option value="">— Elija plataforma * —</option><option value="HEKA" ${posFormState.empresa==='HEKA'?'selected':''}>HEKA</option><option value="DROPI" ${posFormState.empresa==='DROPI'?'selected':''}>Dropi</option><option value="Directo" ${posFormState.empresa==='Directo'?'selected':''}>Directo / Otra</option>`;
-      transSel.style.display = 'block';
-      if (transSel.options && transSel.options[0]) transSel.options[0].text = '— Transportadora * —';
-    }
-  }
+  window.AppPosController.handleShippingUI(state, posFormState);
 }
 
 function handlePOSEmpresa() {
-  if (window.AppPosController?.handleEmpresa) {
-    window.AppPosController.handleEmpresa(posFormState);
+  if (!window.AppPosController?.handleEmpresa) {
+    console.warn('[ERP] AppPosController.handleEmpresa no cargado');
     return;
   }
-  posFormState.empresa = document.getElementById('pos-empresa').value;
+  window.AppPosController.handleEmpresa(posFormState);
 }
 
 function renderPOSCategoryTabs(){
-  if (window.AppPosView?.renderPOSCategoryTabs) {
-    window.AppPosView.renderPOSCategoryTabs(state);
+  if (!window.AppPosView?.renderPOSCategoryTabs) {
+    console.warn('[ERP] AppPosView.renderPOSCategoryTabs no cargado');
     return;
   }
-  const cats=[...new Set((state.articulos||[]).map(a=>a.categoria).filter(Boolean))];
-  const el=document.getElementById('pos-cat-tabs');
-  if(!el)return;
-  el.innerHTML=`<div class="tab active" onclick="filterPOSByCategory('')">Todos</div>`+cats.map(c=>`<div class="tab" onclick="filterPOSByCategory('${c}')">${c}</div>`).join('');
+  window.AppPosView.renderPOSCategoryTabs(state);
 }
 
 let _posFilter='';let _posCatFilter='';
@@ -3464,40 +3334,17 @@ function filterPOSByCategory(cat){
 }
 
 function renderPOSProductGrid(){
-  if (window.AppPosView?.renderPOSProductGrid) {
-    window.AppPosView.renderPOSProductGrid({
-      state,
-      posFilter: _posFilter,
-      posCatFilter: _posCatFilter,
-      getArticuloStock,
-      fmt
-    });
+  if (!window.AppPosView?.renderPOSProductGrid) {
+    console.warn('[ERP] AppPosView.renderPOSProductGrid no cargado');
     return;
   }
-  const el=document.getElementById('pos-product-grid');if(!el)return;
-  let items=(state.articulos||[]).filter(a=>a.activo!==false);
-  if(_posFilter)items=items.filter(a=>(a.nombre+a.codigo+(a.scanAlias||'')+a.categoria).toLowerCase().includes(_posFilter));
-  if(_posCatFilter)items=items.filter(a=>a.categoria===_posCatFilter);
-
-  el.innerHTML=items.map(a=>{
-    const stock=getArticuloStock(a.id);
-    const low=stock<=a.stockMinimo;const out=stock<=0;
-  const esVideo = a.imagen && a.imagen.split('?')[0].toLowerCase().match(/\.(mp4|mov|webm|avi)$/);
-const bgImg = (a.imagen && !esVideo) ? `background-image: linear-gradient(to top, rgba(0,0,0,0.8), transparent), url('${a.imagen}'); background-size: cover; background-position: center; color: white; border: none;` : '';
-const videoEl = esVideo ? `<video src="${a.imagen}" autoplay muted loop playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:12px;z-index:0;"></video><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.8),transparent);border-radius:12px;z-index:1;"></div>` : '';
-const videoIcon = (a.video || esVideo) ? `<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border-radius:50%;padding:4px;font-size:12px;z-index:2;">▶️</div>` : '';
-  const codeLabel = a.scanAlias || a.codigo || '';
-
-  return`<div class="product-card ${out?'no-stock':low?'low-stock':''}" style="position:relative; min-height:140px; display:flex; flex-direction:column; justify-content:flex-end; ${esVideo ? 'color:white;border:none;' : bgImg}" onclick="promptTallaYAgregar('${a.id}')">
-  ${videoEl}
-  ${videoIcon}
-  ${!a.imagen && !esVideo ? `<div class="p-emoji">${a.emoji||'👙'}</div>` : ''}
-  <div class="p-name" style="position:relative;z-index:2;${(a.imagen||esVideo)?'text-shadow:0 1px 3px rgba(0,0,0,0.8);':''}">${a.nombre}</div>
-  <div class="p-price" style="position:relative;z-index:2;${(a.imagen||esVideo)?'color:#00e5b4;text-shadow:0 1px 2px rgba(0,0,0,0.8);':''}">${fmt(a.precioVenta)}</div>
-  <div class="p-stock" style="position:relative;z-index:2;${(a.imagen||esVideo)?'color:#ddd;':''}">${out?'❌ Agotado':stock+' en stock'+(low?' ⚠️':'')}</div>
-  ${codeLabel&&!a.imagen&&!esVideo?'<div style="font-size:9px;color:var(--meta);margin-top:2px">'+codeLabel+'</div>':''}
-  
-    </div>`}).join('')||'<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:24px">No se encontraron artículos</div>';
+  window.AppPosView.renderPOSProductGrid({
+    state,
+    posFilter: _posFilter,
+    posCatFilter: _posCatFilter,
+    getArticuloStock,
+    fmt
+  });
 }
 
 function promptTallaYAgregar(artId){
@@ -5449,30 +5296,22 @@ async function saveArticulo(existingId, options) {
 // ===== INVENTORY TRAZABILIDAD =====
 // ===================================================================
 function renderInvTrazabilidad(){
-  if (window.AppInventoryModule?.renderInvTrazabilidad) {
-    return window.AppInventoryModule.renderInvTrazabilidad({ state, formatDate, today });
+  if (!window.AppInventoryModule?.renderInvTrazabilidad) {
+    console.warn('[ERP] AppInventoryModule.renderInvTrazabilidad no cargado');
+    return;
   }
-  const movs=[...(state.inv_movimientos||[])].reverse();
-  document.getElementById('inv_trazabilidad-content').innerHTML=`
-    <div class="card"><div class="card-title">MOVIMIENTOS DE INVENTARIO (${movs.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Bodega</th><th>Tipo</th><th>Cantidad</th><th>Referencia</th><th>Nota</th></tr></thead><tbody>
-    ${movs.map(m=>{const art=(state.articulos||[]).find(a=>a.id===m.articuloId);const bod=(state.bodegas||[]).find(b=>b.id===m.bodegaId);return`<tr><td>${formatDate(m.fecha)}</td><td>${art?.nombre||'—'}</td><td>${bod?.name||'—'}</td><td><span class="badge ${m.cantidad>0?'badge-ok':'badge-pend'}">${m.tipo}</span></td><td style="color:${m.cantidad>0?'var(--green)':'var(--red)'};font-weight:700">${m.cantidad>0?'+':''}${m.cantidad}</td><td>${m.referencia||'—'}</td><td style="color:var(--text2)">${m.nota||'—'}</td></tr>`}).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Sin movimientos</td></tr>'}
-    </tbody></table></div></div>`;
+  return window.AppInventoryModule.renderInvTrazabilidad({ state, formatDate, today });
 }
 
 // ===================================================================
 // ===== INVENTORY AJUSTES =====
 // ===================================================================
 function renderInvAjustes(){
-  if (window.AppInventoryModule?.renderInvAjustes) {
-    return window.AppInventoryModule.renderInvAjustes({ state, formatDate });
+  if (!window.AppInventoryModule?.renderInvAjustes) {
+    console.warn('[ERP] AppInventoryModule.renderInvAjustes no cargado');
+    return;
   }
-  document.getElementById('inv_ajustes-content').innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openAjusteModal()">+ Nuevo Ajuste</button>
-    <div class="card"><div class="card-title">AJUSTES DE INVENTARIO</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th><th></th></tr></thead><tbody>
-    ${[...(state.inv_ajustes||[])].reverse().map(a=>{const art=(state.articulos||[]).find(x=>x.id===a.articuloId);const pos=a.tipo==='entrada'||a.tipo==='devolucion';return`<tr><td>${formatDate(a.fecha)}</td><td>${art?.nombre||'—'}</td><td><span class="badge ${pos?'badge-ok':'badge-pend'}">${a.tipo}</span></td><td style="font-weight:700;color:${pos?'var(--green)':'var(--red)'}">${pos?'+':'−'}${a.cantidad}</td><td>${a.motivo||'—'}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarAjuste('${a.id}')">✕</button></td></tr>`}).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin ajustes</td></tr>'}
-    </tbody></table></div></div>`;
+  return window.AppInventoryModule.renderInvAjustes({ state, formatDate });
 }
 
 async function eliminarAjusteLote(loteId) {
@@ -5484,544 +5323,207 @@ async function eliminarAjusteLote(loteId) {
 }
 
 async function eliminarAjuste(id) {
-  if (window.AppInventoryModule?.eliminarAjuste) {
-    return window.AppInventoryModule.eliminarAjuste({
+  if (!window.AppInventoryModule?.eliminarAjuste) {
+    console.warn('[ERP] AppInventoryModule.eliminarAjuste no cargado');
+    return;
+  }
+  return window.AppInventoryModule.eliminarAjuste({
       state, id, confirm, supabaseClient, renderInvAjustes, renderTesPagosProv, updateNavBadges, notify
     });
-  }
-  if(!confirm('¿Eliminar este ajuste? El stock se revertirá automáticamente.')) return;
-  const a = state.inv_ajustes.find(x => x.id === id);
-  if(!a) return;
-
-  try {
-    // 1. Revertir stock en Supabase y localmente
-    const art = state.articulos.find(x => String(x.id) === String(a.articuloId));
-    if(art) {
-      const revert = a.tipo === 'entrada' || a.tipo === 'devolucion' ? -a.cantidad : a.cantidad;
-      if (window.AppInventoryModule?.syncStockViaRpc) {
-        const newStock = await window.AppInventoryModule.syncStockViaRpc(supabaseClient, a.articuloId, revert);
-        if (newStock != null) art.stock = newStock;
-      } else {
-        const newStock = Math.max(0, (art.stock||0) + revert);
-        await supabaseClient.from('products').update({stock: newStock}).eq('id', a.articuloId);
-        art.stock = newStock;
-      }
-    }
-    // 2. Borrar de inv_ajustes en Supabase
-    await supabaseClient.from('inv_ajustes').delete().eq('id', id);
-
-    // 3. Actualizar estado local
-    state.inv_ajustes = state.inv_ajustes.filter(x => x.id !== id);
-    const movIndex = state.inv_movimientos.findIndex(m =>
-      m.articuloId === a.articuloId && m.tipo === 'ajuste_'+a.tipo && m.nota === a.motivo);
-    if(movIndex !== -1) state.inv_movimientos.splice(movIndex, 1);
-
-    renderInvAjustes();
-    updateNavBadges();
-    notify('success','🗑️','Ajuste eliminado',`Stock de ${art?.nombre||''} revertido.`,{duration:3000});
-
-  } catch(err) {
-    notify('danger','⚠️','Error al eliminar', err.message, {duration:5000});
-    console.error('eliminarAjuste:', err);
-  }
 }
 
 function openAjusteModal(){
-  if (window.AppInventoryModule?.openAjusteModal) {
-    return window.AppInventoryModule.openAjusteModal({ state, openModal, getArticuloStock });
+  if (!window.AppInventoryModule?.openAjusteModal) {
+    console.warn('[ERP] AppInventoryModule.openAjusteModal no cargado');
+    return;
   }
-  openModal(`
-    <div class="modal-title">Nuevo Ajuste de Inventario<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-aj-art">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+' (Stock: '+getArticuloStock(a.id)+')</option>').join('')}</select></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">TIPO</label><select class="form-control" id="m-aj-tipo"><option value="entrada">📥 Entrada</option><option value="salida">📤 Salida</option><option value="devolucion">↩️ Devolución</option></select></div>
-      <div class="form-group"><label class="form-label">CANTIDAD</label><input type="number" class="form-control" id="m-aj-cant" min="1" value="1"></div>
-    </div>
-    <div class="form-group"><label class="form-label">BODEGA</label><select class="form-control" id="m-aj-bod">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-    <div class="form-group"><label class="form-label">MOTIVO</label><input class="form-control" id="m-aj-motivo" placeholder="Motivo del ajuste"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveAjusteInv()">Guardar Ajuste</button>
-  `);
+  return window.AppInventoryModule.openAjusteModal({ state, openModal, getArticuloStock });
 }
 
 async function saveAjusteInv() {
-  if (window.AppInventoryModule?.saveAjusteInv) {
-    return window.AppInventoryModule.saveAjusteInv({
-      state, notify, showLoadingOverlay, supabaseClient, uid, dbId, today, closeModal, renderInvAjustes, renderArticulosList, renderTesPagosProv, updateNavBadges
-    });
-  }
-  if (_sbConnected && typeof ensureAntiDesyncBefore === 'function') {
-    const ad = await ensureAntiDesyncBefore('inventario');
-    if (!ad.ok) return;
-  }
-  const artId = document.getElementById('m-aj-art').value;
-  const tipo = document.getElementById('m-aj-tipo').value;
-  const cant = parseInt(document.getElementById('m-aj-cant').value) || 0;
-  const bodegaId = document.getElementById('m-aj-bod')?.value || 'bodega_main';
-  if(!artId) { notify('warning','⚠️','Selecciona un artículo','',{duration:3000}); return; }
-  if(cant <= 0) return;
-
-  const product = (state.articulos||[]).find(a => String(a.id) === String(artId));
-  if(!product) {
-    notify('danger','⚠️','Artículo no cargado','Recarga la página. No se guardó el ajuste.',{duration:6000});
+  if (!window.AppInventoryModule?.saveAjusteInv) {
+    console.warn('[ERP] AppInventoryModule.saveAjusteInv no cargado');
     return;
   }
-
-  const motivo = document.getElementById('m-aj-motivo').value.trim() || 'Ajuste manual';
-  const qtyFinal = tipo === 'entrada' || tipo === 'devolucion' ? cant : -cant;
-
-  try {
-    showLoadingOverlay('connecting');
-
-    // 1. Guardar en inv_ajustes (tabla visible en el ERP)
-    const ajuste = {
-      id: dbId(), articuloId: artId, bodegaId: bodegaId,
-      tipo, cantidad: cant, motivo, fecha: today()
-    };
-    const { error: ajErr } = await supabaseClient.from('inv_ajustes').insert({
-      id: ajuste.id, articulo_id: artId, bodega_id: bodegaId,
-      tipo, cantidad: cant, motivo, fecha: today()
+  return window.AppInventoryModule.saveAjusteInv({
+      state, notify, showLoadingOverlay, supabaseClient, uid, dbId, today, closeModal, renderInvAjustes, renderArticulosList, renderTesPagosProv, updateNavBadges
     });
-    if(ajErr) throw ajErr;
-
-    // 2. Actualizar stock en products
-    if(product) {
-      const newStock = Math.max(0, (product.stock||0) + qtyFinal);
-      const { error: prodErr } = await supabaseClient.from('products')
-        .update({ stock: newStock }).eq('id', artId);
-      if(prodErr) throw prodErr;
-      product.stock = newStock;
-    }
-
-    // 3. Actualizar estado local
-    if(!state.inv_ajustes) state.inv_ajustes = [];
-    state.inv_ajustes.push(ajuste);
-
-    const mov = {
-      id: dbId(), articuloId: artId, bodegaId: bodegaId,
-      cantidad: qtyFinal, tipo: 'ajuste_'+tipo,
-      fecha: today(), referencia: 'Ajuste', nota: motivo
-    };
-    if(!state.inv_movimientos) state.inv_movimientos = [];
-    state.inv_movimientos.push(mov);
-
-    closeModal();
-    renderInvAjustes();
-    if(document.getElementById('art-tbody')) renderArticulosList();
-    updateNavBadges();
-
-    showLoadingOverlay('hide');
-    notify('success','✅','Ajuste guardado',
-      `${tipo==='entrada'||tipo==='devolucion'?'+':'−'}${cant} uds · Stock: ${product?.stock||0}`,
-      {duration:3500});
-    if (_sbConnected && typeof refreshCriticalSlice === 'function') {
-      try {
-        const rr = await refreshCriticalSlice('inventario');
-        if (!rr.ok) {
-          notify(
-            'warning',
-            '📡',
-            'No se pudo sincronizar',
-            'El ajuste se guardó; la vista puede estar desactualizada. Reintenta.',
-            { duration: 5500 },
-          );
-        }
-      } catch (_) { /* noop */ }
-    }
-
-  } catch(err) {
-    showLoadingOverlay('hide');
-    console.error('Error ajuste:', err);
-    notify('danger','⚠️','Error', err.message, {duration:5000});
-  }
 }
 // ===================================================================
 // ===== INVENTORY TRASLADOS =====
 // ===================================================================
 function renderInvTraslados(){
-  if (window.AppInventoryModule?.renderInvTraslados) {
-    return window.AppInventoryModule.renderInvTraslados({ state, formatDate });
+  if (!window.AppInventoryModule?.renderInvTraslados) {
+    console.warn('[ERP] AppInventoryModule.renderInvTraslados no cargado');
+    return;
   }
-  document.getElementById('inv_traslados-content').innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openTrasladoModal()">+ Nuevo Traslado</button>
-    <div class="card"><div class="card-title">TRASLADOS</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Artículo</th><th>Origen</th><th>Destino</th><th>Cantidad</th><th>Nota</th><th></th></tr></thead><tbody>
-    ${[...(state.inv_traslados||[])].reverse().map(t=>{const art=(state.articulos||[]).find(a=>a.id===t.articuloId);const o=(state.bodegas||[]).find(b=>b.id===t.origenId);const d=(state.bodegas||[]).find(b=>b.id===t.destinoId);return`<tr><td>${formatDate(t.fecha)}</td><td>${art?.nombre||'—'}</td><td>${o?.name||'—'}</td><td>${d?.name||'—'}</td><td style="font-weight:700">${t.cantidad}</td><td>${t.nota||'—'}</td><td><button class="btn btn-xs btn-danger" onclick="eliminarTraslado('${t.id}')">✕</button></td></tr>`}).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Sin traslados</td></tr>'}
-    </tbody></table></div></div>`;
+  return window.AppInventoryModule.renderInvTraslados({ state, formatDate });
 }
 
 async function eliminarTraslado(id) {
-  if (window.AppInventoryModule?.eliminarTraslado) {
-    return window.AppInventoryModule.eliminarTraslado({
+  if (!window.AppInventoryModule?.eliminarTraslado) {
+    console.warn('[ERP] AppInventoryModule.eliminarTraslado no cargado');
+    return;
+  }
+  return window.AppInventoryModule.eliminarTraslado({
       state, id, confirm, renderInvTraslados, notify
     });
-  }
-  if(!confirm('¿Eliminar este traslado? Las prendas volverán automáticamente a su bodega de origen.')) return;
-  const t = state.inv_traslados.find(x => x.id === id);
-  if(!t) return;
-
-  // Revertir la salida de la bodega origen
-  const idxSalida = state.inv_movimientos.findIndex(m => m.articuloId === t.articuloId && m.bodegaId === t.origenId && m.tipo === 'traslado_salida' && m.nota === t.nota);
-  if(idxSalida !== -1) state.inv_movimientos.splice(idxSalida, 1);
-
-  // Revertir la entrada a la bodega destino
-  const idxEntrada = state.inv_movimientos.findIndex(m => m.articuloId === t.articuloId && m.bodegaId === t.destinoId && m.tipo === 'traslado_entrada' && m.nota === t.nota);
-  if(idxEntrada !== -1) state.inv_movimientos.splice(idxEntrada, 1);
-
-  // Borrar registro visual
-  state.inv_traslados = state.inv_traslados.filter(x => x.id !== id);
-  renderInvTraslados();
-  notify('success', '🗑️', 'Traslado revertido', 'Inventario actualizado.');
 }
 
 function openTrasladoModal(){
-  if (window.AppInventoryModule?.openTrasladoModal) {
-    return window.AppInventoryModule.openTrasladoModal({ state, openModal });
+  if (!window.AppInventoryModule?.openTrasladoModal) {
+    console.warn('[ERP] AppInventoryModule.openTrasladoModal no cargado');
+    return;
   }
-  openModal(`
-    <div class="modal-title">Nuevo Traslado<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">ARTÍCULO</label><select class="form-control" id="m-tr-art">${(state.articulos||[]).map(a=>'<option value="'+a.id+'">'+a.nombre+'</option>').join('')}</select></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">BODEGA ORIGEN</label><select class="form-control" id="m-tr-orig">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-      <div class="form-group"><label class="form-label">BODEGA DESTINO</label><select class="form-control" id="m-tr-dest">${(state.bodegas||[]).map(b=>'<option value="'+b.id+'">'+b.name+'</option>').join('')}</select></div>
-    </div>
-    <div class="form-group"><label class="form-label">CANTIDAD</label><input type="number" class="form-control" id="m-tr-cant" min="1" value="1"></div>
-    <div class="form-group"><label class="form-label">NOTA</label><input class="form-control" id="m-tr-nota" placeholder="Nota del traslado"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveTraslado()">Realizar Traslado</button>
-  `);
+  return window.AppInventoryModule.openTrasladoModal({ state, openModal });
 }
 
 async function saveTraslado(){
-  if (window.AppInventoryModule?.saveTraslado) {
-    return window.AppInventoryModule.saveTraslado({
+  if (!window.AppInventoryModule?.saveTraslado) {
+    console.warn('[ERP] AppInventoryModule.saveTraslado no cargado');
+    return;
+  }
+  return window.AppInventoryModule.saveTraslado({
       state, notify, getArticuloStock, uid, dbId, today, saveRecord, closeModal, renderInvTraslados
     });
-  }
-  const artId = document.getElementById('m-tr-art').value;
-  const origId = document.getElementById('m-tr-orig').value;
-  const destId = document.getElementById('m-tr-dest').value;
-  const cant = parseInt(document.getElementById('m-tr-cant').value) || 0;
-  
-  if(cant <= 0 || origId === destId) { notify('warning','⚠️','Error','Verifica los datos.',{duration:3000}); return; }
-  
-  const stockOrig = getArticuloStock(artId, origId);
-  if(stockOrig < cant) { notify('warning','⚠️','Sin stock','No hay suficiente stock en la bodega origen.',{duration:3000}); return; }
-  
-  const nota = document.getElementById('m-tr-nota').value.trim();
-  const traslado = {id: dbId(), articuloId: artId, origenId: origId, destinoId: destId, cantidad: cant, nota, fecha: today()};
-  const movSalida = {id: dbId(), articuloId: artId, bodegaId: origId, cantidad: -cant, tipo: 'traslado_salida', fecha: today(), referencia: 'Traslado', nota};
-  const movEntrada = {id: dbId(), articuloId: artId, bodegaId: destId, cantidad: cant, tipo: 'traslado_entrada', fecha: today(), referencia: 'Traslado', nota};
-  
-  state.inv_traslados.push(traslado);
-  state.inv_movimientos.push(movSalida);
-  state.inv_movimientos.push(movEntrada);
-  
-  await saveRecord('inv_traslados', traslado.id, traslado);
-  // inv_movimientos no tiene tabla propia en Supabase, se reconstruye de ajustes/traslados
-  
-  closeModal();
-  renderInvTraslados();
-  notify('success','✅','Traslado realizado',`${cant} unidades movidas`,{duration:3000});
 }
 // ===================================================================
 // ===== GENERIC DOCUMENT RENDERER (Cotizaciones, Órdenes, etc) =====
 // ===================================================================
 function renderDocumentList(pageId,title,collection,tipo,fields){
-  if (window.AppDocumentsModule?.renderDocumentList) {
-    return window.AppDocumentsModule.renderDocumentList({
+  if (!window.AppDocumentsModule?.renderDocumentList) {
+    console.warn('[ERP] AppDocumentsModule.renderDocumentList no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.renderDocumentList({
       state, pageId, title, collection, tipo, fields, formatDate, fmt
     });
-  }
-  const el=document.getElementById(pageId+'-content');
-  if(!el) return;
-
-  // Leer filtros actuales
-  const q=(document.getElementById(pageId+'-search')?.value||'').toLowerCase();
-  const desdeEl=document.getElementById(pageId+'-desde');
-  const hastaEl=document.getElementById(pageId+'-hasta');
-  const desde=desdeEl?.value||'';
-  const hasta=hastaEl?.value||'';
-
-  try {
-    const raw = state?.[collection];
-    const rawType = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw;
-    const safeArray = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.values(raw) : [];
-    // Ordenar por fecha, no por el orden de llegada: los id son UUID aleatorios.
-    const consec=(d)=>{const m=String((d&&d.numero)||'').match(/(\d+)\s*$/);return m?parseInt(m[1],10):-1;};
-    let items=[...safeArray].sort((a,b)=>{
-      const fa=String((a&&a.fecha)||''),fb=String((b&&b.fecha)||'');
-      if(fa!==fb) return fb<fa?-1:1;
-      const ca=String((a&&a.createdAt)||''),cb=String((b&&b.createdAt)||'');
-      if(ca!==cb) return cb<ca?-1:1;
-      return consec(b)-consec(a);
-    });
-
-    // Aplicar filtros
-    if(q) items=items.filter(d=>(d?.numero||'').toLowerCase().includes(q)||(d?.cliente||'').toLowerCase().includes(q));
-    if(desde) items=items.filter(d=>d?.fecha&&d.fecha>=desde);
-    if(hasta) items=items.filter(d=>d?.fecha&&d.fecha<=hasta);
-
-    const total=safeArray.length;
-
-    const tbodyId = pageId+'-doc-tbody';
-    const contId = pageId+'-doc-count';
-    const safeDate = (v) => { try { return formatDate(v); } catch (_) { return (v || '—'); } };
-    const safeMoney = (v) => { try { return fmt(v || 0); } catch (_) { return String(v || 0); } };
-    const rowsHtml = items.map((d) => {
-      const pdfB =
-        collection === 'cotizaciones' || collection === 'facturas'
-          ? `<button type="button" class="btn btn-xs btn-secondary" title="Descargar PDF" onclick="downloadDocPdf('${collection}','${d?.id}')">📄 PDF</button>`
-          : '';
-      return `<tr>
-      <td style="font-weight:700">${d?.numero||'—'}</td>
-      <td>${safeDate(d?.fecha)}</td>
-      <td>${d?.cliente||'—'}</td>
-      <td style="color:var(--accent);font-weight:700">${safeMoney(d?.total||0)}</td>
-      <td><span class="badge badge-${d?.estado==='pagada'||d?.estado==='aprobada'?'ok':d?.estado==='anulada'?'pend':'warn'}">${d?.estado||'borrador'}</span></td>
-      <td><div class="btn-group" style="flex-wrap:wrap;gap:4px">
-        <button type="button" class="btn btn-xs btn-secondary" onclick="viewDoc('${collection}','${d?.id}')">👁</button>
-        <button type="button" class="btn btn-xs btn-secondary" onclick="printDoc('${collection}','${d?.id}')">🖨</button>
-        ${pdfB}
-        <button type="button" class="btn btn-xs btn-danger" onclick="deleteDoc('${collection}','${d?.id}')">✕</button>
-      </div></td>
-    </tr>`;
-    }).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin ${title.toLowerCase()}s</td></tr>`;
-
-
-    // Si ya existe la tabla, solo actualizar filas (mantiene foco del input)
-    if(document.getElementById(tbodyId)) {
-      document.getElementById(tbodyId).innerHTML = rowsHtml;
-      const cnt = document.getElementById(contId);
-      if(cnt) cnt.textContent = `${items.length} de ${total}`;
-      const btnL = document.getElementById(pageId+'-doc-limpiar');
-      if(btnL) btnL.style.display = (q||desde||hasta)?'inline-flex':'none';
-      return;
-    }
-
-    el.innerHTML=`
-      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
-        <button class="btn btn-primary" onclick="openDocModal('${collection}','${tipo}')">+ ${title}</button>
-        <div class="search-bar" style="flex:1;min-width:180px;max-width:300px;margin:0">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="${pageId}-search" placeholder="Buscar # o cliente..." value="${q}"
-            oninput="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <input type="date" id="${pageId}-desde" class="form-control" style="width:140px;padding:8px" value="${desde}"
-            onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Desde">
-          <span style="color:var(--text2);font-size:11px;">hasta</span>
-          <input type="date" id="${pageId}-hasta" class="form-control" style="width:140px;padding:8px" value="${hasta}"
-            onchange="renderDocumentList('${pageId}','${title}','${collection}','${tipo}')" title="Hasta">
-          <button class="btn btn-xs btn-secondary" id="${pageId}-doc-limpiar" style="display:${(q||desde||hasta)?'inline-flex':'none'}"
-            onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderDocumentList('${pageId}','${title}','${collection}','${tipo}')">✕ Limpiar</button>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">${title.toUpperCase()} — <span id="${contId}">${items.length} de ${total}</span></div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th></th></tr></thead>
-          <tbody id="${tbodyId}">${rowsHtml}</tbody>
-        </table></div>
-      </div>`;
-  } catch (err) {
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">${title.toUpperCase()}</div>
-        <div style="padding:16px;color:var(--text2)">No se pudo renderizar esta sección. Revisa la consola o recarga.</div>
-      </div>`;
-  }
 }
 
 function openDocModal(collection,tipo,existingId){
-  if (window.AppDocumentsModule?.openDocModal) {
-    return window.AppDocumentsModule.openDocModal({
+  if (!window.AppDocumentsModule?.openDocModal) {
+    console.warn('[ERP] AppDocumentsModule.openDocModal no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.openDocModal({
       state, openModal, addDocItem, collection, tipo, existingId, today, fmt
     });
-  }
-  const tipos={cotizacion:'Cotización',orden:'Orden de Venta',factura:'Factura',nc:'Nota Crédito',nd:'Nota Débito',remision:'Remisión',devolucion:'Devolución',anticipo_cliente:'Anticipo Cliente'};
-  const label=tipos[tipo]||tipo;
-  openModal(`
-    <div class="modal-title">Nueva ${label}<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">FECHA</label><input type="date" class="form-control" id="m-doc-fecha" value="${today()}"></div>
-      <div class="form-group"><label class="form-label">CLIENTE</label><input class="form-control" id="m-doc-cliente" placeholder="Nombre del cliente"></div>
-    </div>
-    ${(tipo==='nc'||tipo==='nd'||tipo==='devolucion')?`<div class="form-group"><label class="form-label">FACTURA REFERENCIA</label><select class="form-control" id="m-doc-ref"><option value="">— Seleccionar —</option>${(state.facturas||[]).map(f=>'<option value="'+f.id+'">'+f.numero+' · '+fmt(f.total)+'</option>').join('')}</select></div>`:''}
-    <div class="form-group"><label class="form-label">OBSERVACIONES</label><textarea class="form-control" id="m-doc-obs" rows="2"></textarea></div>
-    <div class="card-title" style="margin-top:16px">ÍTEMS</div>
-    <div id="m-doc-items"></div>
-    <button class="btn btn-sm btn-secondary" style="margin-bottom:16px" onclick="addDocItem()">+ Agregar Ítem</button>
-    ${collection==='facturas'?`<div class="form-group" style="margin-bottom:12px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="m-doc-apply-iva" onchange="updateDocTotal()"> IVA (19%)</label></div>`:''}
-    <div style="text-align:right;margin-bottom:16px" id="m-doc-total">Total: $0</div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveDoc('${collection}','${tipo}')">Guardar ${label}</button>
-  `,true);
-  addDocItem();
 }
 
 let _docItems=[];
 function addDocItem(){
-  if (window.AppDocumentsModule?.addDocItem) {
-    return window.AppDocumentsModule.addDocItem({
+  if (!window.AppDocumentsModule?.addDocItem) {
+    console.warn('[ERP] AppDocumentsModule.addDocItem no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.addDocItem({
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; },
       renderDocItems
     });
-  }
-  _docItems.push({articuloId:'',nombre:'',cantidad:1,precio:0});
-  renderDocItems();
 }
 function renderDocItems(){
-  if (window.AppDocumentsModule?.renderDocItems) {
-    return window.AppDocumentsModule.renderDocItems({
+  if (!window.AppDocumentsModule?.renderDocItems) {
+    console.warn('[ERP] AppDocumentsModule.renderDocItems no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.renderDocItems({
       state,
       getDocItems: () => _docItems,
       updateDocTotal
     });
-  }
-  const el=document.getElementById('m-doc-items');if(!el)return;
-  el.innerHTML=_docItems.map((item,i)=>`
-    <div style="display:grid;grid-template-columns:2fr 80px 120px 40px;gap:8px;margin-bottom:8px;align-items:end">
-      <div class="form-group" style="margin:0"><label class="form-label">${i===0?'ARTÍCULO':''}</label><select class="form-control" onchange="docItemChanged(${i},this.value)" style="padding:8px"><option value="">— Seleccionar —</option>${(state.articulos||[]).map(a=>'<option value="'+a.id+'" '+(item.articuloId===a.id?'selected':'')+'>'+a.nombre+'</option>').join('')}<option value="custom">✏️ Personalizado</option></select></div>
-      <div class="form-group" style="margin:0"><label class="form-label">${i===0?'CANT':''}</label><input type="number" class="form-control" value="${item.cantidad}" min="1" onchange="docItemQty(${i},this.value)" style="padding:8px"></div>
-      <div class="form-group" style="margin:0"><label class="form-label">${i===0?'PRECIO':''}</label><input type="number" class="form-control" value="${item.precio}" min="0" onchange="docItemPrice(${i},this.value)" style="padding:8px" id="doc-item-price-${i}"></div>
-      <button class="btn btn-xs btn-danger" onclick="removeDocItem(${i})" style="margin-bottom:0;height:38px">✕</button>
-    </div>`).join('');
-  updateDocTotal();
 }
 function docItemChanged(i,artId){
-  if (window.AppDocumentsModule?.docItemChanged) {
-    return window.AppDocumentsModule.docItemChanged({
+  if (!window.AppDocumentsModule?.docItemChanged) {
+    console.warn('[ERP] AppDocumentsModule.docItemChanged no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.docItemChanged({
       state, i, artId,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; },
       renderDocItems
     });
-  }
-  if(artId==='custom'){_docItems[i].articuloId='custom';if(!_docItems[i].nombre||_docItems[i].nombre==='Personalizado')_docItems[i].nombre=''}
-  else{const art=(state.articulos||[]).find(a=>a.id===artId);if(art){_docItems[i].articuloId=artId;_docItems[i].nombre=art.nombre;_docItems[i].precio=art.precioVenta}else{_docItems[i].articuloId=''}}
-  renderDocItems();
 }
 function docItemName(i,val){
-  if (window.AppDocumentsModule?.docItemName) {
-    return window.AppDocumentsModule.docItemName({
+  if (!window.AppDocumentsModule?.docItemName) {
+    console.warn('[ERP] AppDocumentsModule.docItemName no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.docItemName({
       i, val,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; }
     });
-  }
-  if(_docItems[i])_docItems[i].nombre=val;
 }
 function docItemTalla(i,val){
-  if (window.AppDocumentsModule?.docItemTalla) {
-    return window.AppDocumentsModule.docItemTalla({
+  if (!window.AppDocumentsModule?.docItemTalla) {
+    console.warn('[ERP] AppDocumentsModule.docItemTalla no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.docItemTalla({
       i, val,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; }
     });
-  }
-  if(_docItems[i])_docItems[i].talla=val;
 }
 function docItemQty(i,val){
-  if (window.AppDocumentsModule?.docItemQty) {
-    return window.AppDocumentsModule.docItemQty({
+  if (!window.AppDocumentsModule?.docItemQty) {
+    console.warn('[ERP] AppDocumentsModule.docItemQty no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.docItemQty({
       i, val,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; },
       updateDocTotal
     });
-  }
-  _docItems[i].cantidad=parseInt(val)||1;updateDocTotal()
 }
 function docItemPrice(i,val){
-  if (window.AppDocumentsModule?.docItemPrice) {
-    return window.AppDocumentsModule.docItemPrice({
+  if (!window.AppDocumentsModule?.docItemPrice) {
+    console.warn('[ERP] AppDocumentsModule.docItemPrice no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.docItemPrice({
       i, val,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; },
       updateDocTotal
     });
-  }
-  _docItems[i].precio=parseFloat(val)||0;updateDocTotal()
 }
 function removeDocItem(i){
-  if (window.AppDocumentsModule?.removeDocItem) {
-    return window.AppDocumentsModule.removeDocItem({
+  if (!window.AppDocumentsModule?.removeDocItem) {
+    console.warn('[ERP] AppDocumentsModule.removeDocItem no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.removeDocItem({
       i,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; },
       renderDocItems
     });
-  }
-  _docItems.splice(i,1);renderDocItems()
 }
 function updateDocTotal(){
-  if (window.AppDocumentsModule?.updateDocTotal) {
-    return window.AppDocumentsModule.updateDocTotal({
+  if (!window.AppDocumentsModule?.updateDocTotal) {
+    console.warn('[ERP] AppDocumentsModule.updateDocTotal no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.updateDocTotal({
       getDocItems: () => _docItems,
       fmt
     });
-  }
-  const subtotal=_docItems.reduce((a,item)=>a+(item.cantidad*item.precio),0);
-  const ivaEl=document.getElementById('m-doc-apply-iva');
-  const applyIva=ivaEl?ivaEl.checked:false;
-  const iva=applyIva?subtotal*0.19:0;
-  const total=subtotal+iva;
-  const el=document.getElementById('m-doc-total');if(!el)return;
-  el.innerHTML='<div style="font-size:12px;color:var(--text2)">Subtotal: '+fmt(subtotal)+'</div>'+
-    '<div style="font-size:12px;color:var(--text2)">IVA (19%): '+fmt(iva)+'</div>'+
-    '<div style="font-family:Syne;font-size:18px;font-weight:800;color:var(--accent);margin-top:4px">Total: '+fmt(total)+'</div>';
 }
 
 async function saveDoc(collection,tipo){
-  if (window.AppDocumentsModule?.saveDoc) {
-    return window.AppDocumentsModule.saveDoc({
+  if (!window.AppDocumentsModule?.saveDoc) {
+    console.warn('[ERP] AppDocumentsModule.saveDoc no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.saveDoc({
       state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; }
     });
-  }
-  const fecha=document.getElementById('m-doc-fecha').value||today();
-  const cliente=document.getElementById('m-doc-cliente').value.trim();
-  const obs=document.getElementById('m-doc-obs').value.trim();
-  const refId=document.getElementById('m-doc-ref')?.value||'';
-  const items=_docItems.filter(i=>i.precio>0);
-  if(items.length===0){notify('warning','⚠️','Sin ítems','Agrega al menos un ítem.',{duration:3000});return}
-  const _sinNombre=items.findIndex(i=>!String(i.nombre||'').trim());
-  if(_sinNombre!==-1){notify('warning','⚠️','Falta descripción',`La línea ${_sinNombre+1} tiene precio pero no tiene nombre de producto. Selecciona un artículo o escribe una descripción ("Personalizado").`,{duration:6000});return}
-  const subtotal=items.reduce((a,i)=>a+(i.cantidad*i.precio),0);
-  const ivaEl=document.getElementById('m-doc-apply-iva');
-  const applyIvaF=ivaEl?ivaEl.checked:false;
-  const iva=collection==='facturas'?(applyIvaF?subtotal*0.19:0):subtotal*0.19;
-  const total=subtotal+iva;
-  const prefixes={cotizaciones:'COT',ordenes_venta:'OV',facturas:'FAC',notas_credito:'NC',
-    notas_debito:'ND',remisiones:'REM',devoluciones:'DEV',anticipos_clientes:'ANT'};
-  const consKeys={cotizaciones:'cotizacion',ordenes_venta:'orden',facturas:'factura',
-    notas_credito:'nc',notas_debito:'nd',remisiones:'remision',devoluciones:'devolucion',anticipos_clientes:'anticipo'};
-  const prefix=prefixes[collection]||'DOC';
-  const consKey=consKeys[collection]||'factura';
-  const numero=prefix+'-'+getNextConsec(consKey);
-  const itemsNormalized=collection==='facturas'?items.map(i=>{
-    const q=parseFloat(i.cantidad)||1,p=parseFloat(i.precio)||0;
-    return {articuloId:i.articuloId||'',nombre:i.nombre||'',talla:i.talla||'',cantidad:q,qty:q,precio:p};
-  }):items.map(i=>({...i}));
-  const docTipo=collection==='facturas'?'manual':tipo;
-  const docData={id:dbId(),numero,fecha,cliente,items:itemsNormalized,
-    subtotal,iva,flete:0,total,estado:'borrador',observaciones:obs,facturaRef:refId,tipo:docTipo,
-    ...(collection==='facturas'?{canal:'vitrina',telefono:'',metodo:'efectivo'}:{})};
-
-  // Guardar en state local
-  if(!state[collection]) state[collection]=[];
-  state[collection].push(docData);
-  _docItems=[];
-
-  try {
-    if (collection==='facturas') await saveRecord('facturas',docData.id,docData);
-    else await supabaseClient.from('legacy_docs').insert({id:docData.id, tipo, numero:docData.numero, data:docData});
-    await saveConfig('consecutivos', state.consecutivos);
-  } catch(e){ console.warn('saveDoc Supabase error:', e.message); }
-
-  closeModal();
-  renderPage(document.querySelector('.page.active')?.id.replace('page-',''));
-  notify('success','✅','Documento creado',`${numero} · ${fmt(total)}`,{duration:3000});
 }
 
 
@@ -6099,31 +5601,23 @@ async function changeDocStatus(collection,id,newStatus){
 }
 
 function deleteDoc(collection, id) {
-  if (window.AppDocumentsModule?.deleteDoc) {
-    return window.AppDocumentsModule.deleteDoc({
+  if (!window.AppDocumentsModule?.deleteDoc) {
+    console.warn('[ERP] AppDocumentsModule.deleteDoc no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.deleteDoc({
       state, collection, id, confirm, renderPage
     });
-  }
-  // --- CANDADO DE SEGURIDAD PARA FACTURAS ---
-  if (collection === 'facturas') {
-    alert('⚠️ ¡Alto ahí! Para mantener tu inventario y caja perfectamente cuadrados, las facturas solo se pueden anular desde la pestaña: SISTEMA > Historial.');
-    return; // Detiene la acción inmediatamente
-  }
-  // ------------------------------------------
-
-  if (!confirm('¿Eliminar este documento?')) return;
-  state[collection] = (state[collection] || []).filter(d => d.id !== id);
-  renderPage(document.querySelector('.page.active')?.id.replace('page-', ''));
 }
 
 function printDoc(collection,id){
-  if (window.AppDocumentsModule?.printDoc) {
-    return window.AppDocumentsModule.printDoc({
+  if (!window.AppDocumentsModule?.printDoc) {
+    console.warn('[ERP] AppDocumentsModule.printDoc no cargado');
+    return;
+  }
+  return window.AppDocumentsModule.printDoc({
       state, collection, id, printReceipt
     });
-  }
-  const doc=(state[collection]||[]).find(d=>d.id===id);if(!doc)return;
-  printReceipt(doc);
 }
 
 /** PDF descargable (Cotizaciones / Facturas). Usa totales guardados en el documento + jsPDF en cliente. */
@@ -6161,134 +5655,27 @@ function renderAnticiposClientes(){_docItems=[];renderDocumentList('anticipos_cl
 // ==========================================
 
 function renderUsuarios(pageId, titulo, collection, tipo){
-  if (window.AppUsersModule?.renderUsuarios) {
-    return window.AppUsersModule.renderUsuarios(state, pageId, titulo, collection, tipo);
-  }
-  const el = document.getElementById(pageId+'-content'); if(!el) return;
-
-  const q = (document.getElementById(pageId+'-search')?.value||'').toLowerCase();
-  const desde = document.getElementById(pageId+'-desde')?.value||'';
-  const hasta = document.getElementById(pageId+'-hasta')?.value||'';
-
-  if(!state[collection]) state[collection]=[];
-  let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() : [];
-  if(q) items = items.filter(u =>
-    (u.nombre||'').toLowerCase().includes(q) ||
-    (u.cedula||'').toLowerCase().includes(q) ||
-    (u.celular||'').toLowerCase().includes(q) ||
-    (u.email||'').toLowerCase().includes(q) ||
-    (u.ciudad||'').toLowerCase().includes(q)
-  );
-  if(desde) items = items.filter(u => (u.fechaCreacion||'') >= desde);
-  if(hasta) items = items.filter(u => (u.fechaCreacion||'') <= hasta);
-
-  const total = (state[collection]||[]).length;
-
-  // Si ya existe el contenedor, solo actualizar la tabla (evita perder foco del input)
-  const tbodyId = pageId+'-tbody';
-  const contadorId = pageId+'-contador';
-  const existing = document.getElementById(tbodyId);
-
-  if(existing) {
-    // Solo repintar tabla y contador
-    existing.innerHTML = renderUsuariosRows(items, collection, tipo, pageId);
-    const contador = document.getElementById(contadorId);
-    if(contador) contador.textContent = `${items.length} de ${total}`;
+  if (!window.AppUsersModule?.renderUsuarios) {
+    console.warn('[ERP] AppUsersModule.renderUsuarios no cargado');
     return;
   }
-
-  // Primera carga: pintar todo
-  el.innerHTML = `
-    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
-      <button class="btn btn-primary" onclick="openUsuarioModal('${collection}','${tipo}')">+ Nuevo ${titulo}</button>
-      <button class="btn btn-secondary" onclick="importarUsuariosCSV('${collection}','${tipo}','${pageId}')" title="Importar CSV/Excel">📥 Importar</button>
-      <button class="btn btn-secondary" onclick="exportarUsuarios('${collection}','${tipo}')" title="Exportar a CSV">⬆ Exportar</button>
-      <button class="btn btn-secondary" onclick="descargarPlantilla('${tipo}')" title="Descargar plantilla">⬇ Plantilla</button>
-      <div class="search-bar" style="flex:1;min-width:180px;max-width:300px;margin:0">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="${pageId}-search" placeholder="Nombre, cédula, ciudad..."
-          value="${q}"
-          oninput="renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">
-      </div>
-      <input type="date" class="form-control" id="${pageId}-desde" style="width:140px" value="${desde}"
-        onchange="renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">
-      <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
-      <input type="date" class="form-control" id="${pageId}-hasta" style="width:140px" value="${hasta}"
-        onchange="renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">
-      <button class="btn btn-xs btn-secondary" id="${pageId}-limpiar" style="display:${(q||desde||hasta)?'inline-flex':'none'}"
-        onclick="document.getElementById('${pageId}-search').value='';document.getElementById('${pageId}-desde').value='';document.getElementById('${pageId}-hasta').value='';renderUsuariosTabla('${pageId}','${titulo}','${collection}','${tipo}')">✕ Limpiar</button>
-    </div>
-
-    <div class="card">
-      <div class="card-title">👥 ${titulo.toUpperCase()}S — <span id="${contadorId}">${items.length} de ${total}</span></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>Nombre</th><th>Identificación</th><th>Celular</th><th>WhatsApp</th>
-            <th>Email</th><th>Ciudad</th><th>Tipo</th><th></th>
-          </tr></thead>
-          <tbody id="${tbodyId}">
-            ${renderUsuariosRows(items, collection, tipo, pageId)}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <input type="file" id="${pageId}-file-input" accept=".csv,.xls,.xlsx" style="display:none"
-      onchange="procesarArchivoUsuarios(this,'${collection}','${tipo}','${pageId}')">`;
+  return window.AppUsersModule.renderUsuarios(state, pageId, titulo, collection, tipo);
 }
 
 function renderUsuariosTabla(pageId, titulo, collection, tipo) {
-  if (window.AppUsersModule?.renderUsuariosTabla) {
-    return window.AppUsersModule.renderUsuariosTabla(state, pageId, titulo, collection, tipo);
+  if (!window.AppUsersModule?.renderUsuariosTabla) {
+    console.warn('[ERP] AppUsersModule.renderUsuariosTabla no cargado');
+    return;
   }
-  // Actualiza solo la tabla sin repintar los filtros (mantiene foco)
-  const q = (document.getElementById(pageId+'-search')?.value||'').toLowerCase();
-  const desde = document.getElementById(pageId+'-desde')?.value||'';
-  const hasta = document.getElementById(pageId+'-hasta')?.value||'';
-
-  if(!state[collection]) state[collection]=[];
-  let items = Array.isArray(state[collection]) ? [...state[collection]].reverse() : [];
-  if(q) items = items.filter(u =>
-    (u.nombre||'').toLowerCase().includes(q) ||
-    (u.cedula||'').toLowerCase().includes(q) ||
-    (u.celular||'').toLowerCase().includes(q) ||
-    (u.email||'').toLowerCase().includes(q) ||
-    (u.ciudad||'').toLowerCase().includes(q)
-  );
-  if(desde) items = items.filter(u => (u.fechaCreacion||'') >= desde);
-  if(hasta) items = items.filter(u => (u.fechaCreacion||'') <= hasta);
-
-  const total = (state[collection]||[]).length;
-  const tbody = document.getElementById(pageId+'-tbody');
-  if(tbody) tbody.innerHTML = renderUsuariosRows(items, collection, tipo, pageId);
-  const contador = document.getElementById(pageId+'-contador');
-  if(contador) contador.textContent = `${items.length} de ${total}`;
-  // Mostrar/ocultar botón limpiar
-  const btnLimpiar = document.getElementById(pageId+'-limpiar');
-  if(btnLimpiar) btnLimpiar.style.display = (q||desde||hasta) ? 'inline-flex' : 'none';
+  return window.AppUsersModule.renderUsuariosTabla(state, pageId, titulo, collection, tipo);
 }
 
 function renderUsuariosRows(items, collection, tipo, pageId) {
-  if (window.AppUsersModule?.renderUsuariosRows) {
-    return window.AppUsersModule.renderUsuariosRows(items, collection, tipo, pageId);
+  if (!window.AppUsersModule?.renderUsuariosRows) {
+    console.warn('[ERP] AppUsersModule.renderUsuariosRows no cargado');
+    return;
   }
-  if(!items.length) return '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>';
-  // Show max 200 rows for performance with 8000+ records
-  const visible = items.slice(0, 200);
-  const more = items.length > 200 ? `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:12px;font-size:11px">... y ${items.length-200} más. Usa el buscador para filtrar.</td></tr>` : '';
-  return visible.map((u,idx) => `<tr>
-    <td style="font-weight:700">${u.nombre||'—'}</td>
-    <td>${u.tipoId||''} ${u.cedula||'—'}</td>
-    <td>${u.celular||'—'}</td>
-    <td>${u.whatsapp||'—'}</td>
-    <td>${u.email||'—'}</td>
-    <td>${u.ciudad||'—'}</td>
-    <td><span class="badge badge-warn">${u.tipoPersona||tipo}</span></td>
-    <td><div class="btn-group">
-      <button class="btn btn-xs btn-secondary" onclick="openUsuarioModal('${collection}','${tipo}','${pageId}','${idx}',true)">✏️</button>
-      <button class="btn btn-xs btn-danger" onclick="eliminarUsuario('${collection}','${u.id}','${pageId}','${tipo}','${tipo}')">✕</button>
-    </div></td>
-  </tr>`).join('') + more;
+  return window.AppUsersModule.renderUsuariosRows(items, collection, tipo, pageId);
 }
 
 
@@ -6297,172 +5684,33 @@ function renderUsuEmpleados(){ renderUsuarios('usu_empleados','Empleado','usu_em
 function renderUsuProveedores(){ renderUsuarios('usu_proveedores','Proveedor','usu_proveedores','proveedor'); }
 
 function openUsuarioModal(collection, tipo, pageId, idx, editar){
-  if (window.AppUsersModule?.openUsuarioModal) {
-    return window.AppUsersModule.openUsuarioModal(state, openModal, closeModal, collection, tipo, pageId, idx, editar);
+  if (!window.AppUsersModule?.openUsuarioModal) {
+    console.warn('[ERP] AppUsersModule.openUsuarioModal no cargado');
+    return;
   }
-  const items = state[collection]||[];
-  const u = (editar && idx!==undefined) ? items[items.length-1-parseInt(idx)] : null;
-  const titulos = {cliente:'Cliente', empleado:'Empleado', proveedor:'Proveedor'};
-  openModal(`
-    <div class="modal-title">${u?'Editar':'Nuevo'} ${titulos[tipo]||tipo}<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">TIPO ID</label>
-        <select class="form-control" id="usu-tipoid">
-          <option value="CC" ${u?.tipoId==='CC'?'selected':''}>CC - Cédula</option>
-          <option value="NIT" ${u?.tipoId==='NIT'?'selected':''}>NIT</option>
-          <option value="CE" ${u?.tipoId==='CE'?'selected':''}>CE - Extranjería</option>
-          <option value="PA" ${u?.tipoId==='PA'?'selected':''}>PA - Pasaporte</option>
-        </select>
-      </div>
-      <div class="form-group"><label class="form-label">N° IDENTIFICACIÓN</label><input class="form-control" id="usu-cedula" value="${u?.cedula||''}"></div>
-    </div>
-    <div class="form-group"><label class="form-label">NOMBRE COMPLETO *</label><input class="form-control" id="usu-nombre" value="${u?.nombre||''}"></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">CELULAR</label><input class="form-control" id="usu-celular" value="${u?.celular||''}"></div>
-      <div class="form-group"><label class="form-label">WHATSAPP</label><input class="form-control" id="usu-whatsapp" value="${u?.whatsapp||''}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">EMAIL</label><input class="form-control" id="usu-email" value="${u?.email||''}"></div>
-      <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="usu-ciudad" value="${u?.ciudad||''}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">DEPARTAMENTO</label><input class="form-control" id="usu-dpto" value="${u?.departamento||''}"></div>
-      <div class="form-group"><label class="form-label">DIRECCIÓN</label><input class="form-control" id="usu-dir" value="${u?.direccion||''}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">TIPO PERSONA</label>
-        <select class="form-control" id="usu-tipopersona">
-          <option value="Natural" ${u?.tipoPersona==='Natural'?'selected':''}>Natural</option>
-          <option value="Jurídica" ${u?.tipoPersona==='Jurídica'?'selected':''}>Jurídica</option>
-        </select>
-      </div>
-      <div class="form-group"><label class="form-label">FECHA NACIMIENTO</label><input type="date" class="form-control" id="usu-fnac" value="${u?.fechaNac||''}"></div>
-    </div>
-    <div class="form-group"><label class="form-label">OBSERVACIONES</label><textarea class="form-control" id="usu-obs" rows="2">${u?.observacion||''}</textarea></div>
-    <button class="btn btn-primary" style="width:100%" onclick="guardarUsuario('${collection}','${tipo}','${pageId||'usu_'+tipo+'s'}','${u?.id||''}')">Guardar ${titulos[tipo]||tipo}</button>
-  `);
+  return window.AppUsersModule.openUsuarioModal(state, openModal, closeModal, collection, tipo, pageId, idx, editar);
 }
 
 async function guardarUsuario(collection, tipo, pageId, existingId) {
-  if (window.AppUsersModule?.guardarUsuario) {
-    return window.AppUsersModule.guardarUsuario({
+  if (!window.AppUsersModule?.guardarUsuario) {
+    console.warn('[ERP] AppUsersModule.guardarUsuario no cargado');
+    return;
+  }
+  return window.AppUsersModule.guardarUsuario({
       state, supabaseClient, showLoadingOverlay, closeModal, renderPage, notify,
       collection, tipo, pageId, existingId
     });
-  }
-  const nombre = document.getElementById('usu-nombre').value.trim();
-  if(!nombre){ notify('danger','⚠️','Error','El nombre es obligatorio'); return; }
-
-  // Determinar la tabla y preparar los datos según el tipo
-  let table = '';
-  let data = {};
-  const recordId = existingId || crypto.randomUUID();
-
-  if (tipo === 'cliente') {
-    table = 'customers';
-    data = {
-      id: recordId,
-      nombre: nombre,
-      cedula: document.getElementById('usu-cedula').value.trim(),
-      celular: document.getElementById('usu-celular').value.trim(),
-      telefono: document.getElementById('usu-celular').value.trim(), // Usamos el mismo si no hay otro input
-      whatsapp: document.getElementById('usu-whatsapp').value.trim(),
-      ciudad: document.getElementById('usu-ciudad').value.trim(),
-      direccion: document.getElementById('usu-dir').value.trim()
-    };
-  } else if (tipo === 'empleado') {
-    table = 'employees';
-    const np = getNominaLegalParams();
-    data = {
-      id: recordId,
-      nombre: nombre,
-      tipo_contrato: document.getElementById('usu-tcontrato')?.value || 'indefinido',
-      salario_base: parseFloat(document.getElementById('usu-salario')?.value) || np.smmlv,
-      cedula: document.getElementById('usu-cedula')?.value.trim() || null,
-      celular: document.getElementById('usu-celular')?.value.trim() || null,
-      cargo: document.getElementById('usu-cargo')?.value.trim() || null,
-      fecha_ingreso: document.getElementById('usu-fingreso')?.value || null,
-    };
-  } else {
-    // Proveedor → tabla proveedores
-    table = 'proveedores';
-    data = {
-      id: recordId,
-      nombre: nombre,
-      tipo_id: document.getElementById('usu-tipoid')?.value || 'CC',
-      cedula: document.getElementById('usu-cedula')?.value.trim() || '',
-      celular: document.getElementById('usu-celular')?.value.trim() || '',
-      whatsapp: document.getElementById('usu-whatsapp')?.value.trim() || '',
-      email: document.getElementById('usu-email')?.value.trim() || '',
-      ciudad: document.getElementById('usu-ciudad')?.value.trim() || '',
-      departamento: document.getElementById('usu-dpto')?.value.trim() || '',
-      direccion: document.getElementById('usu-dir')?.value.trim() || '',
-      tipo_persona: document.getElementById('usu-tipopersona')?.value || 'Natural',
-      observacion: document.getElementById('usu-obs')?.value.trim() || ''
-    };
-  }
-
-  try {
-    showLoadingOverlay('connecting');
-    
-    // UPSERT: Inserta si es nuevo, actualiza si ya existe
-    const { error } = await supabaseClient.from(table).upsert(data, { onConflict: 'id' });
-    if (error) throw error;
-
-    // Actualizar la vista local para que la interfaz responda al instante
-    if (!state[collection]) state[collection] = [];
-    if (existingId) {
-      const i = state[collection].findIndex(x => x.id === existingId);
-      if (i >= 0) state[collection][i] = { ...state[collection][i], ...data };
-    } else {
-      state[collection].push(data);
-    }
-    // Mantener sincronía entre state.empleados y state.usu_empleados
-    if(tipo === 'empleado') state.empleados = state.usu_empleados;
-    if(tipo === 'cliente') state.usu_clientes = state.usu_clientes; // ya sincronizado
-
-    closeModal();
-    renderPage(pageId);
-    showLoadingOverlay('hide');
-    notify('success','✅','Guardado',`${nombre} guardado correctamente en BD`,{duration:3000});
-
-  } catch (err) {
-    showLoadingOverlay('hide');
-    console.error("Error guardando usuario:", err);
-    notify('danger','⚠️','Error', err.message, {duration: 5000});
-  }
 }
 
 async function eliminarUsuario(collection, id, pageId, titulo, tipo) {
-  if (window.AppUsersModule?.eliminarUsuario) {
-    return window.AppUsersModule.eliminarUsuario({
+  if (!window.AppUsersModule?.eliminarUsuario) {
+    console.warn('[ERP] AppUsersModule.eliminarUsuario no cargado');
+    return;
+  }
+  return window.AppUsersModule.eliminarUsuario({
       state, supabaseClient, showLoadingOverlay, renderPage, notify, confirm,
       collection, id, pageId, titulo, tipo
     });
-  }
-  if(!confirm(`¿Eliminar este ${titulo}? Esta acción no se puede deshacer.`)) return;
-
-  const table = tipo === 'cliente' ? 'customers' : (tipo === 'empleado' ? 'employees' : null);
-  if (!table) return;
-
-  try {
-    showLoadingOverlay('connecting');
-    
-    const { error } = await supabaseClient.from(table).delete().eq('id', id);
-    if (error) throw error;
-
-    // Remover de la vista local
-    state[collection] = (state[collection] || []).filter(x => x.id !== id);
-    // Mantener sincronía
-    if(tipo === 'empleado') state.empleados = state.usu_empleados;
-    renderPage(pageId);
-    
-    showLoadingOverlay('hide');
-    notify('success', '🗑️', 'Eliminado', `${titulo} borrado del sistema.`);
-  } catch (err) {
-    showLoadingOverlay('hide');
-    notify('danger', '⚠️', 'Error al eliminar', err.message, {duration: 5000});
-  }
 }
 function importarUsuariosCSV(collection, tipo, pageId){
   const input = document.getElementById(pageId+'-file-input');
@@ -7006,99 +6254,59 @@ function renderIngresosEgresosPage() {
 // ===== NÓMINA =====
 // ===================================================================
 function renderNomAusencias(){
-  if (window.AppNominaModule?.renderNomAusencias) {
-    return window.AppNominaModule.renderNomAusencias({ state, formatDate });
+  if (!window.AppNominaModule?.renderNomAusencias) {
+    console.warn('[ERP] AppNominaModule.renderNomAusencias no cargado');
+    return;
   }
-  const items=[...(state.nom_ausencias||[])].reverse();
-  document.getElementById('nom_ausencias-content').innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openNomAusenciaModal()">+ Nueva Ausencia</button>
-    <div class="card"><div class="card-title">AUSENCIAS LABORALES (${items.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>Empleado</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Estado</th><th></th></tr></thead><tbody>
-    ${items.map(a=>`<tr><td>${a.empleado}</td><td><span class="badge badge-warn">${a.tipo}</span></td><td>${formatDate(a.desde)}</td><td>${formatDate(a.hasta)}</td><td style="font-weight:700">${a.dias}</td><td><span class="badge ${a.aprobada?'badge-ok':'badge-pend'}">${a.aprobada?'Aprobada':'Pendiente'}</span></td><td><button class="btn btn-xs btn-danger" onclick="deleteFromCollection('nom_ausencias','${a.id}','nom_ausencias')">✕</button></td></tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Sin ausencias</td></tr>'}
-    </tbody></table></div></div>`;
+  return window.AppNominaModule.renderNomAusencias({ state, formatDate });
 }
 
 function openNomAusenciaModal(){
-  if (window.AppNominaModule?.openNomAusenciaModal) {
-    return window.AppNominaModule.openNomAusenciaModal({ openModal, today });
+  if (!window.AppNominaModule?.openNomAusenciaModal) {
+    console.warn('[ERP] AppNominaModule.openNomAusenciaModal no cargado');
+    return;
   }
-  openModal(`
-    <div class="modal-title">Nueva Ausencia<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">EMPLEADO</label><input class="form-control" id="m-na-emp" placeholder="Nombre del empleado"></div>
-    <div class="form-group"><label class="form-label">TIPO</label><select class="form-control" id="m-na-tipo"><option value="Vacaciones">Vacaciones</option><option value="Incapacidad">Incapacidad</option><option value="Licencia">Licencia</option><option value="Permiso">Permiso</option><option value="Maternidad">Maternidad</option><option value="Calamidad">Calamidad</option></select></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">DESDE</label><input type="date" class="form-control" id="m-na-desde" value="${today()}"></div>
-      <div class="form-group"><label class="form-label">HASTA</label><input type="date" class="form-control" id="m-na-hasta" value="${today()}"></div>
-    </div>
-    <div class="form-group"><label class="form-label">OBSERVACIONES</label><textarea class="form-control" id="m-na-obs" rows="2"></textarea></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveNomAusencia()">Guardar Ausencia</button>
-  `);
+  return window.AppNominaModule.openNomAusenciaModal({ openModal, today });
 }
 
 function saveNomAusencia(){
-  if (window.AppNominaModule?.saveNomAusencia) {
-    return window.AppNominaModule.saveNomAusencia({ state, uid, dbId, saveRecord, closeModal, renderNomAusencias, notify });
+  if (!window.AppNominaModule?.saveNomAusencia) {
+    console.warn('[ERP] AppNominaModule.saveNomAusencia no cargado');
+    return;
   }
-  const emp=document.getElementById('m-na-emp').value.trim();if(!emp)return;
-  const desde=document.getElementById('m-na-desde').value;const hasta=document.getElementById('m-na-hasta').value;
-  const dias=Math.max(1,Math.round((new Date(hasta)-new Date(desde))/86400000)+1);
-  const aus={id:dbId(),empleado:emp,tipo:document.getElementById('m-na-tipo').value,desde,hasta,dias,observaciones:document.getElementById('m-na-obs').value.trim(),aprobada:false};
-  state.nom_ausencias.push(aus);
-  saveRecord('nom_ausencias',aus.id,aus);
-  closeModal();renderNomAusencias();notify('success','✅','Ausencia registrada',emp+' · '+dias+' días',{duration:3000});
+  return window.AppNominaModule.saveNomAusencia({ state, uid, dbId, saveRecord, closeModal, renderNomAusencias, notify });
 }
 
 function renderNomAnticipos(){
-  if (window.AppNominaModule?.renderNomAnticipos) {
-    return window.AppNominaModule.renderNomAnticipos({ state, formatDate, fmt });
+  if (!window.AppNominaModule?.renderNomAnticipos) {
+    console.warn('[ERP] AppNominaModule.renderNomAnticipos no cargado');
+    return;
   }
-  const items=[...(state.nom_anticipos||[])].reverse();
-  document.getElementById('nom_anticipos-content').innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openSimpleFormModal('nom_anticipos','Anticipo de Nómina',['empleado:text:EMPLEADO','valor:number:VALOR','fecha:date:FECHA','motivo:text:MOTIVO'])">+ Nuevo Anticipo</button>
-    <div class="card"><div class="card-title">ANTICIPOS DE NÓMINA (${items.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Valor</th><th>Motivo</th><th></th></tr></thead><tbody>
-    ${items.map(a=>`<tr><td>${formatDate(a.fecha)}</td><td>${a.empleado}</td><td style="color:var(--accent);font-weight:700">${fmt(a.valor||0)}</td><td>${a.motivo||'—'}</td><td><button class="btn btn-xs btn-danger" onclick="deleteFromCollection('nom_anticipos','${a.id}','nom_anticipos')">✕</button></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:24px">Sin anticipos</td></tr>'}
-    </tbody></table></div></div>`;
+  return window.AppNominaModule.renderNomAnticipos({ state, formatDate, fmt });
 }
 
 function renderNomConceptos(){
-  if (window.AppNominaModule?.renderNomConceptos) {
-    return window.AppNominaModule.renderNomConceptos({ state, fmt });
+  if (!window.AppNominaModule?.renderNomConceptos) {
+    console.warn('[ERP] AppNominaModule.renderNomConceptos no cargado');
+    return;
   }
-  const items=state.nom_conceptos||[];
-  document.getElementById('nom_conceptos-content').innerHTML=`
-    <button class="btn btn-primary" style="margin-bottom:16px" onclick="openConceptoModal()">+ Nuevo Concepto</button>
-    <div class="card"><div class="card-title">CONCEPTOS DE NÓMINA</div>
-    <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Fórmula</th><th>Valor</th><th></th></tr></thead><tbody>
-    ${items.map(c=>`<tr><td style="font-weight:700">${c.nombre}</td><td><span class="badge ${c.tipo==='devengo'?'badge-ok':'badge-pend'}">${c.tipo}</span></td><td>${c.formula}</td><td>${c.formula==='porcentaje'?c.valor+'%':fmt(c.valor)}</td><td><button class="btn btn-xs btn-danger" onclick="deleteFromCollection('nom_conceptos','${c.id}','nom_conceptos')">✕</button></td></tr>`).join('')}
-    </tbody></table></div></div>`;
+  return window.AppNominaModule.renderNomConceptos({ state, fmt });
 }
 
 function openConceptoModal(){
-  if (window.AppNominaModule?.openConceptoModal) {
-    return window.AppNominaModule.openConceptoModal({ openModal });
+  if (!window.AppNominaModule?.openConceptoModal) {
+    console.warn('[ERP] AppNominaModule.openConceptoModal no cargado');
+    return;
   }
-  openModal(`
-    <div class="modal-title">Nuevo Concepto<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">NOMBRE</label><input class="form-control" id="m-nc-nombre" placeholder="Ej: Horas Extra"></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">TIPO</label><select class="form-control" id="m-nc-tipo"><option value="devengo">Devengo</option><option value="deduccion">Deducción</option></select></div>
-      <div class="form-group"><label class="form-label">FÓRMULA</label><select class="form-control" id="m-nc-formula"><option value="fijo">Valor Fijo</option><option value="porcentaje">Porcentaje sobre salario</option></select></div>
-    </div>
-    <div class="form-group"><label class="form-label">VALOR</label><input type="number" class="form-control" id="m-nc-valor" placeholder="0"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="saveConcepto()">Guardar</button>
-  `);
+  return window.AppNominaModule.openConceptoModal({ openModal });
 }
 
 function saveConcepto(){
-  if (window.AppNominaModule?.saveConcepto) {
-    return window.AppNominaModule.saveConcepto({ state, uid, dbId, saveRecord, closeModal, renderNomConceptos });
+  if (!window.AppNominaModule?.saveConcepto) {
+    console.warn('[ERP] AppNominaModule.saveConcepto no cargado');
+    return;
   }
-  const nombre=document.getElementById('m-nc-nombre').value.trim();if(!nombre)return;
-  const conc={id:dbId(),nombre,tipo:document.getElementById('m-nc-tipo').value,formula:document.getElementById('m-nc-formula').value,valor:parseFloat(document.getElementById('m-nc-valor').value)||0};
-  state.nom_conceptos.push(conc);
-  saveRecord('nom_conceptos',conc.id,conc);
-  closeModal();renderNomConceptos();
+  return window.AppNominaModule.saveConcepto({ state, uid, dbId, saveRecord, closeModal, renderNomConceptos });
 }
 
 // ===================================================================
@@ -7106,10 +6314,11 @@ function saveConcepto(){
 // ===================================================================
 
 function getNominaLegalParams() {
-  if (window.AppNominaParams?.getNominaParams) {
-    return window.AppNominaParams.getNominaParams(state);
+  if (!window.AppNominaParams?.getNominaParams) {
+    console.warn('[ERP] AppNominaParams.getNominaParams no cargado');
+    return;
   }
-  return { smmlv: 1750905, auxTrans: 249095, year: 2026, decreto: '' };
+  return window.AppNominaParams.getNominaParams(state);
 }
 
 async function ensureNominaLegalFresh() {
@@ -7131,159 +6340,20 @@ const PILA_EMP_ADOR = { salud: 0.0850, pension: 0.12, arl: 0.00522, caja: 0.04 }
 const PROV = { prima: 1/12, cesantias: 1/12, intCesantias: 0.12/12, vacaciones: 1/24 };
 
 function calcNomina(cfg) {
-  if (window.AppNominaModule?.calcNomina) {
-    return window.AppNominaModule.calcNomina(cfg);
+  if (!window.AppNominaModule?.calcNomina) {
+    console.warn('[ERP] AppNominaModule.calcNomina no cargado');
+    return;
   }
-  // cfg: { salario, diasTrabajados, diasPeriodo, ausenciasNoPagas, incapacidades,
-  //        anticipos, otrosDevengos, otrasDeducc, tipo ('quincenal'|'mensual'|'vacaciones'|'prima'|'cesantias'|'liquidacion') }
-  const npFallback = getNominaLegalParams();
-  const {
-    salario = npFallback.smmlv,
-    diasTrabajados = 15,
-    diasPeriodo = 15,
-    ausenciasNoPagas = 0,
-    incapacidades = 0, // días incapacidad
-    anticipos = 0,
-    otrosDevengos = 0,
-    otrasDeducc = 0,
-    tipo = 'quincenal',
-    diasVacaciones = 0,
-    diasCesantias = 0,
-    periodosLiquidar = 0,
-    fechaIngreso = null,
-    fechaRetiro = null,
-    empleadoNombre = '',
-    empleadoId = null,
-    nomNominas = null,
-    ausencias = null
-  } = cfg;
-
-  const SMMLV = npFallback.smmlv;
-  const AUX_TRANSPORTE = npFallback.auxTrans;
-  const salarioDia = salario / 30;
-  const auxTransDia = (salario <= 2 * SMMLV) ? AUX_TRANSPORTE / 30 : 0;
-  const tieneAuxTrans = salario <= 2 * SMMLV;
-
-  let resultado = {};
-
-  if (tipo === 'quincenal' || tipo === 'mensual') {
-    const dp = tipo === 'quincenal' ? 15 : 30;
-    const diasEfectivos = Math.max(0, dp - ausenciasNoPagas);
-    const salarioBase = salarioDia * diasEfectivos;
-    const auxTrans = tieneAuxTrans ? (auxTransDia * diasEfectivos) : 0;
-    // Incapacidad: EPS paga 2/3 desde día 3
-    const valorIncap = incapacidades > 0 ? (salarioDia * incapacidades * (2/3)) : 0;
-    const totalDevengado = salarioBase + auxTrans + otrosDevengos + valorIncap;
-
-    // IBC salud/pensión: NO incluye auxilio de transporte (prestación no salarial — Colombia).
-    const baseCotizacion = salarioBase + otrosDevengos + valorIncap;
-    const deducSalud = baseCotizacion * PILA_EMP.salud;
-    const deducPension = baseCotizacion * PILA_EMP.pension;
-    const totalDeducc = deducSalud + deducPension + anticipos + otrasDeducc;
-    const neto = Math.max(0, totalDevengado - totalDeducc);
-
-    // Costos empleador
-    const costoSalud = salarioBase * PILA_EMP_ADOR.salud;
-    const costoPension = salarioBase * PILA_EMP_ADOR.pension;
-    const costoArl = salarioBase * PILA_EMP_ADOR.arl;
-    const costoCaja = salarioBase * PILA_EMP_ADOR.caja;
-    // Provisiones
-    const provPrima = (salarioBase + auxTrans) * PROV.prima;
-    const provCes = (salarioBase + auxTrans) * PROV.cesantias;
-    const provIntCes = provCes * (PROV.intCesantias * 12);
-    const provVac = salarioBase * PROV.vacaciones;
-    const costoTotal = totalDevengado + costoSalud + costoPension + costoArl + costoCaja + provPrima + provCes + provIntCes + provVac;
-
-    resultado = {
-      tipo, diasEfectivos, salarioBase, auxTrans, valorIncap, otrosDevengos, baseCotizacion,
-      totalDevengado, deducSalud, deducPension, anticipos, otrasDeducc,
-      totalDeducc, neto,
-      empleador: { costoSalud, costoPension, costoArl, costoCaja, provPrima, provCes, provIntCes, provVac, costoTotal }
-    };
-
-  } else if (tipo === 'vacaciones') {
-    // Vacaciones: salario/30 × días (15 días por año trabajado)
-    const valorVac = salarioDia * diasVacaciones;
-    resultado = { tipo, diasVacaciones, salarioBase: valorVac, totalDevengado: valorVac, neto: valorVac };
-
-  } else if (tipo === 'prima') {
-    const diasPrima = diasCesantias > 0 ? diasCesantias : 180;
-    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
-    const valor = (base * diasPrima) / 360;
-    resultado = { tipo, diasPrima, meses: diasPrima / 30, base, valor, totalDevengado: valor, neto: valor };
-
-  } else if (tipo === 'cesantias') {
-    const base = salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0);
-    const valor = (base * diasCesantias) / 360;
-    const intCes = valor * 0.12 * (diasCesantias / 360);
-    resultado = { tipo, diasCesantias, base, valor, intCes, totalDevengado: valor + intCes, neto: valor + intCes };
-
-  } else if (tipo === 'liquidacion') {
-    if (fechaIngreso && fechaRetiro && window.AppNominaModule?.calcLiquidacionContrato) {
-      const nominas = nomNominas || state.nom_nominas || [];
-      const aus = ausencias || state.nom_ausencias || [];
-      const iniCesan = window.AppNominaModule.inicioPeriodoCesantias(fechaRetiro, fechaIngreso);
-      const iniPrima = window.AppNominaModule.inicioPeriodoPrima(fechaRetiro, fechaIngreso);
-      const fmtY = (d) => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
-      const pagos = window.AppNominaModule.resumirPrestacionesPagadas(nominas, empleadoNombre, empleadoId, {
-        sinceCesan: fmtY(iniCesan), sincePrima: fmtY(iniPrima)
-      });
-      const liq = window.AppNominaModule.calcLiquidacionContrato({
-        salario, fechaIngreso, fechaRetiro, nominaParams: npFallback, prestacionesPagadas: pagos,
-        diasVacDisfrutadas: window.AppNominaModule.diasVacacionesDisfrutadas(aus, empleadoNombre)
-      });
-      resultado = { tipo: 'liquidacion', ...liq };
-    } else {
-      const diasTrab = periodosLiquidar;
-      const cesan = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) * diasTrab / 360;
-      const intCes = cesan * 0.12 * (diasTrab / 360);
-      const prima = (salario + (tieneAuxTrans ? AUX_TRANSPORTE : 0)) * diasTrab / 360;
-      const vac = (salario * diasTrab) / 720;
-      const total = cesan + intCes + prima + vac;
-      resultado = { tipo, diasTrab, cesan, intCes, prima, vac, totalDevengado: total, neto: total, manual: true };
-    }
-  }
-
-  return resultado;
+  return window.AppNominaModule.calcNomina(cfg);
 }
 
 function renderNomNominas(){
   ensureNominaLegalFresh().catch(() => {});
-  if (window.AppNominaModule?.renderNomNominas) {
-    return window.AppNominaModule.renderNomNominas({ state, fmt });
+  if (!window.AppNominaModule?.renderNomNominas) {
+    console.warn('[ERP] AppNominaModule.renderNomNominas no cargado');
+    return;
   }
-  const items=[...(state.nom_nominas||[])].reverse();
-  document.getElementById('nom_nominas-content').innerHTML=`
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="btn btn-primary" onclick="openLiquidacionModal('quincenal')">💰 Nueva Quincena</button>
-      <button class="btn btn-secondary" onclick="openLiquidacionModal('mensual')">📅 Nómina Mensual</button>
-      <button class="btn btn-secondary" onclick="openLiquidacionModal('prima')">🎁 Prima</button>
-      <button class="btn btn-secondary" onclick="openLiquidacionModal('cesantias')">🏦 Cesantías</button>
-      <button class="btn btn-secondary" onclick="openLiquidacionModal('vacaciones')">🌴 Vacaciones</button>
-      <button class="btn btn-warning" onclick="openLiquidacionModal('liquidacion')">📋 Liquidación</button>
-    </div>
-    <div class="card"><div class="card-title">NÓMINAS LABORALES (${items.length})</div>
-    <div class="table-wrap"><table><thead><tr>
-      <th>#</th><th>Tipo</th><th>Periodo</th><th>Empleado</th>
-      <th>Devengado</th><th>Deducciones</th><th>Neto</th><th>Estado</th><th></th>
-    </tr></thead><tbody>
-    ${items.map(n=>`<tr>
-      <td style="font-weight:700">${n.numero||'—'}</td>
-      <td><span class="badge badge-info">${(n.tipo||'quincena').toUpperCase()}</span></td>
-      <td>${n.periodo||'—'}</td>
-      <td>${n.empleado||'—'}</td>
-      <td style="color:var(--green)">${fmt(n.devengado||0)}</td>
-      <td style="color:var(--red)">${fmt(n.deducciones||0)}</td>
-      <td style="color:var(--accent);font-weight:700">${fmt(n.neto||0)}</td>
-      <td><span class="badge ${n.pagada?'badge-ok':'badge-warn'}">${n.pagada?'Pagada':'Pendiente'}</span></td>
-      <td><div class="btn-group">
-        <button class="btn btn-xs btn-secondary" onclick="verNomina('${n.id}')">👁</button>
-        <button class="btn btn-xs btn-secondary" onclick="imprimirNomina('${n.id}')">🖨</button>
-        ${!n.pagada?`<button class="btn btn-xs btn-primary" onclick="pagarNomina('${n.id}')">💰 Pagar</button>`:''}
-        <button class="btn btn-xs btn-danger" onclick="deleteFromCollection('nom_nominas','${n.id}','nom_nominas')">✕</button>
-      </div></td>
-    </tr>`).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:24px">Sin nóminas</td></tr>'}
-    </tbody></table></div></div>`;
+  return window.AppNominaModule.renderNomNominas({ state, fmt });
 }
 
 async function openLiquidacionModal(tipo){
@@ -7485,85 +6555,11 @@ function calcularPreviewNomina() {
 }
 
 function renderNominaPreview(r, tipo) {
-  if (window.AppNominaModule?.renderNominaPreview) {
-    return window.AppNominaModule.renderNominaPreview({ r, tipo, fmt });
+  if (!window.AppNominaModule?.renderNominaPreview) {
+    console.warn('[ERP] AppNominaModule.renderNominaPreview no cargado');
+    return;
   }
-  const el = document.getElementById('nom-preview-content');
-  if(!el) return;
-
-  const fmtR = (n) => `<span style="font-weight:700">${fmt(Math.round(n||0))}</span>`;
-  const row = (label, val, color='') => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:var(--text2)">${label}</span>${color?`<span style="color:${color};font-weight:700">${fmt(Math.round(val||0))}</span>`:fmtR(val)}</div>`;
-
-  let html = '';
-
-  if(tipo === 'quincenal' || tipo === 'mensual') {
-    html = `
-      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">DEVENGADO</div>
-      ${row(`Salario (${r.diasEfectivos} días)`, r.salarioBase, 'var(--green)')}
-      ${r.auxTrans > 0 ? row('Aux. Transporte', r.auxTrans, 'var(--green)') : ''}
-      ${r.valorIncap > 0 ? row('Incapacidad (EPS 2/3)', r.valorIncap, 'var(--yellow)') : ''}
-      ${r.otrosDevengos > 0 ? row('Otros devengos', r.otrosDevengos, 'var(--green)') : ''}
-      ${row('TOTAL DEVENGADO', r.totalDevengado, 'var(--green)')}
-      <div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">DEDUCCIONES</div>
-      ${r.baseCotizacion != null ? `<div style="font-size:10px;color:var(--text2);margin-bottom:4px">Base cotización salud/pensión (sin aux. transporte): ${fmt(Math.round(r.baseCotizacion))}</div>` : ''}
-      ${row('Salud empleado (4%)', r.deducSalud, 'var(--red)')}
-      ${row('Pensión empleado (4%)', r.deducPension, 'var(--red)')}
-      ${r.anticipos > 0 ? row('Anticipos', r.anticipos, 'var(--red)') : ''}
-      ${r.otrasDeducc > 0 ? row('Otras deducciones', r.otrasDeducc, 'var(--red)') : ''}
-      ${row('TOTAL DEDUCCIONES', r.totalDeducc, 'var(--red)')}
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px">
-        <span style="font-family:Syne;font-weight:800;font-size:14px">NETO A PAGAR</span>
-        <span style="font-family:Syne;font-weight:800;font-size:16px;color:var(--accent)">${fmt(Math.round(r.neto))}</span>
-      </div>
-      ${r.empleador ? `
-      <details style="margin-top:10px">
-        <summary style="font-size:11px;color:var(--text2);cursor:pointer">📊 Ver costos empleador (no se descuentan al empleado)</summary>
-        <div style="margin-top:8px;font-size:11px">
-          ${row('Salud empleador (8.5%)', r.empleador.costoSalud)}
-          ${row('Pensión empleador (12%)', r.empleador.costoPension)}
-          ${row('ARL (0.522%)', r.empleador.costoArl)}
-          ${row('Caja compensación (4%)', r.empleador.costoCaja)}
-          ${row('Provisión prima', r.empleador.provPrima)}
-          ${row('Provisión cesantías', r.empleador.provCes)}
-          ${row('Provisión int. cesantías', r.empleador.provIntCes)}
-          ${row('Provisión vacaciones', r.empleador.provVac)}
-          ${row('COSTO TOTAL EMPLEADOR', r.empleador.costoTotal, 'var(--orange)')}
-        </div>
-      </details>` : ''}`;
-
-  } else if(tipo === 'vacaciones') {
-    html = `${row(`Vacaciones (${r.diasVacaciones} días)`, r.salarioBase, 'var(--green)')}
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px">
-        <span style="font-family:Syne;font-weight:800">VALOR VACACIONES</span>
-        <span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span>
-      </div>`;
-  } else if(tipo === 'prima') {
-    html = `${row(`Base (${r.meses?.toFixed(1)} meses)`, r.base)}
-      ${row('Prima semestral', r.valor, 'var(--green)')}
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px">
-        <span style="font-family:Syne;font-weight:800">PRIMA A PAGAR</span>
-        <span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span>
-      </div>`;
-  } else if(tipo === 'cesantias') {
-    html = `${row(`Cesantías (${r.diasCesantias} días)`, r.valor, 'var(--green)')}
-      ${row('Intereses cesantías (12%)', r.intCes, 'var(--green)')}
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px">
-        <span style="font-family:Syne;font-weight:800">CESANTÍAS + INTERESES</span>
-        <span style="font-family:Syne;font-weight:800;color:var(--accent)">${fmt(Math.round(r.neto))}</span>
-      </div>`;
-  } else if(tipo === 'liquidacion') {
-    html = `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">LIQUIDACIÓN CONTRATO</div>
-      ${row(`Cesantías (${r.diasTrab} días)`, r.cesan, 'var(--green)')}
-      ${row('Intereses cesantías', r.intCes, 'var(--green)')}
-      ${row('Prima proporcional', r.prima, 'var(--green)')}
-      ${row('Vacaciones proporcionales', r.vac, 'var(--green)')}
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:2px solid var(--accent);margin-top:4px">
-        <span style="font-family:Syne;font-weight:800;font-size:14px">TOTAL LIQUIDACIÓN</span>
-        <span style="font-family:Syne;font-weight:800;font-size:16px;color:var(--accent)">${fmt(Math.round(r.neto))}</span>
-      </div>`;
-  }
-
-  el.innerHTML = html;
+  return window.AppNominaModule.renderNominaPreview({ r, tipo, fmt });
 }
 
 async function guardarNomina(tipo) {
@@ -7722,26 +6718,11 @@ function imprimirNomina(id) {
 }
 
 async function pagarNomina(id){
-  if (window.AppNominaModule?.pagarNomina) {
-    return window.AppNominaModule.pagarNomina({ state, id, saveRecord, uid, dbId, today, renderNomNominas, notify, fmt });
+  if (!window.AppNominaModule?.pagarNomina) {
+    console.warn('[ERP] AppNominaModule.pagarNomina no cargado');
+    return;
   }
-  const n=(state.nom_nominas||[]).find(x=>x.id===id);if(!n)return;
-  n.pagada=true;
-  await saveRecord('nom_nominas', n.id, n);
-
-  const cajaAbierta=(state.cajas||[]).find(c=>c.estado==='abierta');
-  if(cajaAbierta){
-    window.AppCajaLogic?.normalizeCaja?.(cajaAbierta);
-    window.AppCajaLogic?.applyDeltaBucket?.(cajaAbierta, 'transferencia', -n.neto);
-    const mov={id:dbId(),cajaId:cajaAbierta.id,tipo:'egreso',valor:n.neto,
-      concepto:`${n.tipo?.toUpperCase()||'Nómina'} ${n.numero} - ${n.empleado}`,fecha:today(),metodo:'transferencia',categoria:'nomina',bucket:'transferencia'};
-    window.AppCajaLogic?.enrichMovWithSesion?.(state, cajaAbierta.id, mov, dbId);
-    state.tes_movimientos.push(mov);
-    await saveRecord('cajas', cajaAbierta.id, cajaAbierta);
-    await saveRecord('tes_movimientos', mov.id, mov);
-  }
-  renderNomNominas();
-  notify('success','💰','¡Nómina pagada!',`${n.empleado} · ${fmt(n.neto)}`,{duration:3000});
+  return window.AppNominaModule.pagarNomina({ state, id, saveRecord, uid, dbId, today, renderNomNominas, notify, fmt });
 }
 
 
@@ -7827,18 +6808,11 @@ window.backfillSaleItemsVentaPos = backfillSaleItemsVentaPos;
 
 /** CXP Proveedores: panel ejecutivo de Cuentas por Pagar (solo lectura, vistas servidor). */
 function renderTesPagosProv() {
-  if (window.AppCxpProveedoresModule?.renderCxpProveedores) {
-    return window.AppCxpProveedoresModule.renderCxpProveedores({ state, supabaseClient });
+  if (!window.AppCxpProveedoresModule?.renderCxpProveedores) {
+    console.warn('[ERP] AppCxpProveedoresModule.renderCxpProveedores no cargado');
+    return;
   }
-  const el = document.getElementById('tes_pagos_prov-content');
-  if (el) {
-    el.innerHTML =
-      '<div class="card" style="padding:24px;text-align:center;color:var(--text-soft,#888)">' +
-      '<div style="font-size:32px;margin-bottom:8px">🏭</div>' +
-      '<div style="font-size:16px;font-weight:600;margin-bottom:4px">CXP Proveedores</div>' +
-      '<div>Cargando módulo… recarga la página si no aparece.</div>' +
-      '</div>';
-  }
+  return window.AppCxpProveedoresModule.renderCxpProveedores({ state, supabaseClient });
 }
 
 function recalcCierreArqueo() {
@@ -8035,139 +7009,40 @@ function renderTesTransferencias(){renderSimpleCollection('tes_transferencias','
 // ===================================================================
 
 function renderGamePage(){
-  if (window.AppGameSystemModule?.renderGamePage) {
-    return window.AppGameSystemModule.renderGamePage({ state, calcLevel, calcLevelProgress });
+  if (!window.AppGameSystemModule?.renderGamePage) {
+    console.warn('[ERP] AppGameSystemModule.renderGamePage no cargado');
+    return;
   }
-  const g = state.game || { xp: 0 };
-  const lv = calcLevel(g.xp);
-  const {next, pct, xpToNext} = calcLevelProgress(g.xp);
-  
-  document.getElementById('juego-content').innerHTML = `
-    <div class="card" style="text-align:center; padding: 48px 20px;">
-      <div style="font-size: 80px; animation: bounce 2s infinite alternate;">${lv.avatar}</div>
-      <div style="font-family: Syne; font-size: 32px; font-weight: 800; color: var(--accent); margin-top: 16px;">${lv.name}</div>
-      <div style="color: var(--text2); margin-bottom: 24px;">Nivel ${lv.level} • ${g.xp} XP acumulados</div>
-      
-      ${next ? `
-        <div style="background: rgba(255,255,255,0.1); height: 14px; border-radius: 8px; overflow: hidden; max-width: 400px; margin: 0 auto; position: relative;">
-          <div style="background: linear-gradient(90deg, var(--accent), var(--accent2)); height: 100%; width: ${pct}%; transition: width 1s ease;"></div>
-        </div>
-        <div style="font-size: 13px; color: var(--text2); margin-top: 12px; font-weight: 600;">Faltan ${xpToNext} XP para alcanzar el nivel ${next.name}</div>
-      ` : '<div style="color: gold; font-weight: 800; font-size: 16px;">¡HAS ALCANZADO EL NIVEL MÁXIMO! 🏆</div>'}
-    </div>
-  `;
+  return window.AppGameSystemModule.renderGamePage({ state, calcLevel, calcLevelProgress });
 }
 
 function renderRewards(){
-  if (window.AppGameSystemModule?.renderRewards) {
-    return window.AppGameSystemModule.renderRewards({ state, REWARDS });
+  if (!window.AppGameSystemModule?.renderRewards) {
+    console.warn('[ERP] AppGameSystemModule.renderRewards no cargado');
+    return;
   }
-  document.getElementById('recompensas-content').innerHTML = `
-    <div class="card">
-      <div class="card-title">🏆 RECOMPENSAS Y METAS</div>
-      <div class="grid-3">
-        ${REWARDS.map(r => {
-          const isUnlocked = r.condition(state);
-          return `
-          <div class="card" style="margin:0; text-align:center; transition: all 0.3s; border-color: ${isUnlocked ? 'var(--green)' : 'var(--border)'}; background: ${isUnlocked ? 'rgba(74,222,128,0.05)' : 'var(--card)'}">
-            <div style="font-size: 40px; margin-bottom: 12px; filter: ${isUnlocked ? 'none' : 'grayscale(100%) opacity(0.5)'}">${r.icon}</div>
-            <div style="font-family: Syne; font-weight: 800; font-size: 14px; color: ${isUnlocked ? 'var(--green)' : 'var(--text)'};">${r.name}</div>
-            <div style="font-size: 11px; color: var(--text2); margin-top: 6px; line-height: 1.4;">${r.desc}</div>
-            <div style="margin-top: 14px;">
-              <span class="badge ${isUnlocked ? 'badge-ok' : 'badge-pend'}">${isUnlocked ? '¡DESBLOQUEADA!' : '🔒 En progreso'}</span>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-  `;
+  return window.AppGameSystemModule.renderRewards({ state, REWARDS });
 }
 
 function buildAlerts() {
-  let alerts = [];
-  if (window.AppGameSystemModule?.buildAlerts) {
-    alerts = window.AppGameSystemModule.buildAlerts({
-      state,
-      fmt,
-      getArticuloStock,
-      ventaCuentaParaTotales
-    });
-  } else {
-    const pend = (state.ventas || []).filter(
-      (v) => ventaCuentaParaTotales(v) && canonCanalVenta(v) !== 'vitrina' && !v.liquidado
-    );
-    if (pend.length > 0) {
-      alerts.push({
-        type: 'warning',
-        icon: '⏳',
-        title: `${pend.length} venta${pend.length > 1 ? 's' : ''} sin liquidar (seguimiento)`,
-        desc: `Total lista: ${fmt(pend.reduce((s, v) => s + v.valor, 0))}. Ingreso en caja = día de la venta; liquidar no duplica movimiento.`,
-        action: "showPage('pendientes')",
-        actionLabel: 'Ir a Cobros'
-      });
-    }
-    const lowStock = (state.articulos || []).filter((a) => getArticuloStock(a.id) <= a.stockMinimo);
-    if (lowStock.length > 0) {
-      alerts.push({
-        type: 'urgent',
-        icon: '📦',
-        title: `Stock crítico en ${lowStock.length} artículo${lowStock.length > 1 ? 's' : ''}`,
-        desc:
-          lowStock
-            .slice(0, 3)
-            .map((a) => `${a.nombre} (${getArticuloStock(a.id)} uds)`)
-            .join(' · ') + (lowStock.length > 3 ? ` y ${lowStock.length - 3} más` : ''),
-        action: "showPage('articulos')",
-        actionLabel: 'Ver inventario'
-      });
-    }
+  if (!window.AppGameSystemModule?.buildAlerts) {
+    console.warn('[ERP] AppGameSystemModule.buildAlerts no cargado');
+    return [];
   }
-  return alerts;
+  return window.AppGameSystemModule.buildAlerts({
+    state,
+    fmt,
+    getArticuloStock,
+    ventaCuentaParaTotales
+  });
 }
 
 function renderAlertas(){
-  if (window.AppGameSystemModule?.renderAlertas) {
-    return window.AppGameSystemModule.renderAlertas({ state, fmt, getArticuloStock, today, ventaCuentaParaTotales });
+  if (!window.AppGameSystemModule?.renderAlertas) {
+    console.warn('[ERP] AppGameSystemModule.renderAlertas no cargado');
+    return;
   }
-  const alertas = buildAlerts();
-  const urgentes = alertas.filter(a=>a.type==='urgent').length;
-  const warnings = alertas.filter(a=>a.type==='warning').length;
-
-  document.getElementById('alertas-content').innerHTML = `
-    ${alertas.length > 0 ? `
-    <div class="grid-3" style="margin-bottom:16px">
-      <div class="card" style="margin:0;text-align:center;border-color:rgba(248,113,113,.3)">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--red)">${urgentes}</div>
-        <div style="font-size:11px;color:var(--text2)">🚨 Críticas</div>
-      </div>
-      <div class="card" style="margin:0;text-align:center;border-color:rgba(251,191,36,.3)">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--yellow)">${warnings}</div>
-        <div style="font-size:11px;color:var(--text2)">⚠️ Advertencias</div>
-      </div>
-      <div class="card" style="margin:0;text-align:center">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--text)">${alertas.length}</div>
-        <div style="font-size:11px;color:var(--text2)">📋 Total</div>
-      </div>
-    </div>` : ''}
-    <div class="card">
-      <div class="card-title">🔔 CENTRO DE ALERTAS — ${today()}</div>
-      ${alertas.length === 0 ? `
-        <div class="empty-state">
-          <div class="es-icon">✅</div>
-          <div class="es-title" style="color:var(--green)">Todo bajo control</div>
-          <div class="es-text">No hay alertas críticas en este momento. ¡Buen trabajo!</div>
-        </div>
-      ` : alertas.map(a => `
-        <div class="urgency-item ${a.type}" style="padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:8px">
-          <div style="font-size:26px;flex-shrink:0;margin-top:2px">${a.icon||'🔔'}</div>
-          <div style="flex:1">
-            <div style="font-family:Syne;font-weight:800;font-size:14px;margin-bottom:4px">${a.title}</div>
-            <div style="font-size:12px;color:var(--text2);line-height:1.5">${a.desc}</div>
-          </div>
-          ${a.action ? `<button class="btn btn-xs ${a.type==='urgent'?'btn-danger':'btn-secondary'}" onclick="${a.action}">${a.actionLabel||'Ver'}</button>` : ''}
-        </div>
-      `).join('')}
-    </div>`;
+  return window.AppGameSystemModule.renderAlertas({ state, fmt, getArticuloStock, today, ventaCuentaParaTotales });
 }
 
 // ===================================================================
@@ -8175,127 +7050,11 @@ function renderAlertas(){
 // ===================================================================
 
 function renderHistorial(){
-  if (window.AppGameSystemModule?.renderHistorial) {
-    return window.AppGameSystemModule.renderHistorial({ state, formatDate, fmt, today, yearMonthFromFecha, sortVentasRecientes, ventasEnMesCalendario, ventaCuentaParaTotales });
-  }
-  const q = (document.getElementById('hist-search')?.value || '').toLowerCase();
-  const scope = document.getElementById('hist-scope')?.value || 'mes';
-  const hoy = today();
-  const ym = yearMonthFromFecha(hoy);
-  let ventas = state.ventas || [];
-  if (scope === 'hoy') ventas = ventas.filter((v) => v.fecha === hoy);
-  else if (scope === 'mes') ventas = ventasEnMesCalendario(state.ventas, ym);
-  else ventas = [...ventas];
-  if (q) ventas = ventas.filter(v => (v.desc||'').toLowerCase().includes(q) || (v.cliente||'').toLowerCase().includes(q) || (v.guia||'').toLowerCase().includes(q));
-  ventas = sortVentasRecientes(ventas);
-  const hoyResumen = (state.ventas || []).filter((v) => v.fecha === hoy);
-  const mesList = ventasEnMesCalendario(state.ventas, ym);
-  const sumArr = (arr) => arr.reduce((a, v) => a + (parseFloat(v.valor) || 0), 0);
-  const sumArrActivas = (arr) => arr.filter(ventaCuentaParaTotales).reduce((a, v) => a + (parseFloat(v.valor) || 0), 0);
-  const row = (v) => {
-    const fac = (state.facturas||[]).find(f=>String(f.id)===String(v.id));
-    const anulada = fac && fac.estado==='anulada';
-    const puedeAnular = fac && fac.tipo==='pos' && !anulada;
-    return `<tr style="${v.archived ? 'opacity:0.6;' : ''}${anulada?'opacity:0.75;':''}">
-      <td>${formatDate(v.fecha)}</td>
-      <td><span class="badge badge-${v.canal}">${v.canal}</span>${canonCanalVenta(v)!=='vitrina'?`<span class="badge ${v.esContraEntrega?'badge-warn':'badge-ok'}" style="margin-left:4px;font-size:9px">${v.esContraEntrega?'📦CE':'💵CD'}</span>`:''}</td>
-      <td style="font-weight:bold;">${v.desc||'—'}</td>
-      <td>${v.cliente||'—'}</td>
-      <td style="color:var(--accent);font-weight:700;">${fmt(v.valor)}</td>
-      <td>
-        <span class="badge ${v.liquidado?'badge-ok':'badge-pend'}">${v.liquidado?'Liquidado':'Pendiente'}</span>
-        ${anulada?`<span class="badge badge-warn" style="margin-left:4px">Anulada</span>`:''}
-        ${v.syncPending ? `<span class="badge badge-warn" style="margin-left:4px">Sync pendiente</span>` : ''}
-        ${puedeAnular?`<button type="button" class="btn btn-xs btn-danger" style="margin-left:6px" onclick="anularVentaPOSConfirm('${String(v.id).replace(/'/g,"\\'")}')">Anular</button>`:''}
-      </td>
-    </tr>`;
-  };
-  let rowsHtml = '';
-  if (scope === 'todas' || scope === 'mes') {
-    let lastF = null;
-    for (const v of ventas) {
-      if (v.fecha !== lastF) {
-        lastF = v.fecha;
-        const sameDay = ventas.filter((x) => x.fecha === lastF);
-        const sub = sumArr(sameDay);
-        rowsHtml += `<tr><td colspan="6" style="background:rgba(0,229,180,.07);font-weight:700;font-size:11px;padding:8px 10px;border-top:1px solid var(--border)">📅 ${formatDate(lastF)} · ${sameDay.length} factura(s) · ${fmt(sub)}${sameDay.some((x) => x.archived) ? ' · incl. archivo' : ''}</td></tr>`;
-      }
-      rowsHtml += row(v);
-    }
-  } else {
-    rowsHtml = ventas.map((v) => row(v)).join('');
-  }
-  if (!rowsHtml) rowsHtml = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text2)">Sin registros</td></tr>';
-
-  if(document.getElementById('hist-tbody')) {
-    document.getElementById('hist-tbody').innerHTML = rowsHtml;
-    const cnt = document.getElementById('hist-count');
-    if(cnt) cnt.textContent = String(ventas.length);
-    const subEl = document.getElementById('hist-sub');
-    if (subEl) subEl.textContent = `${hoyResumen.filter(ventaCuentaParaTotales).length} hoy · ${fmt(sumArrActivas(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArrActivas(mesList))} | En vista: ${ventas.length}`;
+  if (!window.AppGameSystemModule?.renderHistorial) {
+    console.warn('[ERP] AppGameSystemModule.renderHistorial no cargado');
     return;
   }
-
-  const pendSync = (state.ventas || []).filter(v => !!v.syncPending);
-  const pendSyncHtml = pendSync.length ? `
-    <div class="card" style="margin-bottom:12px;border-color:rgba(251,191,36,.35)">
-      <div class="card-title">⚠️ Sincronización pendiente (${pendSync.length})</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.45">
-        Aquí ves ventas guardadas localmente con algún paso pendiente de sincronizar. Reintenta solo documentos cuando aplique para evitar duplicados en caja/inventario.
-        También puedes recuperar descuentos de stock en <b>Tesorería → Pagos proveedores</b>: «POS stock» (solo <code>products</code>) o «POS todo» (moves + stock).
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Fecha</th><th>Factura</th><th>Cliente</th><th>Error</th><th></th></tr></thead>
-          <tbody>
-            ${pendSync.slice(0,50).map(v=>`<tr>
-              <td>${formatDate(v.fecha)}</td>
-              <td style="font-weight:700">${v.desc||v.id}</td>
-              <td>${v.cliente||'—'}</td>
-              <td style="font-size:11px;color:var(--yellow)">${v.syncError||'desconocido'}</td>
-              <td>
-                <div class="btn-group">
-                  <button class="btn btn-xs btn-secondary" onclick="reintentarSyncDocumentos('${v.id}')">Reintentar docs</button>
-                  <button class="btn btn-xs btn-secondary" onclick="reintentarSyncCajaInventario('${v.id}')">Reintentar caja/inv</button>
-                  <button class="btn btn-xs btn-danger" onclick="marcarSyncResuelto('${v.id}')">Marcar resuelto</button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  ` : '';
-
-  document.getElementById('historial-content').innerHTML = `
-    ${pendSyncHtml}
-    <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end">
-      <div class="search-bar" style="flex:1;min-width:200px;max-width:360px;margin:0;">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="hist-search" placeholder="# factura, cliente, guía..."
-          value="${q}" oninput="renderHistorial()">
-      </div>
-      <div>
-        <label class="form-label" style="font-size:10px;color:var(--text2);display:block;margin-bottom:4px">Ámbito</label>
-        <select class="form-control" id="hist-scope" style="min-width:160px" onchange="renderHistorial()">
-          <option value="hoy" ${scope==='hoy'?'selected':''}>Solo hoy</option>
-          <option value="mes" ${scope==='mes'?'selected':''}>Mes calendario (${ym})</option>
-          <option value="todas" ${scope==='todas'?'selected':''}>Todas (incl. archivo)</option>
-        </select>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:12px;padding:12px;font-size:12px;color:var(--text2)">
-      <b>Venta POS = factura</b> (referencia = # doc). Resumen: <span id="hist-sub">${hoyResumen.filter(ventaCuentaParaTotales).length} hoy · ${fmt(sumArrActivas(hoyResumen))} | Mes ${ym}: ${mesList.length} fact. · ${fmt(sumArrActivas(mesList))} | En vista: ${ventas.length}</span>
-    </div>
-    <div class="card">
-      <div class="card-title">HISTORIAL DE FACTURAS (<span id="hist-count">${ventas.length}</span> en vista)</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Fecha</th><th>Canal</th><th>Factura</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
-          <tbody id="hist-tbody">${rowsHtml}</tbody>
-        </table>
-      </div>
-    </div>`;
+  return window.AppGameSystemModule.renderHistorial({ state, formatDate, fmt, today, yearMonthFromFecha, sortVentasRecientes, ventasEnMesCalendario, ventaCuentaParaTotales });
 }
 
 async function reintentarSyncDocumentos(id) {
@@ -8798,338 +7557,41 @@ async function guardarCfgCajaDesdeConfig() {
 }
 
 function renderConfig(){
-  if (window.AppConfigModule?.renderConfig) {
-    return window.AppConfigModule.renderConfig({ state, renderCfgTab });
+  if (!window.AppConfigModule?.renderConfig) {
+    console.warn('[ERP] AppConfigModule.renderConfig no cargado');
+    return;
   }
-  const emp = state.empresa || {};
-  const activeTab = window._cfgTab || 'empresa';
-  const tabs = [
-    {id:'empresa', icon:'🏢', label:'Empresa & Ticket'},
-    {id:'inventario', icon:'🗂️', label:'Categorías'},
-    {id:'logistica', icon:'🚚', label:'Logística'},
-    {id:'pagos', icon:'💳', label:'Pagos'},
-    {id:'precios', icon:'💰', label:'Tarifas & IVA'},
-    {id:'nomina', icon:'👔', label:'Nómina'},
-    {id:'bodegas', icon:'🏭', label:'Bodegas'},
-    {id:'cajas_pos', icon:'🏧', label:'Cajas POS'},
-    {id:'gamif', icon:'🎮', label:'Gamificación'},
-    {id:'peligro', icon:'⚡', label:'Sistema'},
-  ];
-
-  document.getElementById('config-content').innerHTML = `
-    <div class="tabs" style="margin-bottom:20px">
-      ${tabs.map(t=>`<div class="tab ${activeTab===t.id?'active':''}" onclick="setCfgTab('${t.id}')">${t.icon} ${t.label}</div>`).join('')}
-    </div>
-    <div id="cfg-tab-body"></div>`;
-
-  renderCfgTab(activeTab);
+  return window.AppConfigModule.renderConfig({ state, renderCfgTab });
 }
 
 function setCfgTab(tab) {
-  if (window.AppConfigModule?.setCfgTab) {
-    return window.AppConfigModule.setCfgTab({ tab, renderCfgTab });
+  if (!window.AppConfigModule?.setCfgTab) {
+    console.warn('[ERP] AppConfigModule.setCfgTab no cargado');
+    return;
   }
-  window._cfgTab = tab;
-  document.querySelectorAll('#config-content .tab').forEach(t => {
-    t.classList.toggle('active', t.getAttribute('onclick')?.includes("'"+tab+"'"));
-  });
-  renderCfgTab(tab);
+  return window.AppConfigModule.setCfgTab({ tab, renderCfgTab });
 }
 
 function renderCfgTab(tab) {
-  if (window.AppConfigModule?.renderCfgTab) {
-    return window.AppConfigModule.renderCfgTab({
+  if (!window.AppConfigModule?.renderCfgTab) {
+    console.warn('[ERP] AppConfigModule.renderCfgTab no cargado');
+    return;
+  }
+  return window.AppConfigModule.renderCfgTab({
       state, tab, today, fmt, saveConfig, renderDashboard, renderConfig,
       openModal, closeModal, saveRecord, deleteRecord, notify, deleteFromCollection,
       supabaseClient, checkMonthReset, renderAll, confirm
     });
-  }
-  const el = document.getElementById('cfg-tab-body');
-  if(!el) return;
-  const emp = state.empresa || {};
-
-  if(tab === 'empresa') {
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">🖨️ VISTA PREVIA TICKET 80mm</div>
-        <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
-          <div style="background:white;color:#000;font-family:'Courier New',monospace;font-size:10px;width:72mm;padding:8px;border:1px solid #ddd;border-radius:4px;margin:0 auto">
-            ${emp.logoBase64?`<div style="text-align:center;margin-bottom:4px"><img src="${emp.logoBase64}" style="max-width:160px"></div>`:`<div style="text-align:center;font-weight:900;font-size:13px;letter-spacing:2px">${emp.nombre||'NOMBRE EMPRESA'}</div>`}
-            <div style="text-align:center;font-weight:700">${emp.nombre||'NOMBRE EMPRESA'}</div>
-            <div style="text-align:center;font-size:9px">NIT: ${emp.nit||'---'} | ${emp.regimenFiscal||'Régimen ordinario'}</div>
-            <div style="text-align:center;font-size:9px">${emp.departamento||''}/${emp.ciudad||''} / ${emp.direccion||''}</div>
-            <div style="text-align:center;font-size:9px">Tel: ${emp.telefono||''}${emp.telefono2?' / '+emp.telefono2:''}</div>
-            ${emp.email?`<div style="text-align:center;font-size:9px">${emp.email}</div>`:''}
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="text-align:center;font-weight:700">FACTURA DE VENTA No.: 00001</div>
-            <div style="text-align:center;font-size:9px">${today()}</div>
-            ${emp.mensajeHeader?`<div style="text-align:center;font-size:9px;white-space:pre-wrap">${emp.mensajeHeader}</div>`:''}
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="font-size:9px">Cliente: CLIENTE MOSTRADOR</div>
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="font-size:9px">Producto ejemplo x1 → 48.000</div>
-            <div style="border-top:1px dashed #000;margin:4px 0"></div>
-            <div style="font-weight:900;font-size:11px;text-align:right">TOTAL: $48.000</div>
-            ${emp.mensajePie?`<div style="text-align:center;font-size:9px;margin-top:4px;white-space:pre-wrap">${emp.mensajePie}</div>`:''}
-          </div>
-          <div style="flex:2;min-width:280px">
-            <div class="form-group">
-              <label class="form-label">📸 LOGO (recomendado 400×120px, fondo blanco)</label>
-              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-                <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cfg-logo-input').click()">📁 Subir Logo</button>
-                <input type="file" id="cfg-logo-input" accept="image/*" style="display:none" onchange="procesarLogoConfig(this)">
-                ${emp.logoBase64?`<button class="btn btn-xs btn-danger" onclick="state.empresa.logoBase64='';saveConfig('empresa',state.empresa).then(()=>renderCfgTab('empresa'))">✕ Quitar</button>`:''}
-                <div style="width:80px;height:40px;border:1px solid var(--border);border-radius:6px;background:${emp.logoBase64?`url('${emp.logoBase64}') center/contain no-repeat white`:'var(--bg3)'}"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">🏢 DATOS DE EMPRESA</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">NOMBRE EMPRESA</label><input class="form-control" id="cfg-nombre" value="${emp.nombre||''}" placeholder="EON CLOTHING"></div>
-          <div class="form-group"><label class="form-label">NOMBRE SECUNDARIO</label><input class="form-control" id="cfg-nombre2" value="${emp.nombreComercial||''}"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">NIT</label><input class="form-control" id="cfg-nit" value="${emp.nit||''}"></div>
-          <div class="form-group"><label class="form-label">RÉGIMEN FISCAL</label><input class="form-control" id="cfg-regimen" value="${emp.regimenFiscal||''}" placeholder="No responsable de IVA"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">DEPARTAMENTO</label><input class="form-control" id="cfg-dpto" value="${emp.departamento||''}"></div>
-          <div class="form-group"><label class="form-label">CIUDAD</label><input class="form-control" id="cfg-ciudad" value="${emp.ciudad||''}"></div>
-        </div>
-        <div class="form-group"><label class="form-label">DIRECCIÓN</label><input class="form-control" id="cfg-dir" value="${emp.direccion||''}"></div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">TELÉFONO 1</label><input class="form-control" id="cfg-tel" value="${emp.telefono||''}"></div>
-          <div class="form-group"><label class="form-label">TELÉFONO 2</label><input class="form-control" id="cfg-tel2" value="${emp.telefono2||''}"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">EMAIL</label><input class="form-control" id="cfg-email" value="${emp.email||''}"></div>
-          <div class="form-group"><label class="form-label">PÁGINA WEB</label><input class="form-control" id="cfg-web" value="${emp.web||''}"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">VENDEDORA</label><input class="form-control" id="cfg-vendedora" value="${emp.vendedora||''}"></div>
-          <div class="form-group"><label class="form-label">INSTAGRAM / REDES</label><input class="form-control" id="cfg-social" value="${emp.social||''}"></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">🧾 TEXTOS DEL TICKET</div>
-        <div class="form-group"><label class="form-label">MENSAJE ENCABEZADO</label><textarea class="form-control" id="cfg-header" rows="3">${emp.mensajeHeader||''}</textarea></div>
-        <div class="form-group"><label class="form-label">MENSAJE PIE</label><textarea class="form-control" id="cfg-pie" rows="2">${emp.mensajePie||''}</textarea></div>
-        <div class="form-group"><label class="form-label">POLÍTICA DE DATOS</label><textarea class="form-control" id="cfg-datos" rows="2">${emp.politicaDatos||''}</textarea></div>
-        <div class="form-group"><label class="form-label">POLÍTICA CAMBIOS / GARANTÍAS</label><textarea class="form-control" id="cfg-garantias" rows="2">${emp.mensajeGarantias||''}</textarea></div>
-      </div>
-      <button class="btn btn-primary" style="width:100%;height:50px;font-size:16px" onclick="guardarConfigCompleta()">💾 Guardar Configuración de Empresa</button>`;
-  }
-
-  else if(tab === 'inventario') {
-    const cats = state.cfg_categorias || [];
-    const secs = state.cfg_secciones || [];
-    el.innerHTML = `
-      <div class="grid-2">
-        <div class="card" style="margin:0">
-          <div class="card-title">📁 SECCIONES WEB
-            <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_secciones','Sección',['nombre:text:Nombre'])">+ Nueva</button>
-          </div>
-          <div class="table-wrap"><table><thead><tr><th>Nombre</th><th></th></tr></thead><tbody>
-          ${secs.map(s=>`<tr><td style="font-weight:700">${s.nombre}</td><td>
-            <button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_secciones','${s.id}','inventario')">✕</button>
-          </td></tr>`).join('')||'<tr><td colspan="2" style="text-align:center;color:var(--text2);padding:12px">Sin secciones</td></tr>'}
-          </tbody></table></div>
-        </div>
-        <div class="card" style="margin:0">
-          <div class="card-title">🗂️ CATEGORÍAS
-            <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModalCat()">+ Nueva</button>
-          </div>
-          <div class="table-wrap"><table><thead><tr><th>Sección</th><th>Categoría</th><th></th></tr></thead><tbody>
-          ${cats.map(c=>`<tr>
-            <td style="font-size:11px;color:var(--text2)">${c.seccion}</td>
-            <td style="font-weight:700">${c.nombre}</td>
-            <td><button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_categorias','${c.id}','inventario')">✕</button></td>
-          </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:var(--text2);padding:12px">Sin categorías</td></tr>'}
-          </tbody></table></div>
-        </div>
-      </div>`;
-  }
-
-  else if(tab === 'logistica') {
-    const trans = state.cfg_transportadoras || [];
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">🚚 TRANSPORTADORAS
-          <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_transportadoras','Transportadora',['nombre:text:Nombre'])">+ Nueva</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Activa</th><th></th></tr></thead><tbody>
-        ${trans.map(t=>`<tr>
-          <td style="font-weight:700">${t.nombre}</td>
-          <td><span class="badge ${t.activa!==false?'badge-ok':'badge-pend'}">${t.activa!==false?'✓ Activa':'Inactiva'}</span></td>
-          <td><div class="btn-group">
-            <button class="btn btn-xs btn-secondary" onclick="toggleCfgActivo('cfg_transportadoras','${t.id}','logistica')">${t.activa!==false?'Desactivar':'Activar'}</button>
-            <button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_transportadoras','${t.id}','logistica')">✕</button>
-          </div></td>
-        </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:var(--text2);padding:12px">Sin transportadoras</td></tr>'}
-        </tbody></table></div>
-      </div>
-      <div class="card">
-        <div class="card-title">⏱️ TIEMPOS DE LIQUIDACIÓN</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">DÍAS LIQ. LOCAL (hábiles)</label><input type="number" class="form-control" id="cfg-dias-local" value="${state.diasLocal||1}" min="1"></div>
-          <div class="form-group"><label class="form-label">DÍAS LIQ. INTER (hábiles)</label><input type="number" class="form-control" id="cfg-dias-inter" value="${state.diasInter||5}" min="1"></div>
-        </div>
-        <button class="btn btn-primary" onclick="guardarDiasLiq()">💾 Guardar Tiempos</button>
-      </div>`;
-  }
-
-  else if(tab === 'pagos') {
-    const metodos = state.cfg_metodos_pago || [];
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">💳 MÉTODOS DE PAGO
-          <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_metodos_pago','Método de Pago',['nombre:text:Nombre','tipo:text:Tipo (efectivo/digital/banco/tarjeta)'])">+ Nuevo</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${metodos.map(m=>`<tr>
-          <td style="font-weight:700">${m.nombre}</td>
-          <td><span class="badge badge-info">${m.tipo||'otro'}</span></td>
-          <td><span class="badge ${m.activo!==false?'badge-ok':'badge-pend'}">${m.activo!==false?'Activo':'Inactivo'}</span></td>
-          <td><div class="btn-group">
-            <button class="btn btn-xs btn-secondary" onclick="toggleCfgActivo('cfg_metodos_pago','${m.id}','pagos')">${m.activo!==false?'Desactivar':'Activar'}</button>
-            <button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_metodos_pago','${m.id}','pagos')">✕</button>
-          </div></td>
-        </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:12px">Sin métodos</td></tr>'}
-        </tbody></table></div>
-      </div>`;
-  }
-
-  else if(tab === 'precios') {
-    const tarifas = state.cfg_tarifas || [];
-    const impuestos = state.cfg_impuestos || [];
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">💰 TARIFAS DE PRECIO
-          <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_tarifas','Tarifa',['nombre:text:Nombre','porcentaje:number:% Ajuste (negativo=descuento)','descripcion:text:Descripción'])">+ Nueva</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>% Ajuste</th><th>Descripción</th><th></th></tr></thead><tbody>
-        ${tarifas.map(t=>`<tr>
-          <td style="font-weight:700">${t.nombre}</td>
-          <td style="color:${t.porcentaje>0?'var(--green)':t.porcentaje<0?'var(--red)':'var(--text2)'};font-weight:700">${t.porcentaje>0?'+':''}${t.porcentaje}%</td>
-          <td style="color:var(--text2);font-size:11px">${t.descripcion||'—'}</td>
-          <td><button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_tarifas','${t.id}','precios')">✕</button></td>
-        </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:12px">Sin tarifas</td></tr>'}
-        </tbody></table></div>
-      </div>
-      <div class="card">
-        <div class="card-title">📊 IMPUESTOS Y RETENCIONES
-          <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('cfg_impuestos','Impuesto',['nombre:text:Nombre','porcentaje:number:Porcentaje %','tipo:text:Tipo (venta/retencion)'])">+ Nuevo</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>%</th><th>Tipo</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${impuestos.map(i=>`<tr>
-          <td style="font-weight:700">${i.nombre}</td>
-          <td style="font-weight:700;color:var(--accent)">${i.porcentaje}%</td>
-          <td><span class="badge badge-info">${i.tipo||'venta'}</span></td>
-          <td><span class="badge ${i.activo!==false?'badge-ok':'badge-pend'}">${i.activo!==false?'Activo':'Inactivo'}</span></td>
-          <td><div class="btn-group">
-            <button class="btn btn-xs btn-secondary" onclick="toggleCfgActivo('cfg_impuestos','${i.id}','precios')">${i.activo!==false?'Desactivar':'Activar'}</button>
-            <button class="btn btn-xs btn-danger" onclick="eliminarCfgItem('cfg_impuestos','${i.id}','precios')">✕</button>
-          </div></td>
-        </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:12px">Sin impuestos</td></tr>'}
-        </tbody></table></div>
-      </div>`;
-  }
-
-  else if(tab === 'nomina') {
-    const conceptos = state.nom_conceptos || [];
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">📝 CONCEPTOS DE NÓMINA
-          <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="openConceptoModal()">+ Nuevo</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Fórmula</th><th>Valor</th><th></th></tr></thead><tbody>
-        ${conceptos.map(c=>`<tr>
-          <td style="font-weight:700">${c.nombre}</td>
-          <td><span class="badge ${c.tipo==='devengo'?'badge-ok':'badge-pend'}">${c.tipo}</span></td>
-          <td><span class="badge badge-info">${c.formula}</span></td>
-          <td style="font-weight:700">${c.formula==='porcentaje'?c.valor+'%':fmt(c.valor)}</td>
-          <td><button class="btn btn-xs btn-danger" onclick="eliminarConceptoCfg('${c.id}')">✕</button></td>
-        </tr>`).join('')}
-        </tbody></table></div>
-      </div>
-      <div class="card">
-        <div class="card-title">📅 PARÁMETROS DE NÓMINA (${getNominaLegalParams().year || new Date().getFullYear()})</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">SMMLV ${getNominaLegalParams().year || ''}</label>
-            <input type="number" class="form-control" id="cfg-smmlv" value="${state.cfg_game?.smmlv||getNominaLegalParams().smmlv||1750905}">
-          </div>
-          <div class="form-group"><label class="form-label">AUX. TRANSPORTE ${getNominaLegalParams().year || ''}</label>
-            <input type="number" class="form-control" id="cfg-auxtrans" value="${state.cfg_game?.aux_trans||getNominaLegalParams().auxTrans||249095}">
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="guardarParamsNomina()">💾 Guardar Parámetros</button>
-      </div>`;
-  }
-
-  else if(tab === 'bodegas') {
-    const bodegas = state.bodegas || [];
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">🏭 BODEGAS
-          <button class="btn btn-xs btn-primary" style="margin-left:auto" onclick="abrirCfgModal('bodegas','Bodega',['nombre:text:Nombre','ubicacion:text:Ubicación/Descripción'])">+ Nueva</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Nombre</th><th>Ubicación</th><th></th></tr></thead><tbody>
-        ${bodegas.map(b=>`<tr>
-          <td style="font-size:10px;color:var(--text2)">${b.id}</td>
-          <td style="font-weight:700">${b.name||b.nombre||''}</td>
-          <td>${b.ubicacion||'—'}</td>
-          <td><button class="btn btn-xs btn-danger" onclick="eliminarBodega('${b.id}')">✕</button></td>
-        </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:12px">Sin bodegas</td></tr>'}
-        </tbody></table></div>
-      </div>`;
-  }
-
-  else if(tab === 'gamif') {
-    const g = state.cfg_game || {};
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">🎮 CONFIGURACIÓN GAMIFICACIÓN</div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">META MENSUAL ($)</label><input type="number" class="form-control" id="cfg-meta" value="${state.meta||34000000}"></div>
-          <div class="form-group"><label class="form-label">XP AL LIQUIDAR UN COBRO</label><input type="number" class="form-control" id="cfg-xp-liq" value="${g.xp_liquidar||20}"></div>
-        </div>
-        <div class="card-title" style="margin-top:8px">XP POR CANAL</div>
-        <div class="form-row-3">
-          <div class="form-group"><label class="form-label">VITRINA (1 XP c/$ de)</label><input type="number" class="form-control" id="cfg-xp-vitrina" value="${g.xp_por_venta_vitrina||150000}"></div>
-          <div class="form-group"><label class="form-label">LOCAL (1 XP c/$ de)</label><input type="number" class="form-control" id="cfg-xp-local" value="${g.xp_por_venta_local||25000}"></div>
-          <div class="form-group"><label class="form-label">INTER (1 XP c/$ de)</label><input type="number" class="form-control" id="cfg-xp-inter" value="${g.xp_por_venta_inter||20000}"></div>
-        </div>
-        <button class="btn btn-primary" style="margin-top:8px" onclick="guardarCfgGame()">💾 Guardar Gamificación</button>
-      </div>`;
-  }
-
-  else if(tab === 'peligro') {
-    el.innerHTML = `
-      <div class="card" style="border-color:rgba(248,113,113,0.3)">
-        <div class="card-title" style="color:var(--red)">⚡ ZONA DE PELIGRO</div>
-        <div style="color:var(--text2);font-size:12px;margin-bottom:20px">Estas acciones afectan el estado general del ERP.</div>
-        <div class="btn-group">
-          <button class="btn btn-danger btn-sm" onclick="forceMonthReset()">🔄 Archivar Ventas del Mes</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="location.reload()">🔌 Forzar Recarga</button>
-        </div>
-      </div>`;
-  }
 }
 
 // ===== CONFIG HELPERS =====
 
 function abrirCfgModal(collection, titulo, fields) {
-  if (window.AppConfigModule?.abrirCfgModal) {
-    return window.AppConfigModule.abrirCfgModal({ collection, titulo, fields, openModal });
+  if (!window.AppConfigModule?.abrirCfgModal) {
+    console.warn('[ERP] AppConfigModule.abrirCfgModal no cargado');
+    return;
   }
-  openModal(`
-    <div class="modal-title">+ ${titulo}<button class="modal-close" onclick="closeModal()">×</button></div>
-    ${fields.map(f=>{const[key,type,label]=f.split(':');return`<div class="form-group"><label class="form-label">${label}</label><input type="${type==='number'?'number':'text'}" class="form-control" id="cfg-field-${key}"></div>`}).join('')}
-    <button class="btn btn-primary" style="width:100%" onclick="guardarCfgItem('${collection}',${JSON.stringify(fields).replace(/"/g,"'")})">Guardar</button>
-  `);
+  return window.AppConfigModule.abrirCfgModal({ collection, titulo, fields, openModal });
 }
 
 function abrirEditarCfgItem(collection, titulo, fields, id) {
@@ -9139,128 +7601,75 @@ function abrirEditarCfgItem(collection, titulo, fields, id) {
 }
 
 function abrirCfgModalCat() {
-  if (window.AppConfigModule?.abrirCfgModalCat) {
-    return window.AppConfigModule.abrirCfgModalCat({ state, openModal });
+  if (!window.AppConfigModule?.abrirCfgModalCat) {
+    console.warn('[ERP] AppConfigModule.abrirCfgModalCat no cargado');
+    return;
   }
-  const secs = state.cfg_secciones || [];
-  openModal(`
-    <div class="modal-title">+ Nueva Categoría<button class="modal-close" onclick="closeModal()">×</button></div>
-    <div class="form-group"><label class="form-label">SECCIÓN</label>
-      <select class="form-control" id="cfg-field-seccion">
-        ${secs.map(s=>`<option value="${s.nombre}">${s.nombre}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group"><label class="form-label">NOMBRE CATEGORÍA</label>
-      <input type="text" class="form-control" id="cfg-field-nombre">
-    </div>
-    <button class="btn btn-primary" style="width:100%" onclick="guardarCfgItem('cfg_categorias',['seccion:text:Sección','nombre:text:Nombre'])">Guardar</button>
-  `);
+  return window.AppConfigModule.abrirCfgModalCat({ state, openModal });
 }
 
 async function guardarCfgItem(collection, fields, editId) {
-  if (window.AppConfigModule?.guardarCfgItem) {
-    return window.AppConfigModule.guardarCfgItem({
+  if (!window.AppConfigModule?.guardarCfgItem) {
+    console.warn('[ERP] AppConfigModule.guardarCfgItem no cargado');
+    return;
+  }
+  return window.AppConfigModule.guardarCfgItem({
       state, collection, fields, editId, uid, dbId, saveRecord, closeModal, renderCfgTab, notify
     });
-  }
-  if(typeof fields === 'string') fields = JSON.parse(fields.replace(/'/g,'"'));
-  const item = { id: dbId() };
-  for(const f of fields) {
-    const key = f.split(':')[0];
-    const type = f.split(':')[1];
-    const el = document.getElementById('cfg-field-'+key);
-    if(el) item[key] = type==='number' ? parseFloat(el.value)||0 : el.value.trim();
-  }
-  if(collection === 'bodegas') {
-    item.name = item.nombre; item.activa = true;
-  }
-  if(!state[collection]) state[collection] = [];
-  state[collection].push(item);
-  await saveRecord(collection, item.id, item);
-  closeModal();
-  renderCfgTab(window._cfgTab||'inventario');
-  notify('success','✅','Guardado',`${Object.values(item).filter(v=>typeof v==='string'&&v.length>0)[0]||''}`,{duration:2000});
 }
 
 async function eliminarCfgItem(collection, id, tab) {
-  if (window.AppConfigModule?.eliminarCfgItem) {
-    return window.AppConfigModule.eliminarCfgItem({
+  if (!window.AppConfigModule?.eliminarCfgItem) {
+    console.warn('[ERP] AppConfigModule.eliminarCfgItem no cargado');
+    return;
+  }
+  return window.AppConfigModule.eliminarCfgItem({
       state, collection, id, tab, confirm, deleteRecord, renderCfgTab, notify
     });
-  }
-  if(!confirm('¿Eliminar este registro?')) return;
-  state[collection] = (state[collection]||[]).filter(x=>x.id!==id);
-  await deleteRecord(collection, id);
-  renderCfgTab(tab);
 }
 
 async function toggleCfgActivo(collection, id, tab) {
-  if (window.AppConfigModule?.toggleCfgActivo) {
-    return window.AppConfigModule.toggleCfgActivo({
+  if (!window.AppConfigModule?.toggleCfgActivo) {
+    console.warn('[ERP] AppConfigModule.toggleCfgActivo no cargado');
+    return;
+  }
+  return window.AppConfigModule.toggleCfgActivo({
       state, collection, id, tab, saveRecord, renderCfgTab, notify
     });
-  }
-  const item = (state[collection]||[]).find(x=>x.id===id);
-  if(!item) return;
-  const field = collection==='cfg_transportadoras' ? 'activa' : 'activo';
-  item[field] = !item[field];
-  await saveRecord(collection, id, item);
-  renderCfgTab(tab);
 }
 
 async function eliminarBodega(id) {
-  if (window.AppConfigModule?.eliminarBodega) {
-    return window.AppConfigModule.eliminarBodega({
+  if (!window.AppConfigModule?.eliminarBodega) {
+    console.warn('[ERP] AppConfigModule.eliminarBodega no cargado');
+    return;
+  }
+  return window.AppConfigModule.eliminarBodega({
       state, id, confirm, supabaseClient, renderCfgTab
     });
-  }
-  if(!confirm('¿Eliminar esta bodega? Verifica que no tenga inventario activo.')) return;
-  state.bodegas = state.bodegas.filter(b=>b.id!==id);
-  try { await supabaseClient.from('bodegas').delete().eq('id',id); } catch(e){}
-  renderCfgTab('bodegas');
 }
 
 async function guardarDiasLiq() {
-  if (window.AppConfigModule?.guardarDiasLiq) {
-    return window.AppConfigModule.guardarDiasLiq({ state, saveConfig, notify });
+  if (!window.AppConfigModule?.guardarDiasLiq) {
+    console.warn('[ERP] AppConfigModule.guardarDiasLiq no cargado');
+    return;
   }
-  state.diasLocal = parseInt(document.getElementById('cfg-dias-local')?.value)||1;
-  state.diasInter = parseInt(document.getElementById('cfg-dias-inter')?.value)||5;
-  await saveConfig('diasLocal', state.diasLocal);
-  await saveConfig('diasInter', state.diasInter);
-  notify('success','✅','Tiempos guardados','',{duration:2000});
+  return window.AppConfigModule.guardarDiasLiq({ state, saveConfig, notify });
 }
 
 async function guardarCfgGame() {
-  if (window.AppConfigModule?.guardarCfgGame) {
-    return window.AppConfigModule.guardarCfgGame({ state, saveConfig, renderDashboard, notify });
+  if (!window.AppConfigModule?.guardarCfgGame) {
+    console.warn('[ERP] AppConfigModule.guardarCfgGame no cargado');
+    return;
   }
-  state.meta = parseFloat(document.getElementById('cfg-meta')?.value)||34000000;
-  state.cfg_game = {
-    ...state.cfg_game,
-    xp_liquidar: parseInt(document.getElementById('cfg-xp-liq')?.value)||20,
-    xp_por_venta_vitrina: parseInt(document.getElementById('cfg-xp-vitrina')?.value)||150000,
-    xp_por_venta_local: parseInt(document.getElementById('cfg-xp-local')?.value)||25000,
-    xp_por_venta_inter: parseInt(document.getElementById('cfg-xp-inter')?.value)||20000,
-  };
-  await saveConfig('meta', state.meta);
-  await saveConfig('cfg_game', state.cfg_game);
-  renderDashboard();
-  notify('success','✅','Gamificación guardada','',{duration:2000});
+  return window.AppConfigModule.guardarCfgGame({ state, saveConfig, renderDashboard, notify });
 }
 
 async function guardarParamsNomina() {
-  if (window.AppConfigModule?.guardarParamsNomina) {
-    return window.AppConfigModule.guardarParamsNomina({ state, saveConfig, notify, renderCfgTab });
+  if (!window.AppConfigModule?.guardarParamsNomina) {
+    console.warn('[ERP] AppConfigModule.guardarParamsNomina no cargado');
+    return;
   }
-  state.cfg_game = {
-    ...state.cfg_game,
-    smmlv: parseFloat(document.getElementById('cfg-smmlv')?.value)||1750905,
-    aux_trans: parseFloat(document.getElementById('cfg-auxtrans')?.value)||249095,
-    nomina_manual_lock: document.getElementById('cfg-nomina-manual-lock')?.checked === true,
-  };
-  await saveConfig('cfg_game', state.cfg_game);
-  notify('success','✅','Parámetros guardados','Se aplicarán en el próximo cálculo.',{duration:3000});
+  return window.AppConfigModule.guardarParamsNomina({ state, saveConfig, notify, renderCfgTab });
 }
 
 async function aplicarParamsNominaOficiales() {
@@ -9271,76 +7680,28 @@ async function aplicarParamsNominaOficiales() {
 window.aplicarParamsNominaOficiales = aplicarParamsNominaOficiales;
 
 function eliminarConceptoCfg(id) {
-  if (window.AppConfigModule?.eliminarConceptoCfg) {
-    return window.AppConfigModule.eliminarConceptoCfg({ id, deleteFromCollection, renderCfgTab });
+  if (!window.AppConfigModule?.eliminarConceptoCfg) {
+    console.warn('[ERP] AppConfigModule.eliminarConceptoCfg no cargado');
+    return;
   }
-  deleteFromCollection('nom_conceptos', id, 'config');
-  renderCfgTab('nomina');
+  return window.AppConfigModule.eliminarConceptoCfg({ id, deleteFromCollection, renderCfgTab });
 }
 
 
 function procesarLogoConfig(input) {
-  if (window.AppConfigModule?.procesarLogoConfig) {
-    return window.AppConfigModule.procesarLogoConfig({ input, state, saveConfig, renderConfig, notify });
+  if (!window.AppConfigModule?.procesarLogoConfig) {
+    console.warn('[ERP] AppConfigModule.procesarLogoConfig no cargado');
+    return;
   }
-  const file = input.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const img = new Image();
-    img.onload = async function() {
-      const canvas = document.createElement('canvas');
-      const MAX_W = 400;
-      const scale = Math.min(1, MAX_W / img.width);
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      if(!state.empresa) state.empresa = {};
-      state.empresa.logoBase64 = canvas.toDataURL('image/png');
-      await saveConfig('empresa', state.empresa);
-      renderConfig();
-      notify('success','🖼️','Logo cargado','Se ajustó automáticamente para 80mm.',{duration:3000});
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+  return window.AppConfigModule.procesarLogoConfig({ input, state, saveConfig, renderConfig, notify });
 }
 
 async function guardarConfigCompleta() {
-  if (window.AppConfigModule?.guardarConfigCompleta) {
-    return window.AppConfigModule.guardarConfigCompleta({ state, saveConfig, notify, renderConfig, renderDashboard });
+  if (!window.AppConfigModule?.guardarConfigCompleta) {
+    console.warn('[ERP] AppConfigModule.guardarConfigCompleta no cargado');
+    return;
   }
-  if(!state.empresa) state.empresa = {};
-  state.empresa.nombre        = document.getElementById('cfg-nombre')?.value.trim() || state.empresa.nombre;
-  state.empresa.nombreComercial = document.getElementById('cfg-nombre2')?.value.trim() || '';
-  state.empresa.nit           = document.getElementById('cfg-nit')?.value.trim() || '';
-  state.empresa.regimenFiscal = document.getElementById('cfg-regimen')?.value.trim() || '';
-  state.empresa.departamento  = document.getElementById('cfg-dpto')?.value.trim() || '';
-  state.empresa.ciudad        = document.getElementById('cfg-ciudad')?.value.trim() || '';
-  state.empresa.direccion     = document.getElementById('cfg-dir')?.value.trim() || '';
-  state.empresa.telefono      = document.getElementById('cfg-tel')?.value.trim() || '';
-  state.empresa.telefono2     = document.getElementById('cfg-tel2')?.value.trim() || '';
-  state.empresa.email         = document.getElementById('cfg-email')?.value.trim() || '';
-  state.empresa.web           = document.getElementById('cfg-web')?.value.trim() || '';
-  state.empresa.vendedora     = document.getElementById('cfg-vendedora')?.value.trim() || '';
-  state.empresa.social        = document.getElementById('cfg-social')?.value.trim() || '';
-  state.empresa.mensajeHeader = document.getElementById('cfg-header')?.value.trim() || '';
-  state.empresa.mensajePie    = document.getElementById('cfg-pie')?.value.trim() || '';
-  state.empresa.politicaDatos = document.getElementById('cfg-datos')?.value.trim() || '';
-  state.empresa.mensajeGarantias = document.getElementById('cfg-garantias')?.value.trim() || '';
-
-  state.meta      = parseFloat(document.getElementById('cfg-meta')?.value) || 34000000;
-  state.diasLocal = parseInt(document.getElementById('cfg-dias-local')?.value) || 1;
-  state.diasInter = parseInt(document.getElementById('cfg-dias-inter')?.value) || 5;
-
-  await saveConfig('empresa', state.empresa);
-  await saveConfig('meta', state.meta);
-  await saveConfig('diasLocal', state.diasLocal);
-  await saveConfig('diasInter', state.diasInter);
-
-  notify('success','✅','Configuración guardada','Los datos se reflejan en el ticket.',{duration:3000});
-  renderConfig();
-  renderDashboard();
+  return window.AppConfigModule.guardarConfigCompleta({ state, saveConfig, notify, renderConfig, renderDashboard });
 }
 
 // Mantener saveConfig como función legacy (no confundir con la async de Supabase)
@@ -9352,20 +7713,11 @@ if (window.AppConfigModule?.saveConfigLegacy) {
 }
 
 function forceMonthReset(){
-  if (window.AppConfigModule?.forceMonthReset) {
-    return window.AppConfigModule.forceMonthReset({ state, checkMonthReset, saveConfig, renderAll, notify, confirm });
+  if (!window.AppConfigModule?.forceMonthReset) {
+    console.warn('[ERP] AppConfigModule.forceMonthReset no cargado');
+    return;
   }
-  if(confirm('⚠️ ¿Estás seguro? Esto archivará todas las ventas actuales y reiniciará el progreso de la meta mensual. Esta acción no se puede deshacer fácilmente.')) {
-    state.ventas=(state.ventas||[]).map(v=>({...v,archived:true}));
-    resetMonthlyMetaBadges();
-    state.currentMonth=null;
-    state.erpCalendarMonth=null;
-    checkMonthReset();
-    if(_sbConnected) saveConfig('game',state.game);
-    saveConfig('consecutivos', state.consecutivos);
-    renderAll();
-    notify('success', '🔄', 'Mes Reseteado', 'Las ventas han sido archivadas correctamente.', {duration: 4000});
-  }
+  return window.AppConfigModule.forceMonthReset({ state, checkMonthReset, saveConfig, renderAll, notify, confirm });
 }
 
 // ===================================================================
@@ -9444,123 +7796,31 @@ async function loadCatalogCartSnapshots() {
 function renderVentasCatalogo(){
   if (!Array.isArray(state.ventasCatalogo)) state.ventasCatalogo = [];
   loadCatalogCartSnapshots().finally(() => {
-    if (window.AppVentasCatalogoModule?.renderVentasCatalogo) {
-      return window.AppVentasCatalogoModule.renderVentasCatalogo({
-        state, fmt, openModal, saveRecord, notify, renderVentasCatalogo, nextId: () => dbId()
-      });
+    if (!window.AppVentasCatalogoModule?.renderVentasCatalogo) {
+      console.warn('[ERP] AppVentasCatalogoModule.renderVentasCatalogo no cargado');
+      return;
     }
-    const el = document.getElementById('vcatalog-content');
-    if (el) el.innerHTML = '<div class="card" style="padding:20px;color:var(--text2)">No se cargó ventas-catalogo-module.js</div>';
+    return window.AppVentasCatalogoModule.renderVentasCatalogo({
+      state, fmt, openModal, saveRecord, notify, renderVentasCatalogo, nextId: () => dbId()
+    });
   });
 }
 
 function renderSeparados(){
-  if (window.AppSeparadosModule?.renderSeparados) {
-    return window.AppSeparadosModule.renderSeparados({ state, formatDate, fmt });
-  }
-  const desde = document.getElementById('sep-desde')?.value||'';
-  const hasta = document.getElementById('sep-hasta')?.value||'';
-  const q = (document.getElementById('sep-search')?.value||'').toLowerCase();
-  const estadoVista = document.getElementById('sep-estado')?.value||'';
-
-  let separados = (state.ventas||[]).filter(v => ventaCuentaParaTotales(v) && v.esSeparado);
-  if(desde) separados = separados.filter(v => v.fecha >= desde);
-  if(hasta) separados = separados.filter(v => v.fecha <= hasta);
-  if(q) separados = separados.filter(v => {
-    const comp=_sepComprobanteForVenta(v).toLowerCase();
-    return (v.cliente||'').toLowerCase().includes(q)||comp.includes(q)||(v.telefono||'').includes(q)||(v.desc||'').toLowerCase().includes(q)||(v.guia||'').toLowerCase().includes(q);
-  });
-
-  const pendientes = separados.filter(v => v.estadoEntrega !== 'Entregado');
-  const entregados = separados.filter(v => v.estadoEntrega === 'Entregado');
-  const sumPend = pendientes.reduce((a,v)=>a+(parseFloat(v.valor)||0),0);
-  const sumEntr = entregados.reduce((a,v)=>a+(parseFloat(v.valor)||0),0);
-
-  let lista = separados;
-  if(estadoVista==='pend') lista = lista.filter(v=>v.estadoEntrega!=='Entregado');
-  else if(estadoVista==='entr') lista = lista.filter(v=>v.estadoEntrega==='Entregado');
-  lista = _sepSort(lista);
-
-  const rowsHtml = lista.map(v => {
-    const ent=v.estadoEntrega==='Entregado';
-    return `<tr style="${ent?'opacity:0.55':''}">
-    <td>${formatDate(v.fecha)}</td>
-    <td>${_sepCanalBadge(v)}</td>
-    <td style="font-weight:700;color:var(--text2)">${v.desc||'—'}</td>
-    <td style="font-weight:700">${v.cliente||'MOSTRADOR'}</td>
-    <td style="vertical-align:top">${_sepFmtComprobanteCell(v)}</td>
-    <td>${v.telefono||'—'}</td>
-    <td style="vertical-align:top">${_sepLineItemsHtml(v)}</td>
-    <td style="color:var(--accent);font-weight:700">${fmt(v.valor)}</td>
-    <td style="vertical-align:top;min-width:120px">${_sepFmtEntregaCell(v,ent)}</td>
-    <td>${!ent?`<button class="btn btn-xs btn-primary" onclick="entregarSeparado('${v.id}')">✓ Entregar</button>`:'<span style="font-size:11px;color:var(--text2)">—</span>'}</td>
-  </tr>`;
-  }).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:24px">Sin separados</td></tr>';
-
-  if(document.getElementById('sep-tbody')) {
-    document.getElementById('sep-tbody').innerHTML = rowsHtml;
-    const p = document.getElementById('sep-pend'); if(p) p.textContent = pendientes.length;
-    const e = document.getElementById('sep-entr'); if(e) e.textContent = entregados.length;
-    const sp = document.getElementById('sep-pend-sum'); if(sp) sp.textContent = fmt(sumPend);
-    const se = document.getElementById('sep-entr-sum'); if(se) se.textContent = fmt(sumEntr);
-    const btnL = document.getElementById('sep-limpiar');
-    if(btnL) btnL.style.display=(q||desde||hasta||estadoVista)?'inline-flex':'none';
+  if (!window.AppSeparadosModule?.renderSeparados) {
+    console.warn('[ERP] AppSeparadosModule.renderSeparados no cargado');
     return;
   }
-
-  document.getElementById('separados-content').innerHTML = `
-    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
-      <div class="search-bar" style="flex:1;min-width:180px;max-width:280px;margin:0">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="sep-search" placeholder="Cliente, comprobante, tel, ref..." value="${q}" oninput="renderSeparados()">
-      </div>
-      <div><label class="form-label" style="font-size:9px;color:var(--text2);display:block;margin-bottom:3px">Estado</label>
-      <select class="form-control" id="sep-estado" style="width:130px" onchange="renderSeparados()">
-        <option value="" ${estadoVista===''?'selected':''}>Todos</option>
-        <option value="pend" ${estadoVista==='pend'?'selected':''}>Pendientes</option>
-        <option value="entr" ${estadoVista==='entr'?'selected':''}>Entregados</option>
-      </select></div>
-      <input type="date" class="form-control" id="sep-desde" style="width:140px" value="${desde}" onchange="renderSeparados()">
-      <span style="color:var(--text2);font-size:11px;align-self:center;">hasta</span>
-      <input type="date" class="form-control" id="sep-hasta" style="width:140px" value="${hasta}" onchange="renderSeparados()">
-      <button class="btn btn-xs btn-secondary" id="sep-limpiar" style="display:${(q||desde||hasta||estadoVista)?'inline-flex':'none'}"
-        onclick="document.getElementById('sep-search').value='';document.getElementById('sep-desde').value='';document.getElementById('sep-hasta').value='';document.getElementById('sep-estado').value='';renderSeparados()">✕ Limpiar</button>
-    </div>
-    <div class="grid-2" style="margin-bottom:16px">
-      <div class="card" style="margin:0;text-align:center">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--yellow)" id="sep-pend">${pendientes.length}</div>
-        <div style="font-size:11px;color:var(--text2)">⏳ Pendientes de entrega</div>
-        <div style="font-size:12px;color:var(--accent);font-weight:700;margin-top:6px" id="sep-pend-sum">${fmt(sumPend)}</div>
-      </div>
-      <div class="card" style="margin:0;text-align:center">
-        <div style="font-family:Syne;font-size:28px;font-weight:800;color:var(--green)" id="sep-entr">${entregados.length}</div>
-        <div style="font-size:11px;color:var(--text2)">✅ Entregados (rango / búsqueda)</div>
-        <div style="font-size:12px;color:var(--accent);font-weight:700;margin-top:6px" id="sep-entr-sum">${fmt(sumEntr)}</div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">🛍️ SEPARADOS (${lista.length} en tabla · ${separados.length} con filtros)</div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Fecha</th><th>Canal</th><th>Ref</th><th>Cliente</th><th>Comprobante</th><th>Teléfono</th><th>Artículos</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead>
-        <tbody id="sep-tbody">${rowsHtml}</tbody>
-      </table></div>
-    </div>`;
+  return window.AppSeparadosModule.renderSeparados({ state, formatDate, fmt });
 }
 
 
 async function entregarSeparado(id) {
-  if (window.AppSeparadosModule?.entregarSeparado) {
-    return window.AppSeparadosModule.entregarSeparado({ state, id, confirm, saveRecord, renderSeparados, notify });
+  if (!window.AppSeparadosModule?.entregarSeparado) {
+    console.warn('[ERP] AppSeparadosModule.entregarSeparado no cargado');
+    return;
   }
-  if(!confirm('¿El cliente ya recogió? Se marcará como entregado.')) return;
-  const v = state.ventas.find(x => x.id === id);
-  if(!v) return;
-  v.estadoEntrega = 'Entregado';
-  v.fechaHoraEntrega = new Date().toISOString();
-  let ok=false; try { ok = (await saveRecord('ventas', v.id, v)) !== false; } catch(e) { ok=false; }
-  renderSeparados();
-  if(ok) notify('success','📦','¡Entregado!',`${v.cliente||'Cliente'} — ${v.desc||''}`,{duration:3000});
-  else notify('warning','📡','Sin sincronizar','Revisa conexión Supabase.',{duration:5000});
+  return window.AppSeparadosModule.entregarSeparado({ state, id, confirm, saveRecord, renderSeparados, notify });
 }
 
 

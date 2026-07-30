@@ -1,7 +1,7 @@
 // Config module: tabs and configuration helpers.
 (function initConfigModule(global) {
   function renderConfig(ctx) {
-    const { state } = ctx;
+    const { state, renderCfgTab: renderCfgTabFromCore } = ctx;
     const activeTab = global._cfgTab || 'empresa';
     const tabs = [
       { id: 'empresa', icon: '🏢', label: 'Empresa & Ticket' },
@@ -21,7 +21,9 @@
       ${tabs.map((t) => `<div class="tab ${activeTab === t.id ? 'active' : ''}" onclick="setCfgTab('${t.id}')">${t.icon} ${t.label}</div>`).join('')}
     </div>
     <div id="cfg-tab-body"></div>`;
-    renderCfgTab({ ...ctx, tab: activeTab });
+    // Debe ir por el wrapper de core (inyecta today, fmt, saveConfig, etc.).
+    if (typeof renderCfgTabFromCore === 'function') renderCfgTabFromCore(activeTab);
+    else renderCfgTab({ ...ctx, tab: activeTab });
   }
 
   function setCfgTab(ctx) {
