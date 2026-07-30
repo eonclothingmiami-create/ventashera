@@ -65,21 +65,25 @@
     const seenNames = new Set();
     const out = [];
 
-    const push = (m) => {
+    // `trusted` = método declarado en VITRINA_METODOS_CONTADO. El filtro por nombre existe
+    // para descartar entradas genéricas de cfg_metodos_pago ("Tarjeta", "Tarjeta débito"),
+    // no para censurar la lista propia: aplicarlo ahí borraba los datáfonos.
+    const push = (m, trusted) => {
       const id = String(m?.id || '').trim();
       if (!id) return;
       const idLc = id.toLowerCase();
       if (VITRINA_METODO_IDS_FORBIDDEN.has(idLc)) return;
       if (seenIds.has(idLc)) return;
       const nameKey = normalizeMetodoNombreKey(m.nombre || id);
-      if (!nameKey || isVitrinaMetodoNameForbidden(m.nombre || id)) return;
+      if (!nameKey) return;
+      if (!trusted && isVitrinaMetodoNameForbidden(m.nombre || id)) return;
       if (seenNames.has(nameKey)) return;
       seenIds.add(idLc);
       seenNames.add(nameKey);
       out.push({ id, nombre: m.nombre || id });
     };
 
-    VITRINA_METODOS_CONTADO.forEach(push);
+    VITRINA_METODOS_CONTADO.forEach((m) => push(m, true));
 
     (state.cfg_metodos_pago || []).forEach((m) => {
       if (m.activo === false || baseIds.has(m.id)) return;
@@ -87,7 +91,7 @@
       if (/^mp\d+$/i.test(id)) return;
       if (VITRINA_METODO_IDS_FORBIDDEN.has(id.toLowerCase())) return;
       if (isVitrinaMetodoNameForbidden(m.nombre)) return;
-      push({ id: m.id, nombre: m.nombre || m.id });
+      push({ id: m.id, nombre: m.nombre || m.id }, false);
     });
 
     // #region agent log
@@ -148,6 +152,7 @@
     const { state, posFormState, syncPOSFormState, fmt } = ctx;
     const cart = state.pos_cart || [];
     const articulos = state.articulos || [];
+    const ventaEnCurso = typeof global.ventaPosEnCurso === 'function' && global.ventaPosEnCurso();
     syncPOSFormState();
     normalizePosCanalMetodo(posFormState);
 
@@ -412,7 +417,7 @@
               🛍️ ES UN SEPARADO (Stand By en el local)
             </label>
           </div>
-          <button class="btn btn-primary" style="width:100%" onclick="procesarVentaPOS()" ${cart.length === 0 || (global.AppSyncGuard && global.AppSyncGuard.isBusy()) ? 'disabled' : ''} title="${global.AppSyncGuard && global.AppSyncGuard.isBusy() ? global.AppSyncGuard.waitMessage : ''}">💰 Cobrar ${fmt(total)}</button>
+          <button class="btn btn-primary" style="width:100%" onclick="procesarVentaPOS()" ${cart.length === 0 || ventaEnCurso || (global.AppSyncGuard && global.AppSyncGuard.isBusy()) ? 'disabled' : ''} title="${ventaEnCurso ? 'Registrando la venta…' : (global.AppSyncGuard && global.AppSyncGuard.isBusy() ? global.AppSyncGuard.waitMessage : '')}">${ventaEnCurso ? '⏳ Registrando…' : `💰 Cobrar ${fmt(total)}`}</button>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="previewReceipt()">🧾 Vista Previa</button>
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCashDrawer()">🏧 Abrir Cajón</button>

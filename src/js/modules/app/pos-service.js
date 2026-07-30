@@ -5,6 +5,13 @@
     return state.pos_cart;
   }
 
+  /** Unidades ya reservadas del artículo en TODO el carrito (todas las tallas). */
+  function cartQtyForArticulo(state, artId) {
+    return ensurePosCart(state)
+      .filter((c) => c.articuloId === artId)
+      .reduce((a, c) => a + (parseInt(c.qty, 10) || 0), 0);
+  }
+
   function addToCart(ctx) {
     const { state, artId, talla = 'Única', getArticuloStock, notify } = ctx;
     const art = (state.articulos || []).find((a) => a.id === artId);
@@ -13,7 +20,9 @@
     const stock = getArticuloStock(artId);
     const cart = ensurePosCart(state);
     const inCart = cart.find((c) => c.articuloId === artId && c.talla === talla);
-    const currentQty = inCart ? inCart.qty : 0;
+    // El stock es por artículo, no por talla: sumar todas las líneas evita
+    // que S + M pasen la validación cuando solo queda 1 unidad.
+    const currentQty = cartQtyForArticulo(state, artId);
     if (currentQty >= stock) {
       notify('warning', '⚠️', 'Sin stock', 'No hay suficiente inventario.', { duration: 3000 });
       return { ok: false, reason: 'no_stock' };
@@ -33,9 +42,21 @@
     return { ok: true };
   }
 
-  function updateCartQty(state, idx, delta) {
+  function updateCartQty(state, idx, delta, opts) {
     const cart = ensurePosCart(state);
     if (!cart[idx]) return false;
+    if (delta > 0) {
+      const artId = cart[idx].articuloId;
+      const art = (state.articulos || []).find((a) => a.id === artId);
+      const stock = art ? (art.stock || 0) : 0;
+      if (cartQtyForArticulo(state, artId) + delta > stock) {
+        const notify = opts && opts.notify;
+        if (typeof notify === 'function') {
+          notify('warning', '⚠️', 'Sin stock', `Solo hay ${stock} unidad(es) disponibles.`, { duration: 3000 });
+        }
+        return false;
+      }
+    }
     cart[idx].qty += delta;
     // #region agent log
     try {

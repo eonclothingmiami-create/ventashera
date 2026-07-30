@@ -374,7 +374,10 @@ let posFormState = {
 const CUENTAS_BANCARIAS = ['Nequi','Bancolombia','Daviplata','Bancolombia 2'];
 try { window.CUENTAS_BANCARIAS = CUENTAS_BANCARIAS; } catch (e) {}
 let histFilters = { canal: '', cat: '', start: '', end: '' };
-let _tempGaleria = []; let _portadaIndex = 0;
+// `var` (no `let`): product-color-media.js lee window._tempGaleria / window._portadaIndex.
+// Un `let` de nivel superior no crea propiedad en window, así que el panel de portadas
+// por color veía una galería vacía en lugar de la que se está editando.
+var _tempGaleria = []; var _portadaIndex = 0;
 /** Tope de fotos/videos por producto en el ERP (canales externos recortan aparte: Woo 6, Falabella 8). */
 const MAX_GALLERY_MEDIA = 40;
   let _tempLogoBase64 = null; // Almacena el logo procesado para 80mm
@@ -3556,7 +3559,7 @@ function addToCart(artId, talla = 'Única'){
 function posCartQty(idx,delta){
   syncPOSFormState();
   if (window.AppPosService?.updateCartQty) {
-    window.AppPosService.updateCartQty(state, idx, delta);
+    window.AppPosService.updateCartQty(state, idx, delta, { notify });
   } else {
     const cart=state.pos_cart||[];
     if(!cart[idx])return;
@@ -3578,7 +3581,31 @@ function clearPOSCart(){
   renderPOS();
 }
 
+/**
+ * El carrito solo se vacía al final de procesarVentaPOSInterno, después de muchos await.
+ * Sin este cerrojo un segundo clic en "Cobrar" reentra con el mismo carrito y duplica
+ * factura, descuento de stock e ingreso en caja.
+ */
+let _ventaPosEnCurso = false;
+function ventaPosEnCurso(){ return _ventaPosEnCurso; }
+try { window.ventaPosEnCurso = ventaPosEnCurso; } catch (e) {}
+
 async function procesarVentaPOS(opts) {
+  if (_ventaPosEnCurso) {
+    notify('warning','⏳','Venta en curso','Ya se está registrando esta venta. Espera a que termine.',{duration:4000});
+    return;
+  }
+  _ventaPosEnCurso = true;
+  try {
+    renderPOS();
+    return await procesarVentaPOSInterno(opts);
+  } finally {
+    _ventaPosEnCurso = false;
+    renderPOS();
+  }
+}
+
+async function procesarVentaPOSInterno(opts) {
   const o = opts || {};
   if (!o.skipSyncForm) syncPOSFormState();
   const cart = state.pos_cart || [];
@@ -4175,7 +4202,16 @@ async function anularVentaPOS(facturaId){
     factura.posStockAnulacionAplicada=true;
     const _okFactura = await saveRecord('facturas',factura.id,factura);
     const venta=(state.ventas||[]).find(v=>String(v.id)===id);
-    if(venta)venta.anulada=true;
+    // El stock ya se devolvió en Supabase. Si la factura no quedó 'anulada' en BD,
+    // al recargar la venta vuelve activa y se puede volver a anular (stock inflado).
+    if(!_okFactura){
+      factura.estado='pagada';
+      factura.posStockAnulacionAplicada=false;
+      notify('danger','⚠️','Anulación incompleta',`${factura.numero||id}: se devolvió el stock pero NO se pudo guardar la anulación. Revisa la conexión y vuelve a intentarlo ANTES de anular de nuevo.`,{duration:12000});
+      renderHistorial();
+      updateNavBadges();
+      return;
+    }
     // #region agent log
     try {
       fetch('http://127.0.0.1:7852/ingest/612c0caf-2514-483e-89ed-d5bfe3d0e65c', {
