@@ -1633,9 +1633,9 @@ async function hydrateArticulosFromSupabase() {
       scanAlias: (p.scan_alias || '').trim(),
       nombre: p.name || '',
       name: p.name || '',
-      categoria: p.categoria || '',
+      categoria: p.categoria || p.cat || '',
       seccion: p.seccion || '',
-      cat: p.categoria || '',
+      cat: p.categoria || p.cat || '',
       descripcion: p.description || '',
       precioVenta: parseFloat(p.price) || 0,
       price: parseFloat(p.price) || 0,
@@ -2286,7 +2286,7 @@ async function loadState() {
         ? p.falabella_product_data_json : {};
       const integIds = integrationIdsFromProductRow(p);
       return {id:p.id,codigo:p.ref||'',ref:p.ref||'',scanAlias:(p.scan_alias||'').trim(),nombre:p.name||'',name:p.name||'',
-        categoria:p.categoria||'',seccion:p.seccion||'',cat:p.categoria||'',
+        categoria:p.categoria||p.cat||'',seccion:p.seccion||'',cat:p.categoria||p.cat||'',
         descripcion:p.description||'',precioVenta:parseFloat(p.price)||0,price:parseFloat(p.price)||0,
         precioCompra:parseFloat(p.cost)||0,
         tallas:tallasArr.join(', '),sizes:tallasArr.join(', '),
@@ -4692,7 +4692,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
         .catch(() => {});
     }
   }, 10);
-    actualizarCatsERP(art?.cat);
+    actualizarCatsERP(art?.categoria || art?.cat || '');
     renderGaleriaVisual();
     if (window.ProductColorMedia) window.ProductColorMedia.initForModal(art?.id || null);
     if (window.ProductIntelligence) {
@@ -4730,8 +4730,10 @@ function renderGaleriaVisual(){
 }
 
 function actualizarCatsERP(selectedCat){
-    const sec = document.getElementById('m-art-seccion').value;
+    const secEl = document.getElementById('m-art-seccion');
     const cat = document.getElementById('m-art-cat');
+    if (!secEl || !cat) return;
+    const sec = secEl.value;
 
     // ★ Usar categorías del ERP (cfg_categorias) si están disponibles
     const cfgCats = (state.cfg_categorias || []).filter(c => c.seccion === sec);
@@ -4746,7 +4748,21 @@ function actualizarCatsERP(selectedCat){
       else opciones = ['Vestidos','Faldas','Tops','Pantalones'];
     }
 
-    cat.innerHTML = opciones.map(o => `<option value="${o}" ${selectedCat === o ? 'selected' : ''}>${o}</option>`).join('');
+    // Preferir valor pasado; si no, conservar el del select (cambio de sección).
+    const want = String(
+      selectedCat != null && String(selectedCat).trim() !== ''
+        ? selectedCat
+        : (cat.value || ''),
+    ).trim();
+
+    // Si la categoría guardada no está en cfg, no la pierdas al reabrir.
+    if (want && !opciones.includes(want)) {
+      opciones = [want, ...opciones];
+    }
+
+    cat.innerHTML = opciones.map((o) =>
+      `<option value="${o.replace(/"/g, '&quot;')}" ${want === o ? 'selected' : ''}>${o}</option>`,
+    ).join('');
 }
 
 async function compressToWebP(file, maxWidth = 1080, quality = 0.8) {
@@ -4850,16 +4866,33 @@ async function saveArticulo(existingId, options) {
     if(!nombre || !refID) return alert('Nombre y Referencia son obligatorios.');
 
     if (window.ProductRefUtil) {
+      const prevArtRef = existingId
+        ? String(
+            (state.articulos || []).find((a) => a.id === existingId)?.ref ||
+              (state.articulos || []).find((a) => a.id === existingId)?.codigo ||
+              '',
+          )
+            .trim()
+            .toUpperCase()
+        : '';
       if (!window.ProductRefUtil.isNormalizedHeraRef(refID)) {
-        const used = new Set(
-          (state.articulos || [])
-            .filter((a) => a.id !== existingId)
-            .map((a) => String(a.ref || a.codigo || '').trim().toUpperCase())
-            .filter(Boolean),
-        );
-        refID = window.ProductRefUtil.normalizeProductRef(refID, used);
-        const refInput = document.getElementById('m-art-codigo');
-        if (refInput) refInput.value = refID;
+        if (!existingId) {
+          // Solo en alta: normalizar a HERA-XXXXX
+          const used = new Set(
+            (state.articulos || [])
+              .map((a) => String(a.ref || a.codigo || '').trim().toUpperCase())
+              .filter(Boolean),
+          );
+          refID = window.ProductRefUtil.normalizeProductRef(refID, used);
+          const refInput = document.getElementById('m-art-codigo');
+          if (refInput) refInput.value = refID;
+        } else if (prevArtRef && refID === prevArtRef) {
+          // Edición: conservar REF legacy (HERA-151, etc.) — no regenerar
+        } else {
+          return alert(
+            'La referencia debe ser HERA-XXXX (4 a 6 dígitos). Si no quieres cambiarla, deja el REF actual.',
+          );
+        }
       }
       const dup = (state.articulos || []).find(
         (a) =>
@@ -4941,6 +4974,7 @@ async function saveArticulo(existingId, options) {
         name: nombre,
         seccion: document.getElementById('m-art-seccion').value,
         categoria: document.getElementById('m-art-cat').value,
+        cat: document.getElementById('m-art-cat').value,
         description: document.getElementById('m-art-desc').value.trim(),
         price: parseFloat(document.getElementById('m-art-pv').value) || 0,
         cost: costoInput,
@@ -4983,11 +5017,29 @@ async function saveArticulo(existingId, options) {
     try {
         showLoadingOverlay('connecting');
         
-        // 1. UPSERT del producto
-        const { error } = await supabaseClient
+        // 1. UPSERT / UPDATE del producto
+        // En edición: si el REF no cambió, no lo enviamos en el UPDATE (evita chocar
+        // con FKs a products.ref como product_search_docs_ref_fkey).
+        let persistError = null;
+        if (existingId) {
+          const prevRef = String(prevArtForNotify?.ref || prevArtForNotify?.codigo || '')
+            .trim()
+            .toUpperCase();
+          const patch = { ...productData };
+          if (prevRef && prevRef === refID) {
+            delete patch.ref;
+            delete patch.sku;
+          }
+          delete patch.id;
+          const { error } = await supabaseClient.from('products').update(patch).eq('id', productId);
+          persistError = error;
+        } else {
+          const { error } = await supabaseClient
             .from('products')
             .upsert(productData, { onConflict: 'id' });
-        if (error) throw error;
+          persistError = error;
+        }
+        if (persistError) throw persistError;
 
         // 1a. Forzar columna visible (evita que quede true si el upsert no aplicó false; catálogo web debe consultar visible=true)
         const { error: visUpdErr } = await supabaseClient
@@ -5176,7 +5228,7 @@ async function saveArticulo(existingId, options) {
         const artLocal = {
           id: productId, codigo: refID, ref: refID, scanAlias: scanAliasDb || '',
           nombre: nombre, name: nombre,
-          categoria: productData.categoria, seccion: productData.seccion,
+          categoria: productData.categoria, cat: productData.categoria, seccion: productData.seccion,
           descripcion: productData.description,
           precioVenta: productData.price, price: productData.price,
           precioCompra: productData.cost,
