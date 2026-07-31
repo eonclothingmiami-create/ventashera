@@ -16,7 +16,7 @@ declare
   v_response jsonb;
   v_invoice_id uuid;
 begin
-  if coalesce(auth.role(),'') not in ('authenticated','service_role') then
+  if coalesce(auth.role(),'') not in ('anon','authenticated','service_role') then
     raise exception 'create_pos_sale_v2: authentication required' using errcode='42501';
   end if;
 

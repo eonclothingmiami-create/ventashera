@@ -2666,6 +2666,24 @@ async function loadState() {
       } catch(e){}
     });
 
+    // El contador legacy (state_config) no puede quedar por debajo del atómico:
+    // getNextConsec emite ese número; erp_consecutivos guarda el último ya usado.
+    try {
+      const { data: erpFactura } = await supabaseClient
+        .from('erp_consecutivos')
+        .select('valor')
+        .eq('clave', 'factura')
+        .maybeSingle();
+      const minNext = (Number(erpFactura?.valor) || 0) + 1;
+      const local = Number(state.consecutivos?.factura) || 1;
+      if (!state.consecutivos) state.consecutivos = {};
+      if (local < minNext) {
+        state.consecutivos.factura = minNext;
+      }
+    } catch (e) {
+      console.warn('sync consecutivos vs erp_consecutivos:', e?.message || e);
+    }
+
     _sbConnected = true;
     if (pendingLegacyCajaMerge && pendingLegacyCajaMerge.merged && pendingLegacyCajaMerge.canonical && supabaseClient) {
       try {
@@ -2806,9 +2824,26 @@ async function deleteRecord(collection, id) {
 async function saveConfig(key, value) {
   if(!_sbConnected) return false;
   try {
+    let payload = value;
+    if (key === 'consecutivos' && payload && typeof payload === 'object') {
+      payload = { ...payload };
+      const localFactura = Number(payload.factura) || 1;
+      try {
+        const { data: erpRow } = await supabaseClient
+          .from('erp_consecutivos')
+          .select('valor')
+          .eq('clave', 'factura')
+          .maybeSingle();
+        const minNext = (Number(erpRow?.valor) || 0) + 1;
+        if (localFactura < minNext) payload.factura = minNext;
+        if (state?.consecutivos) state.consecutivos.factura = Number(payload.factura) || minNext;
+      } catch (e) {
+        console.warn('saveConfig consecutivos clamp:', e?.message || e);
+      }
+    }
     const { error } = await supabaseClient
       .from('state_config')
-      .upsert({key, value, updated_at:new Date().toISOString()},{onConflict:'key'});
+      .upsert({key, value: payload, updated_at:new Date().toISOString()},{onConflict:'key'});
     if (error) throw error;
     return true;
   }
@@ -3739,57 +3774,20 @@ async function procesarVentaPOSInterno(opts) {
     }
   }
 
-  let canal, subtotal, iva, flete, total, numFactura, fechaActual, factura, ventaRecord;
-  if (window.AppPosService?.buildPosDocuments) {
-    const built = window.AppPosService.buildPosDocuments({
-      state,
-      posFormState,
-      today,
-      getNextConsec,
-      uid,
-      dbId,
-      addBusinessDays,
-      esSeparado
-    });
-    ({ canal, subtotal, iva, flete, total, numFactura, fechaActual, factura, ventaRecord } = built);
-  } else {
-    canal = posFormState.canal;
-    subtotal = cart.reduce((a,item)=>a+(item.precio*item.qty),0);
-    iva = posFormState.applyIva ? subtotal*0.19 : 0;
-    flete = canal==='local' ? (parseFloat(posFormState.flete)||0) : (posFormState.applyFlete&&canal==='inter')?(parseFloat(posFormState.flete)||0):0;
-    total = subtotal+iva+flete;
-    numFactura = 'POS-'+getNextConsec('factura');
-    fechaActual = today();
-    const posDocId = dbId();
-    const tipoPago = (canal === 'vitrina') ? 'contado' : (posFormState.tipoPago || 'contado');
-    const esContraEntrega = tipoPago === 'contraentrega';
-    const liquidadoInicial = canal === 'vitrina' || tipoPago === 'contado';
-    const fechaLiq = liquidadoInicial ? fechaActual : addBusinessDays(fechaActual, canal === 'local' ? (state.diasLocal||1) : (state.diasInter||5));
-    factura = {
-      id:posDocId, numero:numFactura, fecha:fechaActual,
-      cliente:posFormState.cliente, telefono:posFormState.telefono,
-      items:cart.map(c=>({...c})), subtotal, iva, flete, total,
-      metodo:posFormState.metodo, estado:'pagada', tipo:'pos',
-      canal, guia:posFormState.guia, empresa:posFormState.empresa,
-      transportadora:posFormState.transportadora, ciudad:posFormState.ciudad,
-      direccion:posFormState.direccion||'', cedulaCliente:posFormState.cedula||'',
-      comprobante:posFormState.comprobante||'',
-      esSeparado
-    };
-    ventaRecord = {
-      id:factura.id, fecha:fechaActual, canal, valor:total,
-      cliente:posFormState.cliente, telefono:posFormState.telefono,
-      guia:posFormState.guia, empresa:posFormState.empresa,
-      transportadora:posFormState.transportadora, ciudad:posFormState.ciudad,
-      direccion:posFormState.direccion||'', cedulaCliente:posFormState.cedula||'',
-      comprobante:posFormState.comprobante||'',
-      liquidado:liquidadoInicial, fechaLiquidacion:fechaLiq,
-      esContraEntrega, tipoPago,
-      esSeparado, estadoEntrega:'Pendiente', fechaHoraEntrega:null,
-      desc:numFactura, metodoPago:posFormState.metodo,
-      invoiceId:factura.id
-    };
+  if (!window.AppPosService?.buildPosDocuments) {
+    notify('danger', '⚠️', 'POS', 'Falta el módulo pos-service. Recarga con Ctrl+Shift+R.', { duration: 8000 });
+    return;
   }
+  const built = window.AppPosService.buildPosDocuments({
+    state,
+    posFormState,
+    today,
+    uid,
+    dbId,
+    addBusinessDays,
+    esSeparado
+  });
+  let { canal, subtotal, iva, flete, total, numFactura, fechaActual, factura, ventaRecord } = built;
 
   // Única ruta de escritura válida: el RPC crea factura, venta, stock, caja y
   // sale_items dentro de una sola transacción y reserva el consecutivo en Postgres.
@@ -3831,8 +3829,10 @@ async function procesarVentaPOSInterno(opts) {
   factura.numero = numFactura;
   ventaRecord.desc = numFactura;
   ventaRecord.invoiceId = factura.id;
-  const serverConsec = parseInt(numFactura.replace(/\D/g, ''), 10);
-  if (Number.isFinite(serverConsec)) {
+  // Espejo local del contador del servidor (no es fuente de verdad del POS).
+  const serverConsec = parseInt(String(numFactura).replace(/\D/g, ''), 10);
+  if (Number.isFinite(serverConsec) && serverConsec > 0) {
+    if (!state.consecutivos) state.consecutivos = {};
     state.consecutivos.factura = Math.max(
       Number(state.consecutivos.factura) || 1,
       serverConsec + 1
@@ -3870,71 +3870,8 @@ async function procesarVentaPOSInterno(opts) {
     });
   }
 
-  // Persistencia principal: POS siempre registra factura + venta
-  // Ya fue confirmada por create_pos_sale_v2. No repetir escrituras REST.
-  const persistedOK = true;
-  if(!persistedOK){
-    ventaRecord.syncPending = true;
-    ventaRecord.syncError = 'factura_venta';
-    factura.syncPending = true;
-    factura.syncError = 'factura_venta';
-    notify('warning','📡','Sin sincronización BD','La venta se guardó localmente, pero no se pudo sincronizar factura/venta a la base de datos.',{duration:6000});
-  }
-
-  // stock_moves primero; solo tras insert OK se descuenta stock (pos-repository). Luego caja.
-  if(_sbConnected && !atomicPosResult.ok){
-    try {
-      if (window.AppPosRepository?.registerPosSaleSideEffects) {
-        await window.AppPosRepository.registerPosSaleSideEffects({
-          state, cart, factura, ventaRecord, numFactura, fechaActual,
-          dbId, saveRecord, supabaseClient, sbConnected: _sbConnected, posFormState, notify
-        });
-      } else {
-        if (window.AppPosRepository?.syncStockToSupabase) {
-          await window.AppPosRepository.syncStockToSupabase(state, cart, supabaseClient, _sbConnected);
-        } else {
-          for (const item of cart) {
-            const art = state.articulos.find((a) => a.id === item.articuloId);
-            if (art) {
-              const q = Math.abs(parseInt(item.qty, 10) || 0);
-              if (q <= 0) continue;
-              const { data, error } = await supabaseClient.rpc('decrement_stock', {
-                p_product_id: item.articuloId,
-                p_qty: q,
-              });
-              if (error) throw error;
-              art.stock = parseFloat(data) || 0;
-            }
-          }
-        }
-      }
-    } catch(e){
-      console.warn('Supabase POS stock / efectos venta:', e.message);
-      ventaRecord.syncPending = true;
-      ventaRecord.syncError = 'stock_efectos';
-      notify('warning','⚠️','Sincronización parcial',`La venta ${numFactura} quedó pendiente de sincronizar inventario/caja.`,{duration:6500});
-      if (window.AppPosRepository?.preparePosSaleForPersist) {
-        window.AppPosRepository.preparePosSaleForPersist(factura, ventaRecord);
-      }
-      try { await saveRecord('ventas', ventaRecord.id, ventaRecord); } catch(_) { /* noop */ }
-    }
-  }
-
-  // sale_items: capa canónica de líneas (NO bloquea la venta; no toca stock/caja).
-  if (_sbConnected && !atomicPosResult.ok && window.AppPosRepository?.persistSaleItems) {
-    try {
-      const rSI = await window.AppPosRepository.persistSaleItems({
-        supabaseClient, factura, ventaRecord, source: 'pos', idGen: dbId
-      });
-      if (!rSI.ok) {
-        console.warn('[POS] sale_items no persistió:', rSI.error?.message || rSI.error);
-        ventaRecord.syncError = 'sale_items';
-      }
-    } catch (e) {
-      console.warn('[POS] sale_items no bloqueante:', e?.message || e);
-      ventaRecord.syncError = 'sale_items';
-    }
-  }
+  // create_pos_sale_v2 ya escribió invoices, ventas, stock, caja y sale_items.
+  // Aquí solo espejo local + efectos de UI (cliente, XP, ticket).
 
   // Auto-registrar cliente
   if (window.AppPosRepository?.autoRegisterCustomer) {

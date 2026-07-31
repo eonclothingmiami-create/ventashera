@@ -78,7 +78,6 @@
       state,
       posFormState,
       today,
-      getNextConsec,
       uid,
       dbId,
       addBusinessDays,
@@ -95,7 +94,9 @@
           ? parseFloat(posFormState.flete) || 0
           : 0;
     const total = subtotal + iva + flete;
-    const numFactura = 'POS-' + getNextConsec('factura');
+    // El número real lo reserva create_pos_sale_v2 en erp_consecutivos.
+    // No quemar getNextConsec/state_config aquí: provocaba desfase y choques POS-XXXX.
+    const numFactura = 'POS-PENDIENTE';
     const fechaActual = today();
     const nextUuid =
       (typeof dbId === 'function' && dbId) ||
