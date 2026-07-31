@@ -8,6 +8,113 @@
       .replace(/"/g, '&quot;');
   }
 
+  function escAttr(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  }
+
+  function listDocArticulos(state) {
+    return (state.articulos || []).filter((a) => {
+      if (a == null) return false;
+      if (a.activo === false || a.active === false) return false;
+      if (a.visible === false) return false;
+      return true;
+    });
+  }
+
+  function docArtSearchHaystack(a) {
+    return [
+      a.nombre || a.name || '',
+      a.codigo || a.code || '',
+      a.scanAlias || '',
+      a.ref || '',
+      a.id || '',
+    ]
+      .join(' ')
+      .toLowerCase();
+  }
+
+  function docArtDisplayName(item) {
+    if (!item) return '';
+    if (item.articuloId === 'custom') return item.nombre || '';
+    return item.nombre || '';
+  }
+
+  function renderDocArtSuggestions(row, state, q) {
+    const box = row.querySelector('.doc-art-sug');
+    if (!box) return;
+    const qq = String(q || '').trim().toLowerCase();
+    if (qq.length < 1) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    const idx = Number(row.getAttribute('data-idx'));
+    const hits = listDocArticulos(state)
+      .filter((a) => docArtSearchHaystack(a).includes(qq))
+      .slice(0, 80);
+    if (hits.length === 0) {
+      box.innerHTML = '<div class="inv-art-sug-empty">Sin coincidencias · podés usar Personalizado</div>';
+      box.style.display = 'block';
+      return;
+    }
+    box.innerHTML = hits
+      .map((a) => {
+        const id = escAttr(String(a.id));
+        const lab = escHtml(a.nombre || a.name || '—');
+        const code = a.codigo || a.code || a.scanAlias || '';
+        const extra = code ? ` <span style="color:var(--text2);font-size:10px">${escHtml(String(code))}</span>` : '';
+        return `<button type="button" class="inv-art-sug-item doc-art-sug-item" data-id="${id}">${lab}${extra}</button>`;
+      })
+      .join('');
+    box.style.display = 'block';
+    box.querySelectorAll('.doc-art-sug-item').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (typeof global.docItemChanged === 'function') {
+          global.docItemChanged(idx, btn.getAttribute('data-id'));
+        }
+        box.style.display = 'none';
+      });
+    });
+  }
+
+  function initDocArtComboRow(row, state) {
+    if (!row || row.dataset.docArtInit === '1') return;
+    row.dataset.docArtInit = '1';
+    const search = row.querySelector('.doc-art-search');
+    const box = row.querySelector('.doc-art-sug');
+    let tmr = null;
+    if (!search) return;
+    search.addEventListener('input', () => {
+      clearTimeout(tmr);
+      tmr = setTimeout(() => renderDocArtSuggestions(row, state, search.value), 80);
+    });
+    search.addEventListener('focus', () => {
+      if (String(search.value || '').trim().length >= 1) {
+        renderDocArtSuggestions(row, state, search.value);
+      }
+    });
+    search.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (box) box.style.display = 'none';
+      }, 180);
+    });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && box) {
+        box.style.display = 'none';
+      }
+    });
+  }
+
+  function initDocArtCombos(state) {
+    const root = global.document?.getElementById('m-doc-items');
+    if (!root) return;
+    root.querySelectorAll('.doc-art-combo').forEach((row) => initDocArtComboRow(row, state));
+  }
+
   function fmtComprobanteFacturaCell(comprobante) {
     const c = String(comprobante ?? '').trim();
     if (!c) return '<span style="color:var(--text2)">—</span>';
@@ -224,10 +331,25 @@
     const { state, updateDocTotal } = ctx;
     const items = ctx.getDocItems();
     const el = document.getElementById('m-doc-items'); if (!el) return;
-    el.innerHTML = items.map((item, i) => `
+    el.innerHTML = items.map((item, i) => {
+      const selectedLabel = docArtDisplayName(item);
+      const placeholder = item.articuloId === 'custom'
+        ? 'Ítem personalizado (descripción abajo)'
+        : 'Escribir para buscar artículo…';
+      return `
     <div style="margin-bottom:8px">
       <div style="display:grid;grid-template-columns:2fr 80px 120px 40px;gap:8px;align-items:end">
-        <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'ARTÍCULO' : ''}</label><select class="form-control" onchange="docItemChanged(${i},this.value)" style="padding:8px"><option value="">— Seleccionar —</option>${(state.articulos || []).map((a) => '<option value="' + a.id + '" ' + (item.articuloId === a.id ? 'selected' : '') + '>' + a.nombre + '</option>').join('')}<option value="custom" ${item.articuloId === 'custom' ? 'selected' : ''}>✏️ Personalizado</option></select></div>
+        <div class="form-group doc-art-combo" data-idx="${i}" style="margin:0;position:relative;min-width:0">
+          <label class="form-label">${i === 0 ? 'ARTÍCULO' : ''}</label>
+          <div class="inv-art-search-wrap">
+            <input type="text" class="form-control doc-art-search" value="${escAttr(selectedLabel)}" placeholder="${escAttr(placeholder)}" autocomplete="off" spellcheck="false" style="padding:8px">
+            <div class="inv-art-sug doc-art-sug" style="display:none" role="listbox"></div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+            <button type="button" class="btn btn-xs btn-secondary" onclick="docItemChanged(${i},'custom')" title="Ítem libre sin catálogo">✏️ Personalizado</button>
+            ${item.articuloId && item.articuloId !== 'custom' ? `<button type="button" class="btn btn-xs btn-secondary" onclick="docItemChanged(${i},'')" title="Quitar selección">Limpiar</button>` : ''}
+          </div>
+        </div>
         <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'CANT' : ''}</label><input type="number" class="form-control" value="${item.cantidad}" min="1" onchange="docItemQty(${i},this.value)" style="padding:8px"></div>
         <div class="form-group" style="margin:0"><label class="form-label">${i === 0 ? 'PRECIO' : ''}</label><input type="number" class="form-control" value="${item.precio}" min="0" onchange="docItemPrice(${i},this.value)" style="padding:8px" id="doc-item-price-${i}"></div>
         <button class="btn btn-xs btn-danger" onclick="removeDocItem(${i})" style="margin-bottom:0;height:38px">✕</button>
@@ -237,8 +359,10 @@
         <input type="text" class="form-control" value="${escHtml(item.talla || '')}" placeholder="Talla (opcional)" oninput="docItemTalla(${i},this.value)" style="padding:8px">
         <span></span>
       </div>` : ''}
-    </div>`).join('');
+    </div>`;
+    }).join('');
     updateDocTotal();
+    setTimeout(() => initDocArtCombos(state), 0);
   }
 
   function docItemChanged(ctx) {

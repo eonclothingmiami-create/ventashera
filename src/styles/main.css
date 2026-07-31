@@ -190,6 +190,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .inv-art-sug-item:last-child{border-bottom:none}
 .inv-art-sug-item:hover{background:rgba(0,229,180,.1)}
 .inv-art-sug-empty{padding:10px 11px;font-size:11px;color:var(--text2)}
+#m-doc-items .inv-art-search-wrap{z-index:5}
+#m-doc-items .doc-art-sug{z-index:80;max-height:240px}
 /* Modal elegir talla POS: prenda a la izquierda, tallas a la derecha */
 .pos-talla-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:24px;align-items:start}
 .pos-talla-preview{min-width:0}
