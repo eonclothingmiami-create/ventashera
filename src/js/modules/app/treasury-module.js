@@ -175,7 +175,8 @@
 
   /**
    * Agrupa movimientos de caja por riel de dinero (no por canal de venta).
-   * Usa método y bucket como referencia; normaliza aliases (nequi, daviplata, etc. → transferencia).
+   * Efectivo = físico. Transferencia = bancos/apps/QR/datáfono/digitales.
+   * Usa método y bucket; normaliza aliases (nequi, qr_bold, etc.).
    */
   function paymentRailForTesMov(m) {
     const parts = [m && m.metodo, m && m.bucket]
@@ -189,14 +190,25 @@
       );
     const raw = parts.join(' ');
     if (!raw) return 'otro';
+    // Contra entrega: siempre riel transferencia (aunque el método diga efectivo).
+    if (/contra\s*entrega|contraentrega/.test(raw)) {
+      return 'transferencia';
+    }
+    // Efectivo físico primero (evita que "mixto efectivo" se cuente solo como transfer).
+    if (/\befectivo\b|\bcash\b|billete|moneda/.test(raw) && !/mixto|transfer|qr|nequi|daviplata|tarjeta|digital|addi/.test(raw)) {
+      return 'efectivo';
+    }
+    if (/^efectivo$|^cash$/.test(raw)) {
+      return 'efectivo';
+    }
     if (
-      /transfer|transf|nequi|daviplata|bancolombia|davivienda|bbva|pse|spei|ach|bancario|ahorr|corrient|app\b|llave|clave/i.test(
+      /transfer|transf|nequi|daviplata|bancolombia|davivienda|bbva|pse|spei|ach|bancario|ahorr|corrient|app\b|llave|clave|qr|bold|digital|tarjeta|datafono|datfono|addi|pasarela|wompi|payu|mercado\s*pago/i.test(
         raw
       )
     ) {
       return 'transferencia';
     }
-    if (/^efectivo$|^cash$|efectivo|billete|moneda/.test(raw)) {
+    if (/efectivo|billete|moneda/.test(raw)) {
       return 'efectivo';
     }
     return 'otro';
@@ -607,6 +619,8 @@
       const rail = paymentRailForTesMov(m);
       if (rail === 'efectivo') sumEfectivo += signed;
       else if (rail === 'transferencia') sumTransferencia += signed;
+      // Si aparece un método nuevo no clasificado, no lo ocultamos en “Otros”:
+      // queda fuera de las 2 tarjetas hasta que lo mapeemos (Total sí lo incluye).
       if (m.tipo === 'ingreso' && m.categoria === 'venta_pos') {
         sumVentaPosIng += val;
         lineasVentaPos++;
@@ -633,8 +647,8 @@
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
       <div class="card" style="padding:10px 12px;margin:0"><div style="font-size:10px;color:var(--text2)">Efectivo</div><div style="font-weight:800;color:${sumEfectivo >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(sumEfectivo)}</div><div style="font-size:9px;color:var(--text2);margin-top:2px;opacity:.85">Neto período</div></div>
-      <div class="card" style="padding:10px 12px;margin:0"><div style="font-size:10px;color:var(--text2)">Transferencia</div><div style="font-weight:800;color:${sumTransferencia >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(sumTransferencia)}</div><div style="font-size:9px;color:var(--text2);margin-top:2px;opacity:.85">Neto período</div></div>
-      <div class="card" style="padding:10px 12px;margin:0;border:1px solid rgba(0,229,180,.35)"><div style="font-size:10px;color:var(--text2)">Total período</div><div style="font-weight:800;color:${sumTotalPeriodo >= 0 ? 'var(--accent)' : 'var(--red)'}">${fmt(sumTotalPeriodo)}</div><div style="font-size:9px;color:var(--text2);margin-top:2px;opacity:.85">Ingresos − egresos (todos los movimientos)</div></div>
+      <div class="card" style="padding:10px 12px;margin:0"><div style="font-size:10px;color:var(--text2)">Transferencia</div><div style="font-weight:800;color:${sumTransferencia >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(sumTransferencia)}</div><div style="font-size:9px;color:var(--text2);margin-top:2px;opacity:.85">Bancos, QR, apps, datáfono</div></div>
+      <div class="card" style="padding:10px 12px;margin:0;border:1px solid rgba(0,229,180,.35)"><div style="font-size:10px;color:var(--text2)">Total período</div><div style="font-weight:800;color:${sumTotalPeriodo >= 0 ? 'var(--accent)' : 'var(--red)'}">${fmt(sumTotalPeriodo)}</div><div style="font-size:9px;color:var(--text2);margin-top:2px;opacity:.85">Efectivo + transferencia</div></div>
     </div>
     <div class="card"><div class="card-title">MOVIMIENTOS DE DINERO (${movsFiltered.length})</div>
     <div class="table-wrap"><table><thead><tr><th>Fecha / hora</th><th>Caja</th><th>Tipo</th><th>Valor</th><th>Bucket</th><th>Clase</th><th>Concepto</th><th>Método</th><th style="text-align:right">Acciones</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;

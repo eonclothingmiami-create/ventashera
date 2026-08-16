@@ -71,6 +71,8 @@
 
     if (id === 'addi' || id.includes('addi')) return 'addi';
     if (id === 'nequi' || id === 'daviplata') return 'digital';
+    // QR / pasarelas: dinero electrónico (no efectivo físico).
+    if (id === 'qr_bold' || id === 'qr_bancolombia' || id.startsWith('qr_') || id.includes('bold')) return 'digital';
     if (id === 'bancolombia') return 'transferencia';
     if (id === 'tarjeta_debito' || id === 'tarjeta_credito') return 'tarjeta';
     if (id === 'transferencia' || t === 'banco' || t === 'transferencia') return 'transferencia';
