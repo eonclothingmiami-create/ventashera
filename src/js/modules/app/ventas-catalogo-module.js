@@ -40,7 +40,6 @@
     catalogo_web: 'Catálogo web',
     woocommerce: 'WooCommerce',
     mercadolibre: 'Mercado Libre',
-    falabella: 'Falabella',
     meta_commerce: 'Meta (FB/IG)',
     google_merchant: 'Google Merchant',
     pinterest: 'Pinterest',
@@ -55,7 +54,6 @@
     ['catalogo_web', LABEL_ORIGEN.catalogo_web],
     ['woocommerce', LABEL_ORIGEN.woocommerce],
     ['mercadolibre', LABEL_ORIGEN.mercadolibre],
-    ['falabella', LABEL_ORIGEN.falabella],
     ['meta_commerce', LABEL_ORIGEN.meta_commerce],
     ['google_merchant', LABEL_ORIGEN.google_merchant],
     ['pinterest', LABEL_ORIGEN.pinterest],
@@ -72,7 +70,7 @@
   }
 
   /**
-   * Despacho “revisar canal” solo para integraciones (ML, Falabella, registro manual, etc.).
+   * Despacho “revisar canal” solo para integraciones (ML, registro manual, etc.).
    * Pedidos del catálogo web (Wompi/Addi) siguen el flujo que ya tenías; aquí mostramos —.
    */
   function necesitaDespachoCanalIntegrado(r) {
@@ -97,7 +95,7 @@
       return '<span class="badge badge-ok" style="font-size:9px" title="Despacho revisado / gestionado">✓ Envío OK</span>';
     }
     return `<div style="display:flex;flex-direction:column;gap:4px;max-width:150px">
-      <span class="badge badge-warn" style="font-size:9px;white-space:normal;line-height:1.25;text-align:left" title="Prepara el envío; si vendiste por ML, Falabella u otro canal, ábrelo para etiqueta y estado.">🚚 Revisar canal / envío</span>
+      <span class="badge badge-warn" style="font-size:9px;white-space:normal;line-height:1.25;text-align:left" title="Prepara el envío; si vendiste por ML u otro canal, ábrelo para etiqueta y estado.">🚚 Revisar canal / envío</span>
       <button type="button" class="btn btn-xs btn-secondary" data-vcat-despacho-ok="${r.id}" style="font-size:9px;padding:2px 6px;align-self:flex-start">Marcar envío OK</button>
     </div>`;
   }
@@ -229,7 +227,7 @@
       `
       <div class="modal-title">Registrar venta / pedido externo</div>
       <p style="font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:12px">
-        Para <b>Mercado Libre</b>, <b>Falabella</b> y el resto de canales: registra aquí el pedido para tenerlo en el mismo listado.
+        Para <b>Mercado Libre</b> y el resto de canales: registra aquí el pedido para tenerlo en el mismo listado.
         Referencia única (ej. <code>ML-2000001234567</code>). Para <b>Venta POS</b> desde este módulo, los ítems deben incluir <code>ref</code> que exista en el ERP y opcionalmente <code>productId</code> (UUID).
       </p>
       <div class="form-group"><label class="form-label">Referencia única *</label>
@@ -237,7 +235,7 @@
       <div class="form-group"><label class="form-label">Origen *</label>
         <select id="vc-reg-origen" class="form-control">${opts}</select></div>
       <div class="form-group"><label class="form-label">ID pedido en la plataforma</label>
-        <input type="text" id="vc-reg-ext" class="form-control" placeholder="Order id en ML, Falabella, etc."></div>
+        <input type="text" id="vc-reg-ext" class="form-control" placeholder="Order id en ML, etc."></div>
       <div class="form-group"><label class="form-label">Pasarela / medio (texto libre)</label>
         <input type="text" id="vc-reg-canal" class="form-control" placeholder="mercadolibre, wompi, contraentrega…"></div>
       <div class="form-row-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
@@ -312,7 +310,7 @@
           manualRegistro: true,
           pendiente_revisar_despacho: true,
           alerta_despacho:
-            'Registro manual: revisa la plataforma de venta (ML, Falabella, etc.) para etiqueta y seguimiento, y prepara el envío con los datos del cliente.',
+            'Registro manual: revisa la plataforma de venta (ML, etc.) para etiqueta y seguimiento, y prepara el envío con los datos del cliente.',
         };
         if (nota) trackingMeta.nota = nota;
 
@@ -608,7 +606,7 @@
         ${esc(
           typeof tm.alerta_despacho === 'string' && tm.alerta_despacho.trim()
             ? tm.alerta_despacho
-            : 'Prepara el envío con los datos del cliente. Si el pedido se gestiona en otra plataforma (ML, Falabella, etc.), ábrela para etiqueta y estado.',
+            : 'Prepara el envío con los datos del cliente. Si el pedido se gestiona en otra plataforma (ML, etc.), ábrela para etiqueta y estado.',
         )}
       </div>`
           : ''

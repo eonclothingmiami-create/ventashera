@@ -23,14 +23,6 @@
     window.DROPI_SYNC_ENDPOINT = window.DROPI_SYNC_ENDPOINT || '';
     /** Rappi — catálogo moda/ropa (OAuth en servidor) → Edge Function hera-rappi-sync */
     window.RAPPI_SYNC_ENDPOINT = window.RAPPI_SYNC_ENDPOINT || '';
-    /** Falabella Seller Center (ProductCreate) → Edge Function falabella-sync-product */
-    window.FALABELLA_SYNC_ENDPOINT = window.FALABELLA_SYNC_ENDPOINT || '';
-    /** GetCategoryAttributes → falabella-get-category-attributes (se deduce de SYNC si vacío) */
-    window.FALABELLA_CATEGORY_ATTRS_ENDPOINT = window.FALABELLA_CATEGORY_ATTRS_ENDPOINT || '';
-    /** Preflight (GetBrands + mapeo variación) → falabella-preflight */
-    window.FALABELLA_PREFLIGHT_ENDPOINT = window.FALABELLA_PREFLIGHT_ENDPOINT || '';
-    /** ProductUpdate precio/stock → falabella-product-update */
-    window.FALABELLA_PRODUCT_UPDATE_ENDPOINT = window.FALABELLA_PRODUCT_UPDATE_ENDPOINT || '';
     /** storeId de integración Rappi (portal aliados); ajusta al de tu tienda */
     window.RAPPI_STORE_ID = window.RAPPI_STORE_ID || '';
     /** Google Merchant Center / Shopping → Edge Function google-merchant-sync */
@@ -68,7 +60,6 @@
 <script defer src="./src/js/integrations/pinterest-catalog.js?v=6"></script>
 <script defer src="./src/js/integrations/dropi.js?v=11"></script>
 <script defer src="./src/js/integrations/rappi.js?v=1"></script>
-<script defer src="./src/js/integrations/falabella.js?v=20260723checkbox2"></script>
 <script defer src="./src/js/integrations/mayoristas-catalog.js?v=20260723gallery40"></script>
 <script defer src="./src/js/integrations/social-content-api.js?v=20260723publishfix"></script>
 <script defer src="./src/js/integrations/product-intelligence-api.js?v=20260720pi4"></script>
@@ -78,12 +69,12 @@
 <script defer src="./src/js/modules/app/id-utils.js?v=20260327caja1"></script>
 <script defer src="./src/js/modules/app/caja-logic.js?v=20260816qrbucket"></script>
 <script defer src="./src/js/modules/app/state.js?v=20260327caja1"></script>
-<script defer src="./src/js/modules/app/pos-service.js?v=20260731posfix2"></script>
-<script defer src="./src/js/modules/app/pos-repository.js?v=20260731posfix2"></script>
+<script defer src="./src/js/modules/app/pos-service.js?v=20260816legpoda1"></script>
+<script defer src="./src/js/modules/app/pos-repository.js?v=20260816poda1"></script>
 <script defer src="./src/js/modules/app/pos-view.js?v=20260730commercial2"></script>
 <script defer src="./src/js/modules/app/pos-controller.js?v=20260322pos3"></script>
 <script defer src="./src/js/modules/app/users-module.js?v=20260710nomliq1"></script>
-<script defer src="./src/js/modules/app/documents-module.js?v=20260730docsearch1"></script>
+<script defer src="./src/js/modules/app/documents-module.js?v=20260816legpoda1"></script>
 <script defer src="./src/js/modules/app/document-pdf.js?v=20260730commercial3"></script>
 <script defer src="./src/js/modules/app/inventory-module.js?v=20260730archive1"></script>
 <script defer src="./src/js/modules/app/nomina-params.js?v=20260710nomliq1"></script>
@@ -94,7 +85,7 @@
 <script defer src="./src/js/modules/app/cxp-proveedores-module.js?v=20260531cxpkpis1"></script>
 <script defer src="./src/js/modules/app/game-system-module.js?v=20260503canalpend"></script>
 <script defer src="./src/js/modules/app/separados-module.js?v=20260322comp2"></script>
-<script defer src="./src/js/modules/app/ventas-catalogo-module.js?v=20260710vc1"></script>
+<script defer src="./src/js/modules/app/ventas-catalogo-module.js?v=20260816nofal1"></script>
 <script defer src="./src/js/modules/app/config-module.js?v=20260730clean1"></script>
 <script defer src="./src/js/modules/app/pos-receipt-print.js?v=20260517pos80"></script>
 <script defer src="./src/js/modules/app/sync-guard.js?v=20260327antids1"></script>
@@ -102,7 +93,7 @@
 <script defer src="./src/js/modules/app/product-intelligence-module.js?v=20260720pi3"></script>
 <script defer src="./src/js/modules/app/ai-center-module.js?v=20260720ai4"></script>
 <script defer src="./src/js/utils/product-ref.js?v=20260720heraref1"></script>
-<script defer src="./src/js/modules/core.js?v=20260731posfix2"></script><script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
+<script defer src="./src/js/modules/core.js?v=20260816legpoda1"></script><script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
 
 </head>
 <body>

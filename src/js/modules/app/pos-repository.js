@@ -348,20 +348,6 @@
     return { ok: true, data, caja };
   }
 
-  async function persistPosSale(saveRecord, factura, ventaRecord) {
-    // Canónico: primero public.invoices (factura.id = UUID fila factura), luego public.ventas con invoice_id = ese UUID.
-    // ventas.id sigue siendo PK operativa (text); no se migra a uuid en este sprint.
-    // Invariante POS: una sola venta por factura, mismo id (cobros, separados, guías).
-    if (factura && ventaRecord && String(factura.id) !== String(ventaRecord.id)) {
-      console.error('[POS] Invariante rota: factura.id !== ventaRecord.id', factura.id, ventaRecord.id);
-      return false;
-    }
-    preparePosSaleForPersist(factura, ventaRecord);
-    const facturaSaved = await saveRecord('facturas', factura.id, factura);
-    const ventaSaved = await saveRecord('ventas', ventaRecord.id, ventaRecord);
-    return facturaSaved && ventaSaved;
-  }
-
   /**
    * Descuenta stock en products solo para líneas que ya tienen movimiento registrado.
    * Usado por herramientas de reparación de stock pendiente.
@@ -986,7 +972,6 @@
     createPosSaleAtomicV2,
     cancelPosSaleAtomicV2,
     payManualInvoiceV1,
-    persistPosSale,
     computeSaleLineKey,
     buildSaleItemRows,
     persistSaleItems,

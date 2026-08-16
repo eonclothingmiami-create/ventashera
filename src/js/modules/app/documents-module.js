@@ -440,8 +440,7 @@
   }
 
   async function saveDoc(ctx) {
-    const { state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt, loadState } = ctx;
-    const nextId = typeof dbId === 'function' ? dbId : uid;
+    const { state, collection, today, supabaseClient, saveConfig, closeModal, renderPage, notify, fmt, loadState } = ctx;
     const fecha = document.getElementById('m-doc-fecha').value || today();
     const cliente = document.getElementById('m-doc-cliente').value.trim();
     const obs = document.getElementById('m-doc-obs').value.trim();
@@ -460,9 +459,6 @@
     const applyIva = ivaEl ? ivaEl.checked : (collection !== 'facturas');
     const iva = applyIva ? subtotal * 0.19 : 0;
     const total = subtotal + iva;
-    const prefixes = { cotizaciones: 'COT', ordenes_venta: 'OV', facturas: 'FAC', notas_credito: 'NC', notas_debito: 'ND', remisiones: 'REM', devoluciones: 'DEV', anticipos_clientes: 'ANT' };
-    const consKeys = { cotizaciones: 'cotizacion', ordenes_venta: 'orden', facturas: 'factura', notas_credito: 'nc', notas_debito: 'nd', remisiones: 'remision', devoluciones: 'devolucion', anticipos_clientes: 'anticipo' };
-    const numero = (prefixes[collection] || 'DOC') + '-' + getNextConsec(consKeys[collection] || 'factura');
     const itemsNormalized = items.map((i) => {
       const q = parseFloat(i.cantidad) || 1;
       const p = parseFloat(i.precio) || 0;
@@ -475,76 +471,98 @@
         precio: p
       };
     });
-    const commercialType = {
-      cotizaciones:'quotation',
-      ordenes_venta:'sales_order',
-      prefacturas:'proforma'
-    }[collection] || null;
-    if (commercialType) {
-      const request = {
-        document_type:commercialType,
-        status:commercialType === 'proforma' ? 'issued' : 'draft',
-        document_date:fecha,
-        customer_name:cliente,
-        notes:obs,
-        tax:iva,
-        shipping:0,
-        channel:'vitrina',
-        items:itemsNormalized.map(i=>({
-          product_id:i.articuloId && i.articuloId !== 'custom' ? i.articuloId : null,
-          name:i.nombre,
-          size:i.talla||'',
-          qty:i.cantidad,
-          unit_price:i.precio
-        }))
-      };
-      const {data,error}=await supabaseClient.rpc('create_commercial_document_v1',{p_request:request});
-      if(error || !data?.ok){
-        notify('danger','⚠️','Documento no creado',error?.message||'Supabase rechazó el documento.',{duration:9000});
-        return;
-      }
-      ctx.setDocItems([]);
-      closeModal();
-      if(typeof loadState === 'function') await loadState();
-      const page=commercialType==='quotation'?'cotizaciones':commercialType==='sales_order'?'ordenes':'prefacturas';
-      if(typeof global.showPage === 'function') global.showPage(page);
-      notify('success','✅','Documento creado',`${data.number} · ${fmt(data.total)}`,{duration:4000});
+    // Todo saveDoc es atómico: RPC + erp_consecutivos.
+    const DOC_RPC = {
+      cotizaciones: { kind: 'commercial', type: 'quotation', status: 'draft', page: 'cotizaciones', mirror: 'cotizacion' },
+      ordenes_venta: { kind: 'commercial', type: 'sales_order', status: 'draft', page: 'ordenes', mirror: 'orden' },
+      prefacturas: { kind: 'commercial', type: 'proforma', status: 'issued', page: 'prefacturas', mirror: 'prefactura' },
+      notas_credito: { kind: 'commercial', type: 'credit_note', status: 'draft', page: 'notas_credito', mirror: 'nc' },
+      notas_debito: { kind: 'commercial', type: 'debit_note', status: 'draft', page: 'notas_debito', mirror: 'nd' },
+      remisiones: { kind: 'commercial', type: 'remittance', status: 'draft', page: 'remisiones', mirror: 'remision' },
+      devoluciones: { kind: 'commercial', type: 'return_doc', status: 'draft', page: 'devoluciones', mirror: 'devolucion' },
+      anticipos_clientes: { kind: 'commercial', type: 'customer_advance', status: 'draft', page: 'anticipos_clientes', mirror: 'anticipo' },
+      facturas: { kind: 'manual_invoice', page: 'facturas', mirror: 'factura_manual' }
+    };
+    const rpcMeta = DOC_RPC[collection];
+    if (!rpcMeta) {
+      notify(
+        'danger',
+        '🛑',
+        'Tipo no soportado',
+        `«${collection}» no tiene RPC atómico definido.`,
+        { duration: 9000 }
+      );
       return;
     }
-    const docTipo = collection === 'facturas' ? 'manual' : tipo;
-    const docData = {
-      id: nextId(),
-      numero,
-      fecha,
-      cliente,
-      items: itemsNormalized,
-      subtotal,
-      applyIva,
-      iva,
-      flete: 0,
-      total,
-      estado: 'borrador',
-      observaciones: obs,
-      facturaRef: refId,
-      tipo: docTipo,
-      canal: collection === 'facturas' ? 'vitrina' : undefined,
-      telefono: '',
-      metodo: 'efectivo'
-    };
-    if (!state[collection]) state[collection] = [];
-    state[collection].push(docData);
-    ctx.setDocItems([]);
-    try {
-      if (collection === 'facturas' && typeof saveRecord === 'function') {
-        await saveRecord('facturas', docData.id, docData);
-      } else {
-        await supabaseClient.from('legacy_docs').insert({ id: docData.id, tipo, numero: docData.numero, data: docData });
+    if (!supabaseClient) {
+      notify('danger', '📡', 'Sin conexión', 'No se puede guardar el documento.', { duration: 6000 });
+      return;
+    }
+
+    const lineItems = itemsNormalized.map((i) => ({
+      product_id: i.articuloId && i.articuloId !== 'custom' ? i.articuloId : null,
+      name: i.nombre,
+      size: i.talla || '',
+      qty: i.cantidad,
+      unit_price: i.precio
+    }));
+
+    let data = null;
+    let error = null;
+    if (rpcMeta.kind === 'manual_invoice') {
+      const result = await supabaseClient.rpc('create_manual_invoice_v1', {
+        p_request: {
+          document_date: fecha,
+          customer_name: cliente,
+          notes: obs,
+          tax: iva,
+          shipping: 0,
+          channel: 'vitrina',
+          method: 'efectivo',
+          items: lineItems
+        }
+      });
+      data = result.data;
+      error = result.error;
+    } else {
+      const result = await supabaseClient.rpc('create_commercial_document_v1', {
+        p_request: {
+          document_type: rpcMeta.type,
+          status: rpcMeta.status,
+          document_date: fecha,
+          customer_name: cliente,
+          notes: obs,
+          tax: iva,
+          shipping: 0,
+          channel: 'vitrina',
+          factura_ref: refId || '',
+          items: lineItems
+        }
+      });
+      data = result.data;
+      error = result.error;
+    }
+
+    if (error || !data?.ok) {
+      notify('danger', '⚠️', 'Documento no creado', error?.message || 'Supabase rechazó el documento.', { duration: 9000 });
+      return;
+    }
+
+    const serverConsec = parseInt(String(data.number || '').replace(/\D/g, ''), 10);
+    if (Number.isFinite(serverConsec) && serverConsec > 0 && rpcMeta.mirror) {
+      if (!state.consecutivos) state.consecutivos = {};
+      state.consecutivos[rpcMeta.mirror] = Math.max(Number(state.consecutivos[rpcMeta.mirror]) || 1, serverConsec + 1);
+      if (typeof saveConfig === 'function') {
+        try { await saveConfig('consecutivos', state.consecutivos); } catch (_) { /* noop */ }
       }
-      await saveConfig('consecutivos', state.consecutivos);
-    } catch (e) { console.warn('saveDoc Supabase error:', e.message); }
+    }
+
+    ctx.setDocItems([]);
     closeModal();
-    renderPage(document.querySelector('.page.active')?.id.replace('page-', ''));
-    notify('success', '✅', 'Documento creado', `${numero} · ${fmt(total)}`, { duration: 3000 });
+    if (typeof loadState === 'function') await loadState();
+    if (typeof global.showPage === 'function') global.showPage(rpcMeta.page);
+    else if (typeof renderPage === 'function') renderPage(rpcMeta.page);
+    notify('success', '✅', 'Documento creado', `${data.number} · ${fmt(data.total)}`, { duration: 4000 });
   }
 
   function deleteDoc(ctx) {

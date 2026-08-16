@@ -95,7 +95,7 @@
           : 0;
     const total = subtotal + iva + flete;
     // El número real lo reserva create_pos_sale_v2 en erp_consecutivos.
-    // No quemar getNextConsec/state_config aquí: provocaba desfase y choques POS-XXXX.
+    // No numerar en el cliente: provoca desfase y choques POS-XXXX.
     const numFactura = 'POS-PENDIENTE';
     const fechaActual = today();
     const nextUuid =

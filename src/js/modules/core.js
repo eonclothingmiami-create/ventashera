@@ -330,7 +330,7 @@ let histFilters = { canal: '', cat: '', start: '', end: '' };
 // Un `let` de nivel superior no crea propiedad en window, así que el panel de portadas
 // por color veía una galería vacía en lugar de la que se está editando.
 var _tempGaleria = []; var _portadaIndex = 0;
-/** Tope de fotos/videos por producto en el ERP (canales externos recortan aparte: Woo 6, Falabella 8). */
+/** Tope de fotos/videos por producto en el ERP (canales externos recortan aparte: Woo 6). */
 const MAX_GALLERY_MEDIA = 40;
   let _tempLogoBase64 = null; // Almacena el logo procesado para 80mm
 
@@ -427,15 +427,6 @@ function getRappiSyncEndpoint() {
   return '';
 }
 
-/** URL Edge Function falabella-sync-product (Seller Center API; firma HMAC en servidor). */
-function getFalabellaSyncEndpoint() {
-  const custom = (window.FALABELLA_SYNC_ENDPOINT || '').trim();
-  if (custom) return custom;
-  const base = window.AppRepository?.SUPABASE_URL;
-  if (base) return String(base).replace(/\/$/, '') + '/functions/v1/falabella-sync-product';
-  return '';
-}
-
 /** IDs externos opcionales en `products` (o dentro de integrations_json) para no volver a publicar por error. */
 function integrationIdsFromProductRow(p) {
   const j =
@@ -466,45 +457,6 @@ function isListedGoogleMerchant(art) {
 function isListedPinterestCatalog(art) {
   return !!(art && art.pinterestCatalogItemId);
 }
-function isListedFalabella(art) {
-  if (!art) return false;
-  const st = String(art.falabellaSyncStatus || '').toLowerCase();
-  if (st === 'error' || st === 'error_validacion' || st === 'feed_timeout') return false;
-  if (st === 'synced' || st === 'pending') return true;
-  return !!(art.falabellaSellerSku && String(art.falabellaSellerSku).trim());
-}
-
-/** Resumen Falabella en el modal de artículo (estado sync + FeedStatus API + último error). */
-function updateFalabellaStatusLineInModal(art) {
-  const el = document.getElementById('art-falabella-status-line');
-  if (!el) return;
-  if (!art || !art.id) {
-    el.textContent = '';
-    el.style.display = 'none';
-    return;
-  }
-  const st = String(art.falabellaSyncStatus || '').toLowerCase();
-  const feed = String(art.falabellaFeedStatus || '').trim();
-  const err = String(art.falabellaLastError || '').trim();
-  if (!st && !feed && !err) {
-    el.textContent = '';
-    el.style.display = 'none';
-    return;
-  }
-  const parts = [];
-  if (st) parts.push(`Estado: ${st}`);
-  if (feed) parts.push(`Feed API: ${feed}`);
-  if (err) parts.push(`Último error: ${err}`);
-  el.textContent = parts.join(' · ');
-  el.style.display = 'block';
-  el.style.color =
-    st === 'error' || st === 'error_validacion' || st === 'feed_timeout'
-      ? 'var(--danger, #f87171)'
-      : st === 'pending'
-        ? 'var(--accent)'
-        : 'var(--text2)';
-}
-
 /**
  * Al abrir el maquetador: desmarca canales donde el producto ya tiene ID externo y muestra aviso breve.
  */
@@ -533,12 +485,6 @@ function applyIntegrationChannelListedState(art) {
       hint: 'art-sync-pinterest-catalog-hint',
       listed: isListedPinterestCatalog(art),
       label: 'Ya en Pinterest — desmarcado para evitar duplicados.',
-    },
-    {
-      chk: 'art-sync-falabella',
-      hint: 'art-sync-falabella-hint',
-      listed: isListedFalabella(art),
-      label: 'Ya enviado a Falabella — desmarcado para evitar duplicados.',
     },
   ];
   for (let i = 0; i < rows.length; i++) {
@@ -819,321 +765,6 @@ async function postSaveRappiIntegration(productId, catalogVisibleBool) {
   }
 }
 
-/**
- * Falabella no exige «mostrar en catálogo web»: si el usuario marca el checkbox, se envía aunque el artículo esté oculto en el sitio.
- * @returns {{ note: string, falabellaPatch?: object }}
- */
-async function postSaveFalabellaIntegration(productId) {
-  const falEndpoint = getFalabellaSyncEndpoint();
-  const falChk = document.getElementById('art-sync-falabella');
-  const want =
-    typeof window.requestFalabellaSync === 'function' &&
-    falEndpoint &&
-    falChk &&
-    falChk.checked;
-  if (!want) return { note: '' };
-  try {
-    // Checkbox-only (como ML): el Edge auto-mapea.
-    const falRes = await window.requestFalabellaSync(productId);
-    if (typeof console !== 'undefined' && console.info) {
-      console.info(
-        '[Falabella]',
-        falRes?.skipped ? 'omitido' : falRes?.dryRun ? 'dryRun' : falRes?.ok ? 'ok' : 'revisar',
-        {
-          productId,
-          requestIdFeed: falRes?.requestId || null,
-          sellerSku: falRes?.sellerSku || null,
-          syncStatus: falRes?.syncStatus,
-          feedStatus: falRes?.feedStatus,
-          message: falRes?.message || null,
-        },
-      );
-    }
-    if (falRes && falRes.skipped) return { note: ' · Falabella: no se llamó al endpoint' };
-    if (falRes && falRes.dryRun) {
-      notify('warning', '🏬', 'Falabella', falRes.message || 'Configura secrets en la Edge Function.', { duration: 9000 });
-      return { note: ' · Falabella: modo prueba (secrets en Supabase)' };
-    }
-    if (falRes && falRes.ok === false) {
-      const st = String(falRes.syncStatus || '');
-      const errTxt = String(falRes.message || falRes.error || '').trim();
-      if (st === 'error_validacion') {
-        notify('warning', '🏬', 'Falabella validación', errTxt || 'Revisa requisitos.', { duration: 14000 });
-        return {
-          note: ' · Falabella: error_validacion',
-          falabellaPatch: {
-            falabellaSyncStatus: 'error_validacion',
-            falabellaLastError: errTxt,
-            falabellaLastSyncAt: new Date().toISOString(),
-            falabellaSellerSku: falRes.sellerSku || '',
-          },
-        };
-      }
-      notify('danger', '🏬', 'Falabella', errTxt || 'Error', { duration: 12000 });
-      return {
-        note: ' · Falabella: error',
-        falabellaPatch: {
-          falabellaSyncStatus: st || 'error',
-          falabellaLastError: errTxt,
-          falabellaLastSyncAt: new Date().toISOString(),
-        },
-      };
-    }
-    if (falRes && falRes.ok) {
-      const rid = falRes.requestId ? ` feed ${falRes.requestId}` : '';
-      const st = falRes.syncStatus || 'synced';
-      const errTxt = falRes.lastError != null && String(falRes.lastError).trim() ? String(falRes.lastError) : '';
-      const patch = {
-        falabellaSyncStatus: st,
-        falabellaSellerSku: falRes.sellerSku || '',
-        falabellaFeedRequestId: falRes.requestId || '',
-        falabellaPrimaryCategoryId: falRes.primaryCategoryId || '',
-        falabellaLastError: errTxt,
-        falabellaLastSyncAt: new Date().toISOString(),
-        falabellaFeedStatus: falRes.feedStatus != null ? String(falRes.feedStatus) : '',
-      };
-      if (st === 'error' || st === 'feed_timeout') {
-        notify('danger', '🏬', 'Falabella feed', falRes.message || errTxt || 'Error en feed', { duration: 12000 });
-      } else if (st === 'pending') {
-        notify('warning', '🏬', 'Falabella feed', falRes.message || 'Feed en cola o procesando.', { duration: 10000 });
-      }
-      const label =
-        st === 'synced' ? 'OK' : st === 'error' || st === 'feed_timeout' ? 'error' : 'pendiente';
-      return {
-        note: falRes.sellerSku ? ` · Falabella (${label}): ${falRes.sellerSku}${rid}` : ` · Falabella (${label})${rid}`,
-        falabellaPatch: patch,
-      };
-    }
-    return { note: ' · Falabella: respuesta inesperada' };
-  } catch (falErr) {
-    console.warn('[Falabella]', falErr);
-    notify('warning', '🏬', 'Falabella', falErr.message || 'Falló la sincronización', { duration: 9000 });
-    return {
-      note: ' · Falabella: error (consola / Edge Function)',
-      falabellaPatch: {
-        falabellaSyncStatus: 'error',
-        falabellaLastError: (falErr && falErr.message) || String(falErr),
-        falabellaLastSyncAt: new Date().toISOString(),
-      },
-    };
-  }
-}
-
-/**
- * Reenvía ProductCreate a Falabella usando el id del artículo en edición (= `products.id` en Supabase).
- * No uses el requestId del feed en consola; ese id es otro.
- */
-async function reenviarFalabellaFeedModal() {
-  const pid = window._editingArticuloId;
-  if (!pid) {
-    notify('warning', '🏬', 'Falabella', 'Abre un artículo existente (con guardado en catálogo).', { duration: 6000 });
-    return;
-  }
-  if (window.AppId?.isUuid && !window.AppId.isUuid(String(pid))) {
-    notify(
-      'warning',
-      '🏬',
-      'Falabella',
-      'Este artículo no tiene UUID de Supabase (p. ej. importado con id local). Sincroniza o usa un producto creado en el catálogo web.',
-      { duration: 9000 },
-    );
-    return;
-  }
-  if (!window.requestFalabellaSync || !(window.FALABELLA_SYNC_ENDPOINT || '').trim()) {
-    notify('warning', '🏬', 'Falabella', 'Endpoint no configurado.', { duration: 5000 });
-    return;
-  }
-  try {
-    notify('info', '🏬', 'Falabella', 'Enviando feed…', { duration: 2500 });
-    const falRes = await window.requestFalabellaSync(pid);
-    if (falRes && falRes.skipped) {
-      notify('warning', '🏬', 'Falabella', falRes.reason || 'No se envió.', { duration: 6000 });
-      return;
-    }
-    if (falRes && falRes.dryRun) {
-      notify('warning', '🏬', 'Falabella', falRes.message || 'Configura secrets en la Edge Function.', { duration: 9000 });
-      return;
-    }
-    if (falRes && falRes.ok === false) {
-      const errTxt = String(falRes.message || falRes.error || '').trim();
-      notify('warning', '🏬', 'Falabella', errTxt || 'Validación o error.', { duration: 14000 });
-      return;
-    }
-    if (falRes && falRes.ok) {
-      const rid = falRes.requestId ? ` · Feed ${falRes.requestId}` : '';
-      const st = falRes.syncStatus || 'synced';
-      const errTxt = falRes.lastError != null && String(falRes.lastError).trim() ? String(falRes.lastError) : '';
-      const msg = (falRes.message || 'Feed enviado.') + (falRes.sellerSku ? ` · SKU ${falRes.sellerSku}` : '') + rid;
-      if (st === 'error' || st === 'feed_timeout') {
-        notify('danger', '🏬', 'Falabella feed', msg, { duration: 12000 });
-      } else if (st === 'pending') {
-        notify('warning', '🏬', 'Falabella feed', msg, { duration: 10000 });
-      } else {
-        notify('success', '🏬', 'Falabella', msg, { duration: 10000 });
-      }
-      if (typeof console !== 'undefined' && console.info) {
-        console.info('[Falabella] reenvío manual', {
-          productId: pid,
-          requestIdFeed: falRes.requestId || null,
-          sellerSku: falRes.sellerSku || null,
-          syncStatus: st,
-          feedStatus: falRes.feedStatus,
-        });
-      }
-      const art = (state.articulos || []).find((a) => a.id === pid);
-      if (art) {
-        art.falabellaSyncStatus = st;
-        art.falabellaSellerSku = falRes.sellerSku || art.falabellaSellerSku || '';
-        art.falabellaFeedRequestId = falRes.requestId || '';
-        art.falabellaPrimaryCategoryId = falRes.primaryCategoryId || art.falabellaPrimaryCategoryId || '';
-        art.falabellaLastError = errTxt;
-        art.falabellaFeedStatus = falRes.feedStatus != null ? String(falRes.feedStatus) : '';
-        art.falabellaLastSyncAt = new Date().toISOString();
-        if (_sbConnected && supabaseClient) {
-          try {
-            await supabaseClient.from('products').update({
-              falabella_sync_status: st,
-              falabella_seller_sku: falRes.sellerSku || null,
-              falabella_feed_request_id: falRes.requestId || null,
-              falabella_primary_category_id: falRes.primaryCategoryId || null,
-              falabella_last_error: errTxt || null,
-              falabella_last_sync_at: new Date().toISOString(),
-              falabella_feed_status: falRes.feedStatus != null ? String(falRes.feedStatus) : null,
-            }).eq('id', pid);
-          } catch (pe) {
-            console.warn('[Falabella] persist estado:', pe?.message || pe);
-          }
-        }
-        updateFalabellaStatusLineInModal(art);
-      }
-    } else {
-      notify('warning', '🏬', 'Falabella', 'Respuesta inesperada.', { duration: 6000 });
-    }
-  } catch (falErr) {
-    console.warn('[Falabella] reenvío', falErr);
-    notify('danger', '🏬', 'Falabella', falErr.message || String(falErr), { duration: 9000 });
-  }
-}
-
-/**
- * GetCategoryAttributes vía Edge Function (misma categoría que sync: mapa + falabella_primary_category_id).
- */
-async function verFalabellaAtributosCategoriaModal() {
-  const pid = window._editingArticuloId;
-  if (!pid) {
-    notify('warning', '🏬', 'Falabella', 'Abre un artículo guardado en catálogo.', { duration: 6000 });
-    return;
-  }
-  if (window.AppId?.isUuid && !window.AppId.isUuid(String(pid))) {
-    notify(
-      'warning',
-      '🏬',
-      'Falabella',
-      'Este artículo no tiene UUID de Supabase. Usa un producto del catálogo web.',
-      { duration: 9000 },
-    );
-    return;
-  }
-  if (typeof window.requestFalabellaCategoryAttributes !== 'function') {
-    notify('warning', '🏬', 'Falabella', 'Integración no cargada.', { duration: 5000 });
-    return;
-  }
-  if (!(window.FALABELLA_CATEGORY_ATTRS_ENDPOINT || '').trim() && !(window.FALABELLA_SYNC_ENDPOINT || '').trim()) {
-    notify('warning', '🏬', 'Falabella', 'Endpoint no configurado (Supabase URL).', { duration: 5000 });
-    return;
-  }
-  try {
-    notify('info', '🏬', 'Falabella', 'Consultando atributos de categoría…', { duration: 2500 });
-    const res = await window.requestFalabellaCategoryAttributes({ productId: pid });
-    if (res && res.dryRun) {
-      notify('warning', '🏬', 'Falabella', res.message || 'Configura secrets en la Edge Function.', { duration: 9000 });
-      return;
-    }
-    const esc = (s) =>
-      String(s == null ? '' : s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-    const summary = JSON.stringify(res.mandatorySummary || [], null, 2);
-    const full = JSON.stringify(res.attributes || res.falabella || res, null, 2);
-    const pc = esc(res.primaryCategoryId || '');
-    openModal(
-      `
-      <div style="padding:16px;max-height:85vh;overflow:auto">
-        <h3 style="margin:0 0 10px">Falabella — atributos de categoría</h3>
-        <p style="font-size:12px;color:var(--text2);margin:0 0 12px">PrimaryCategory: <strong>${pc}</strong> · obligatorios: ${res.mandatoryCount ?? '—'} / total: ${res.attributeCount ?? '—'}</p>
-        <p style="font-size:11px;color:var(--accent);margin:0 0 8px">Obligatorios (FeedName)</p>
-        <pre style="font-size:10px;background:rgba(0,0,0,.2);padding:10px;border-radius:8px;overflow:auto;max-height:220px">${esc(summary)}</pre>
-        <p style="font-size:11px;color:var(--text2);margin:12px 0 8px">Lista completa (JSON)</p>
-        <pre style="font-size:9px;background:rgba(0,0,0,.2);padding:10px;border-radius:8px;overflow:auto;max-height:420px;white-space:pre-wrap">${esc(full.slice(0, 120000))}</pre>
-      </div>
-    `,
-      true,
-    );
-  } catch (e) {
-    console.warn('[Falabella] GetCategoryAttributes', e);
-    notify('danger', '🏬', 'Falabella', e.message || String(e), { duration: 12000 });
-  }
-}
-
-/**
- * ProductUpdate: envía precio y stock actuales del formulario/BD a Falabella (SKU ya existente).
- */
-async function pushFalabellaPrecioStockModal() {
-  const pid = window._editingArticuloId;
-  if (!pid) {
-    notify('warning', '🏬', 'Falabella', 'Abre un artículo guardado en catálogo.', { duration: 6000 });
-    return;
-  }
-  if (window.AppId?.isUuid && !window.AppId.isUuid(String(pid))) {
-    notify('warning', '🏬', 'Falabella', 'Este artículo no tiene UUID de Supabase.', { duration: 9000 });
-    return;
-  }
-  if (typeof window.requestFalabellaProductUpdate !== 'function') {
-    notify('warning', '🏬', 'Falabella', 'Integración no cargada.', { duration: 5000 });
-    return;
-  }
-  if (!(window.FALABELLA_PRODUCT_UPDATE_ENDPOINT || '').trim() && !(window.FALABELLA_SYNC_ENDPOINT || '').trim()) {
-    notify('warning', '🏬', 'Falabella', 'Endpoint no configurado.', { duration: 5000 });
-    return;
-  }
-  const priceEl = document.getElementById('m-art-pv');
-  const stockEl = document.getElementById('m-art-stock0');
-  const price = priceEl ? parseFloat(String(priceEl.value || '0')) : NaN;
-  const stock = stockEl ? parseInt(String(stockEl.value || '0'), 10) : NaN;
-  try {
-    notify('info', '🏬', 'Falabella', 'Enviando precio y stock (ProductUpdate)…', { duration: 3000 });
-    const res = await window.requestFalabellaProductUpdate(pid, {
-      ...(Number.isFinite(price) ? { price } : {}),
-      ...(Number.isFinite(stock) ? { stock } : {}),
-    });
-    if (res && res.dryRun) {
-      notify('warning', '🏬', 'Falabella', res.message || 'Configura secrets en la función.', { duration: 9000 });
-      return;
-    }
-    const st = res?.syncStatus || '';
-    const msg = res?.message || '';
-    if (st === 'error' || st === 'feed_timeout') {
-      notify('danger', '🏬', 'Falabella oferta', msg || res?.lastError || 'Error', { duration: 12000 });
-    } else if (st === 'pending') {
-      notify('warning', '🏬', 'Falabella oferta', msg || 'Feed en cola.', { duration: 10000 });
-    } else {
-      notify('success', '🏬', 'Falabella oferta', msg || 'Precio/stock enviados.', { duration: 9000 });
-    }
-    const art = (state.articulos || []).find((a) => a.id === pid);
-    if (art && _sbConnected && supabaseClient) {
-      art.falabellaSyncStatus = st || art.falabellaSyncStatus;
-      art.falabellaLastError = res?.lastError != null ? String(res.lastError) : art.falabellaLastError;
-      art.falabellaFeedStatus = res?.feedStatus != null ? String(res.feedStatus) : art.falabellaFeedStatus;
-      art.falabellaLastSyncAt = new Date().toISOString();
-    }
-    updateFalabellaStatusLineInModal(art || { id: pid, falabellaSyncStatus: st, falabellaLastError: res?.lastError, falabellaFeedStatus: res?.feedStatus });
-  } catch (e) {
-    console.warn('[Falabella] ProductUpdate', e);
-    notify('danger', '🏬', 'Falabella', e.message || String(e), { duration: 12000 });
-  }
-}
-
 function addBusinessDays(dateStr,days){const d=new Date(dateStr+'T12:00:00');let added=0;while(added<days){d.setDate(d.getDate()+1);const dow=d.getDay();if(dow!==0&&dow!==6)added++;}return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function daysDiff(dateStr){const d1=new Date(today()+'T00:00:00');const d2=new Date(dateStr+'T00:00:00');return Math.round((d2-d1)/86400000)}
 /** Ítems de la factura POS ligada a la venta (mismo id o # en desc). */
@@ -1301,7 +932,6 @@ function calcXP(canal,valor){
 function getISOWeek(date){const d=new Date(date);d.setHours(0,0,0,0);d.setDate(d.getDate()+4-(d.getDay()||7));const yearStart=new Date(d.getFullYear(),0,1);return{week:Math.ceil((((d-yearStart)/86400000)+1)/7),year:d.getFullYear()}}
 function getWeekSnack(){const{week,year}=getISOWeek(new Date());const hash=Math.abs((week*31+year*7+week*year)%SNACKS.length);return{snack:SNACKS[hash],week,year}}
 function getWeekXP(){const now=new Date();const dow=now.getDay()||7;const monday=new Date(now);monday.setDate(now.getDate()-dow+1);monday.setHours(0,0,0,0);const active=(state.ventas||[]).filter(v=>ventaCuentaParaTotales(v));let xp=0;active.forEach(v=>{const vDate=new Date(v.fecha+'T12:00:00');if(vDate>=monday)xp+=calcXP(canonCanalVenta(v),v.valor)});return xp}
-function getNextConsec(type){const n=state.consecutivos[type]||1;state.consecutivos[type]=n+1;return String(n).padStart(5,'0')}
 function getArticuloStock(artId, bodegaId) {
   // Lee directamente de products.stock (fuente de verdad en Supabase)
   // Si se pide por bodega específica, usa inv_movimientos como antes
@@ -1578,9 +1208,6 @@ async function hydrateArticulosFromSupabase() {
     const imgs = media.map((m) => m.url).filter(Boolean);
     const tallasArr = sizesByProduct[p.id] || [];
     const coloresArr = colorsByProduct[p.id] || [];
-    const falJson = p.falabella_product_data_json && typeof p.falabella_product_data_json === 'object' && !Array.isArray(p.falabella_product_data_json)
-      ? p.falabella_product_data_json
-      : {};
     const integIds = integrationIdsFromProductRow(p);
       return {
       id: p.id,
@@ -1611,14 +1238,6 @@ async function hydrateArticulosFromSupabase() {
       esCreditoProveedor: p.es_credito_proveedor,
       proveedorId: p.proveedor_id || null,
       proveedorNombre: p.proveedor_nombre || '',
-      falabellaSellerSku: p.falabella_seller_sku || '',
-      falabellaFeedRequestId: p.falabella_feed_request_id || '',
-      falabellaSyncStatus: p.falabella_sync_status || '',
-      falabellaFeedStatus: p.falabella_feed_status || '',
-      falabellaLastError: p.falabella_last_error || '',
-      falabellaLastSyncAt: p.falabella_last_sync_at || null,
-      falabellaPrimaryCategoryId: p.falabella_primary_category_id || '',
-      falabellaProductDataJson: falJson,
       mercadolibreItemId: integIds.mercadolibreItemId,
       metaCommerceRetailerId: integIds.metaCommerceRetailerId,
       googleMerchantOfferId: integIds.googleMerchantOfferId,
@@ -2256,8 +1875,6 @@ async function loadState() {
       const imgs=media.map(m=>m.url).filter(Boolean);
       const tallasArr = sizesByProduct[p.id]||[];
       const coloresArr = colorsByProduct[p.id]||[];
-      const falJson = p.falabella_product_data_json && typeof p.falabella_product_data_json === 'object' && !Array.isArray(p.falabella_product_data_json)
-        ? p.falabella_product_data_json : {};
       const integIds = integrationIdsFromProductRow(p);
       return {id:p.id,codigo:p.ref||'',ref:p.ref||'',scanAlias:(p.scan_alias||'').trim(),nombre:p.name||'',name:p.name||'',
         categoria:p.categoria||p.cat||'',seccion:p.seccion||'',cat:p.categoria||p.cat||'',
@@ -2269,14 +1886,6 @@ async function loadState() {
         stock:p.stock||0,stockMinimo:p.stock_min||0,
         activo:p.active!==false,mostrarEnWeb:catalogVisibleFromProductRow(p),supabaseId:p.id,
         tituloMercancia:p.titulo_mercancia||'',proveedorId:p.proveedor_id||null,proveedorNombre:p.proveedor_nombre||'',
-        falabellaSellerSku:p.falabella_seller_sku||'',
-        falabellaFeedRequestId:p.falabella_feed_request_id||'',
-        falabellaSyncStatus:p.falabella_sync_status||'',
-        falabellaFeedStatus:p.falabella_feed_status||'',
-        falabellaLastError:p.falabella_last_error||'',
-        falabellaLastSyncAt:p.falabella_last_sync_at||null,
-        falabellaPrimaryCategoryId:p.falabella_primary_category_id||'',
-        falabellaProductDataJson:falJson,
         mercadolibreItemId:integIds.mercadolibreItemId,
         metaCommerceRetailerId:integIds.metaCommerceRetailerId,
         googleMerchantOfferId:integIds.googleMerchantOfferId,
@@ -2336,6 +1945,7 @@ async function loadState() {
       parentId:d.parent_id||null,
       convertedInvoiceId:d.converted_invoice_id||null,
       metadata:d.metadata||{},
+      facturaRef:(d.metadata&&d.metadata.factura_ref)||'',
       createdAt:d.created_at||null,
       tipo:d.document_type==='proforma'?'proforma':d.document_type
     });
@@ -2343,6 +1953,11 @@ async function loadState() {
     state.cotizaciones = state.commercialDocuments.filter(d=>d.documentType==='quotation');
     state.ordenes_venta = state.commercialDocuments.filter(d=>d.documentType==='sales_order');
     state.prefacturas = state.commercialDocuments.filter(d=>d.documentType==='proforma');
+    state.notas_credito = state.commercialDocuments.filter(d=>d.documentType==='credit_note');
+    state.notas_debito = state.commercialDocuments.filter(d=>d.documentType==='debit_note');
+    state.remisiones = state.commercialDocuments.filter(d=>d.documentType==='remittance');
+    state.devoluciones = state.commercialDocuments.filter(d=>d.documentType==='return_doc');
+    state.anticipos_clientes = state.commercialDocuments.filter(d=>d.documentType==='customer_advance');
 
     // Facturas
     state.facturas = (facturas||[]).map(f=>{
@@ -2666,8 +2281,8 @@ async function loadState() {
       } catch(e){}
     });
 
-    // El contador legacy (state_config) no puede quedar por debajo del atómico:
-    // getNextConsec emite ese número; erp_consecutivos guarda el último ya usado.
+    // Espejo local de consecutivos.factura (UI): no puede quedar por debajo de
+    // erp_consecutivos (fuente de verdad del POS).
     try {
       const { data: erpFactura } = await supabaseClient
         .from('erp_consecutivos')
@@ -4304,7 +3919,7 @@ function renderArticulosList(){
 
 /**
  * Baja el artículo de cada canal donde esté publicado después de archivarlo.
- * Woo (papelera), Meta (DELETE) y Falabella (status inactive) tienen endpoint de baja;
+ * Woo (papelera) y Meta (DELETE) tienen endpoint de baja;
  * el catálogo web y el feed de Pinterest se limpian solos porque filtran active/visible.
  */
 async function unpublishArticuloFromChannels(art) {
@@ -4319,9 +3934,6 @@ async function unpublishArticuloFromChannels(art) {
   }
   if (art.metaCommerceRetailerId && typeof window.requestMetaCommerceSync === 'function') {
     canales.push(['meta', () => window.requestMetaCommerceSync(id, { method: 'DELETE' })]);
-  }
-  if (art.falabellaSellerSku && typeof window.requestFalabellaProductUpdate === 'function') {
-    canales.push(['falabella', () => window.requestFalabellaProductUpdate(id, { status: 'inactive' })]);
   }
   if (art.googleMerchantOfferId && typeof window.requestGoogleMerchantSync === 'function') {
     canales.push(['google', () => window.requestGoogleMerchantSync(id, { action: 'delete' })]);
@@ -4556,7 +4168,7 @@ function openArticuloModal(id){
                 <label class="form-label">📸 GALERÍA MULTIMEDIA <span id="m-art-galeria-count" style="font-weight:500;opacity:.7;font-size:11px"></span></label>
                 <div style="background:var(--bg); border:1px dashed var(--accent); padding:20px; text-align:center; border-radius:8px; position:relative; cursor:pointer;">
                     <span style="font-size:20px;">📤 Subir Fotos / Videos</span><br>
-                    <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada. Hasta ${MAX_GALLERY_MEDIA} archivos (Woo/Falabella usan solo las primeras).</span>
+                    <span style="font-size:10px; opacity:0.6;">Toca la ⭐ para elegir la foto de portada. Hasta ${MAX_GALLERY_MEDIA} archivos (Woo usa solo las primeras).</span>
                     <input type="file" multiple accept="image/*,video/*" style="position:absolute; inset:0; opacity:0; cursor:pointer;" onchange="uploadGalleryImages(this)">
                 </div>
                 <div id="m-art-galeria-visual" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;"></div>
@@ -4567,7 +4179,7 @@ function openArticuloModal(id){
                 <div class="form-group">
                   <label class="form-label">ALIAS ESCANEO (bodega / pistola)</label>
                   <input class="form-control" id="m-art-scan-alias" value="${art?.scanAlias || ''}" placeholder="Ej: BAÑO-ROJO-S o 13003" autocomplete="off">
-                  <div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.35;">Código corto para etiquetas y POS. No cambia el REF HERA ni Woo/Falabella.</div>
+                  <div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.35;">Código corto para etiquetas y POS. No cambia el REF HERA ni Woo.</div>
                 </div>
             </div>
             <div class="form-row">
@@ -4710,20 +4322,6 @@ ${(window.AppRepository?.SUPABASE_URL || (window.RAPPI_SYNC_ENDPOINT || '').trim
   </label>
   <div style="font-size:11px;color:var(--text2);margin:4px 0 0 28px;line-height:1.35;">Se envía aunque el artículo esté oculto en tu catálogo web.</div>
 </div>` : ''}
-${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').trim()) ? `
-            <div class="form-group" data-integration-channel="falabella" style="margin-top: 8px; padding: 10px; background: rgba(100,80,200,0.1); border-radius: 8px; border: 1px solid rgba(100,80,200,0.35);">
-  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
-    <input type="checkbox" id="art-sync-falabella" style="width: 18px; height: 18px;">
-    🏬 Publicar en Falabella al guardar
-  </label>
-  <div style="font-size:11px;color:var(--text2);margin:4px 0 0 28px;line-height:1.35;">Como Mercado Libre: solo chulear. El Edge mapea categoría, marca (GENERICO si hace falta), color/talla y attrs moda.</div>
-  <div id="art-sync-falabella-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
-  <div id="art-falabella-status-line" style="display:none;font-size:10px;margin-top:8px;line-height:1.35;"></div>
-  ${id ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%" onclick="reenviarFalabellaFeedModal()">🔄 Reenviar feed a Falabella</button>
-  <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%" onclick="verFalabellaAtributosCategoriaModal()">📋 Atributos de categoría (Falabella API)</button>
-  <button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px" onclick="pushFalabellaPrecioStockModal()">💲 Actualizar precio y stock (Falabella)</button>
-  <div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.35;">Alta = sync al guardar. Luego usa «Actualizar precio y stock» para ProductUpdate (mismo SKU). «Atributos» = GetCategoryAttributes.</div>` : `<div style="font-size:10px;color:var(--text2);margin-top:8px;line-height:1.35;">Tras guardar el artículo podrás reenviar el feed, actualizar precio/stock y consultar atributos.</div>`}
-</div>` : ''}
               </div>
             </div>
 
@@ -4748,7 +4346,6 @@ ${(window.AppRepository?.SUPABASE_URL || (window.FALABELLA_SYNC_ENDPOINT || '').
   setTimeout(() => {
     document.getElementById('art-mostrar-web').checked = art ? normalizeVisibleFlag(art.mostrarEnWeb) : true;
     applyIntegrationChannelListedState(art);
-    updateFalabellaStatusLineInModal(art);
     if (!id && window.ProductRefUtil && supabaseClient) {
       window.ProductRefUtil.suggestNextHeraRef(supabaseClient)
         .then((ref) => {
@@ -5022,16 +4619,6 @@ async function saveArticulo(existingId, options) {
     const coloresStr = document.getElementById('m-art-colores')?.value || '';
     const colorsArr = coloresStr.split(',').map((c) => c.trim()).filter(Boolean);
 
-    let falabella_product_data_json = {};
-    if (existingId) {
-      const prevFj = (state.articulos || []).find((a) => a.id === existingId)?.falabellaProductDataJson;
-      if (prevFj && typeof prevFj === 'object') {
-        falabella_product_data_json = { ...prevFj };
-        delete falabella_product_data_json.falabellaDraft;
-        delete falabella_product_data_json.channelProfile;
-      }
-    }
-
     const productData = {
         id: existingId || dbId(),
         ref: refID,
@@ -5055,7 +4642,6 @@ async function saveArticulo(existingId, options) {
         proveedor_nombre: proveedorObj?.nombre || null,
         sizes: tallasStr,
         colors: JSON.stringify(colorsArr),
-        falabella_product_data_json: falabella_product_data_json,
         updated_at: new Date().toISOString()
     };
 
@@ -5264,33 +4850,10 @@ async function saveArticulo(existingId, options) {
         const pinterestNote = pinR.note || '';
         const dropiNote = await postSaveDropiIntegration(productId, catalogVisibleBool);
         const rappiNote = await postSaveRappiIntegration(productId, catalogVisibleBool);
-        const falabellaResult = await postSaveFalabellaIntegration(productId);
-        const falabellaNote = falabellaResult && typeof falabellaResult.note === 'string' ? falabellaResult.note : '';
-        if (falabellaResult && falabellaResult.falabellaPatch) {
-          const patch = falabellaResult.falabellaPatch;
-          const row = {};
-          if (patch.falabellaSyncStatus != null) row.falabella_sync_status = patch.falabellaSyncStatus;
-          if (patch.falabellaSellerSku != null) row.falabella_seller_sku = patch.falabellaSellerSku;
-          if (patch.falabellaFeedRequestId != null) row.falabella_feed_request_id = patch.falabellaFeedRequestId;
-          if (patch.falabellaPrimaryCategoryId != null) row.falabella_primary_category_id = patch.falabellaPrimaryCategoryId;
-          if (patch.falabellaLastError != null) row.falabella_last_error = patch.falabellaLastError;
-          if (patch.falabellaLastSyncAt != null) row.falabella_last_sync_at = patch.falabellaLastSyncAt;
-          if (patch.falabellaFeedStatus != null) row.falabella_feed_status = patch.falabellaFeedStatus;
-          if (patch.falabellaSyncAuditJson != null && typeof patch.falabellaSyncAuditJson === 'object') {
-            row.falabella_sync_audit_json = patch.falabellaSyncAuditJson;
-          }
-          try {
-            const { error: falUpdErr } = await supabaseClient.from('products').update(row).eq('id', productId);
-            if (falUpdErr) console.warn('[Falabella] persist:', falUpdErr.message);
-          } catch (e) {
-            console.warn('[Falabella] persist:', e);
-          }
-        }
 
         // 5. Actualizar state local inmediatamente
         const artIdx = state.articulos.findIndex(a => a.id === productId);
         const prevArt = artIdx >= 0 ? state.articulos[artIdx] : {};
-        const falabellaPatch = falabellaResult && falabellaResult.falabellaPatch ? falabellaResult.falabellaPatch : null;
         const artLocal = {
           id: productId, codigo: refID, ref: refID, scanAlias: scanAliasDb || '',
           nombre: nombre, name: nombre,
@@ -5306,19 +4869,6 @@ async function saveArticulo(existingId, options) {
           activo: true, mostrarEnWeb: catalogVisibleBool,
           tituloMercancia: tituloMercancia,
           proveedorId: proveedorId||null, proveedorNombre: proveedorObj?.nombre||'',
-          falabellaProductDataJson:
-            falabella_product_data_json && typeof falabella_product_data_json === 'object'
-              ? falabella_product_data_json
-              : prevArt.falabellaProductDataJson && typeof prevArt.falabellaProductDataJson === 'object'
-                ? prevArt.falabellaProductDataJson
-                : {},
-          falabellaSellerSku: falabellaPatch ? (falabellaPatch.falabellaSellerSku ?? prevArt.falabellaSellerSku) : (prevArt.falabellaSellerSku || ''),
-          falabellaFeedRequestId: falabellaPatch ? (falabellaPatch.falabellaFeedRequestId ?? prevArt.falabellaFeedRequestId) : (prevArt.falabellaFeedRequestId || ''),
-          falabellaSyncStatus: falabellaPatch ? (falabellaPatch.falabellaSyncStatus ?? prevArt.falabellaSyncStatus) : (prevArt.falabellaSyncStatus || ''),
-          falabellaLastError: falabellaPatch ? (falabellaPatch.falabellaLastError ?? prevArt.falabellaLastError) : (prevArt.falabellaLastError || ''),
-          falabellaLastSyncAt: falabellaPatch ? (falabellaPatch.falabellaLastSyncAt ?? prevArt.falabellaLastSyncAt) : (prevArt.falabellaLastSyncAt || null),
-          falabellaPrimaryCategoryId: falabellaPatch ? (falabellaPatch.falabellaPrimaryCategoryId ?? prevArt.falabellaPrimaryCategoryId) : (prevArt.falabellaPrimaryCategoryId || ''),
-          falabellaFeedStatus: falabellaPatch ? (falabellaPatch.falabellaFeedStatus ?? prevArt.falabellaFeedStatus) : (prevArt.falabellaFeedStatus || ''),
           mercadolibreItemId:
             integrationPatch.mercadolibre_item_id != null
               ? String(integrationPatch.mercadolibre_item_id)
@@ -5381,7 +4931,7 @@ async function saveArticulo(existingId, options) {
         closeModal();
         renderArticulos();
         showLoadingOverlay('hide');
-        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${dropiNote}${rappiNote}${falabellaNote}${pushNote}`);
+        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${dropiNote}${rappiNote}${pushNote}`);
 
         if (window.ProductIntelligence && typeof window.ProductIntelligence.maybeSilentEnrichAfterSave === 'function') {
           window.ProductIntelligence.maybeSilentEnrichAfterSave(refID);
@@ -5621,7 +5171,7 @@ async function saveDoc(collection,tipo){
     return;
   }
   return window.AppDocumentsModule.saveDoc({
-      state, collection, tipo, today, uid, dbId, getNextConsec, supabaseClient, saveConfig, saveRecord, closeModal, renderPage, notify, fmt, loadState,
+      state, collection, tipo, today, supabaseClient, saveConfig, closeModal, renderPage, notify, fmt, loadState,
       getDocItems: () => _docItems,
       setDocItems: (v) => { _docItems = v; }
     });

@@ -1,0 +1,29 @@
+---
+description: Prohíbe rutas legacy (legacy_docs / getNextConsec / multi-REST) para dinero, stock y consecutivos.
+alwaysApply: true
+---
+
+# Sin legacy de escritura (strangler)
+
+## Regla
+
+**Nada** (feature nueva o cambio de flujo) puede ir por `legacy_docs`, `getNextConsec` o persistencia multi-REST no atómica.
+
+`getNextConsec` fue eliminado del frontend. `legacy_docs` está congelada (solo archivo histórico; sin escrituras desde el cliente).
+
+## Obligatorio
+
+- RPC `SECURITY DEFINER` atómico (`create_pos_sale_v2`, `create_commercial_document_v1`, `create_manual_invoice_v1`, etc.)
+- Consecutivo en `erp_consecutivos` dentro del RPC
+- Frontend: RPC → espejo UI → `loadState`
+
+## Documentos — altas atómicas
+
+| Tipo | RPC |
+|------|-----|
+| POS create/cancel | `create_pos_sale_v2` / `cancel_pos_sale_v2` |
+| COT / OV / PRO / NC / ND / REM / DEV / ANT | `create_commercial_document_v1` |
+| FAC manual (alta) | `create_manual_invoice_v1` |
+| FAC manual (cobro) | `pay_manual_invoice_v1` |
+
+No reabrir `legacy_docs` ni reintroducir `getNextConsec`.

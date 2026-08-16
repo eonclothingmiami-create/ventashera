@@ -1,6 +1,4 @@
--- Un producto publicado externamente se archiva siempre, aunque todavía no tenga
--- movimientos. Así permanece disponible para que las Edge Functions den de baja
--- la publicación después de que el ERP marque active=false.
+-- Elimina integración Falabella: columnas products + referencias en delete_product_full.
 
 create or replace function public.delete_product_full(p_product_id uuid)
 returns jsonb
@@ -80,3 +78,16 @@ begin
   );
 end;
 $function$;
+
+alter table public.products
+  drop column if exists falabella_seller_sku,
+  drop column if exists falabella_sync_status,
+  drop column if exists falabella_feed_request_id,
+  drop column if exists falabella_feed_status,
+  drop column if exists falabella_last_error,
+  drop column if exists falabella_last_sync_at,
+  drop column if exists falabella_primary_category_id,
+  drop column if exists falabella_product_data_json,
+  drop column if exists falabella_last_response_json,
+  drop column if exists falabella_sync_audit_json,
+  drop column if exists falabella_feed_detail_json;
