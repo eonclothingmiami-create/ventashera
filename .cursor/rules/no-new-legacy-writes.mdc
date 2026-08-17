@@ -9,7 +9,7 @@ alwaysApply: true
 
 **Nada** (feature nueva o cambio de flujo) puede ir por `legacy_docs`, `getNextConsec` o persistencia multi-REST no atómica.
 
-`getNextConsec` fue eliminado del frontend. `legacy_docs` está congelada (solo archivo histórico; sin escrituras desde el cliente).
+`getNextConsec` fue eliminado del frontend. `legacy_docs` fue eliminada (DROP); el archivo histórico está en `backup_legacy_docs_20260816`.
 
 ## Obligatorio
 
@@ -26,4 +26,4 @@ alwaysApply: true
 | FAC manual (alta) | `create_manual_invoice_v1` |
 | FAC manual (cobro) | `pay_manual_invoice_v1` |
 
-No reabrir `legacy_docs` ni reintroducir `getNextConsec`.
+No reintroducir `legacy_docs` ni `getNextConsec`.
