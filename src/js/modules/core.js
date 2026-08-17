@@ -418,6 +418,15 @@ function getPinterestCatalogSyncEndpoint() {
   return '';
 }
 
+/** URL Edge Function ebay-sync-product (eBay US Inventory API). */
+function getEbaySyncEndpoint() {
+  const custom = (window.EBAY_SYNC_ENDPOINT || '').trim();
+  if (custom) return custom;
+  const base = window.AppRepository?.SUPABASE_URL;
+  if (base) return String(base).replace(/\/$/, '') + '/functions/v1/ebay-sync-product';
+  return '';
+}
+
 /** URL Edge Function hera-rappi-sync (Rappi Public API vía servidor; OAuth en secrets). */
 function getRappiSyncEndpoint() {
   const custom = (window.RAPPI_SYNC_ENDPOINT || '').trim();
@@ -442,6 +451,8 @@ function integrationIdsFromProductRow(p) {
     metaCommerceRetailerId: str(p.meta_commerce_retailer_id || p.meta_retailer_id || j.meta_commerce_retailer_id || j.meta_retailer_id),
     googleMerchantOfferId: str(p.google_merchant_offer_id || p.google_offer_id || j.google_merchant_offer_id || j.google_offer_id),
     pinterestCatalogItemId: str(p.pinterest_catalog_item_id || p.pinterest_item_id || j.pinterest_catalog_item_id || j.pinterest_item_id),
+    ebayListingId: str(p.ebay_listing_id || j.ebay_listing_id),
+    ebayOfferId: str(p.ebay_offer_id || j.ebay_offer_id),
   };
 }
 
@@ -456,6 +467,9 @@ function isListedGoogleMerchant(art) {
 }
 function isListedPinterestCatalog(art) {
   return !!(art && art.pinterestCatalogItemId);
+}
+function isListedEbay(art) {
+  return !!(art && art.ebayListingId);
 }
 /**
  * Al abrir el maquetador: desmarca canales donde el producto ya tiene ID externo y muestra aviso breve.
@@ -485,6 +499,12 @@ function applyIntegrationChannelListedState(art) {
       hint: 'art-sync-pinterest-catalog-hint',
       listed: isListedPinterestCatalog(art),
       label: 'Ya en Pinterest — desmarcado para evitar duplicados.',
+    },
+    {
+      chk: 'art-sync-ebay',
+      hint: 'art-sync-ebay-hint',
+      listed: isListedEbay(art),
+      label: 'Ya publicado en eBay — desmarcado para evitar duplicados. Marca solo si quieres volver a enviar.',
     },
   ];
   for (let i = 0; i < rows.length; i++) {
@@ -727,6 +747,53 @@ async function postSavePinterestCatalogIntegration(productId, catalogVisibleBool
     console.warn('[Pinterest]', pinErr);
     notify('warning', '📌', 'Pinterest', pinErr.message || 'Falló la sincronización', { duration: 8000 });
     out.note = ' · Pinterest: error (consola / Edge Function)';
+    return out;
+  }
+}
+
+async function postSaveEbayIntegration(productId, catalogVisibleBool) {
+  const out = { note: '', patch: {} };
+  const ebayEndpoint = getEbaySyncEndpoint();
+  const ebayChk = document.getElementById('art-sync-ebay');
+  const want =
+    typeof window.requestEbaySync === 'function' &&
+    ebayEndpoint &&
+    ebayChk &&
+    ebayChk.checked;
+  if (!want) return out;
+  try {
+    const ebayRes = await window.requestEbaySync(productId);
+    if (typeof console !== 'undefined' && console.info) {
+      console.info(
+        '[eBay]',
+        ebayRes?.skipped ? 'omitido' : ebayRes?.dryRun ? 'dryRun' : ebayRes?.ok ? 'ok' : 'revisar',
+        ebayRes?.listingId || ebayRes?.offerId || ebayRes?.message || ''
+      );
+    }
+    if (ebayRes && ebayRes.skipped) {
+      out.note = ' · eBay: no se llamó al endpoint';
+      return out;
+    }
+    if (ebayRes && ebayRes.dryRun) {
+      notify('warning', '🏷️', 'eBay', ebayRes.message || 'Configura OAuth y políticas en la Edge Function.', { duration: 9000 });
+      out.note = ' · eBay: modo prueba (EBAY_REFRESH_TOKEN + políticas US en Supabase)';
+      return out;
+    }
+    if (ebayRes && ebayRes.ok) {
+      const lid = ebayRes.listingId != null && String(ebayRes.listingId).trim() ? String(ebayRes.listingId).trim() : '';
+      const oid = ebayRes.offerId != null && String(ebayRes.offerId).trim() ? String(ebayRes.offerId).trim() : '';
+      if (lid) out.patch.ebay_listing_id = lid;
+      if (oid) out.patch.ebay_offer_id = oid;
+      if (ebayRes.sku) out.patch.ebay_sku = String(ebayRes.sku);
+      out.note = lid ? ` · eBay: ${lid}` : oid ? ` · eBay offer: ${oid}` : ' · eBay: sincronizado';
+      return out;
+    }
+    out.note = ' · eBay: respuesta inesperada';
+    return out;
+  } catch (ebayErr) {
+    console.warn('[eBay]', ebayErr);
+    notify('warning', '🏷️', 'eBay', ebayErr.message || 'Falló la sincronización', { duration: 8000 });
+    out.note = ' · eBay: error (consola / Edge Function)';
     return out;
   }
 }
@@ -1241,7 +1308,9 @@ async function hydrateArticulosFromSupabase() {
       mercadolibreItemId: integIds.mercadolibreItemId,
       metaCommerceRetailerId: integIds.metaCommerceRetailerId,
       googleMerchantOfferId: integIds.googleMerchantOfferId,
-      pinterestCatalogItemId: integIds.pinterestCatalogItemId
+      pinterestCatalogItemId: integIds.pinterestCatalogItemId,
+      ebayListingId: integIds.ebayListingId,
+      ebayOfferId: integIds.ebayOfferId
     };
   }).filter((a) => a.activo !== false);
   try {
@@ -1889,7 +1958,9 @@ async function loadState() {
         mercadolibreItemId:integIds.mercadolibreItemId,
         metaCommerceRetailerId:integIds.metaCommerceRetailerId,
         googleMerchantOfferId:integIds.googleMerchantOfferId,
-        pinterestCatalogItemId:integIds.pinterestCatalogItemId};
+        pinterestCatalogItemId:integIds.pinterestCatalogItemId,
+        ebayListingId:integIds.ebayListingId,
+        ebayOfferId:integIds.ebayOfferId};
     }).filter((a) => a.activo !== false);
 
     // Clientes / Empleados / Proveedores
@@ -3938,6 +4009,9 @@ async function unpublishArticuloFromChannels(art) {
   if (art.googleMerchantOfferId && typeof window.requestGoogleMerchantSync === 'function') {
     canales.push(['google', () => window.requestGoogleMerchantSync(id, { action: 'delete' })]);
   }
+  if (art.ebayListingId && typeof window.requestEbaySync === 'function') {
+    canales.push(['ebay', () => window.requestEbaySync(id, { action: 'deactivate' })]);
+  }
   for (const [canal, run] of canales) {
     try {
       const res = await run();
@@ -4305,6 +4379,14 @@ ${(window.AppRepository?.SUPABASE_URL || (window.PINTEREST_CATALOG_SYNC_ENDPOINT
     📌 Pinterest (catálogo) al guardar
   </label>
   <div id="art-sync-pinterest-catalog-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+</div>` : ''}
+${(window.AppRepository?.SUPABASE_URL || (window.EBAY_SYNC_ENDPOINT || '').trim()) ? `
+            <div class="form-group" data-integration-channel="ebay" style="margin-top: 8px; padding: 10px; background: rgba(230,80,0,0.1); border-radius: 8px; border: 1px solid rgba(230,80,0,0.4);">
+  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
+    <input type="checkbox" id="art-sync-ebay" style="width: 18px; height: 18px;">
+    🏷️ Publicar en eBay (US) al guardar
+  </label>
+  <div id="art-sync-ebay-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.DROPI_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="dropi" style="margin-top: 8px; padding: 10px; background: rgba(80,200,160,0.1); border-radius: 8px; border: 1px solid rgba(60,180,140,0.35);">
@@ -4835,7 +4917,8 @@ async function saveArticulo(existingId, options) {
         const metaR = await postSaveMetaCommerceIntegration(productId, catalogVisibleBool);
         const googleR = await postSaveGoogleMerchantIntegration(productId, catalogVisibleBool);
         const pinR = await postSavePinterestCatalogIntegration(productId, catalogVisibleBool);
-        const integrationPatch = Object.assign({}, mlR.patch, metaR.patch, googleR.patch, pinR.patch);
+        const ebayR = await postSaveEbayIntegration(productId, catalogVisibleBool);
+        const integrationPatch = Object.assign({}, mlR.patch, metaR.patch, googleR.patch, pinR.patch, ebayR.patch);
         if (Object.keys(integrationPatch).length && supabaseClient) {
           try {
             const { error: intErr } = await supabaseClient.from('products').update(integrationPatch).eq('id', productId);
@@ -4848,6 +4931,7 @@ async function saveArticulo(existingId, options) {
         const metaNote = metaR.note || '';
         const googleNote = googleR.note || '';
         const pinterestNote = pinR.note || '';
+        const ebayNote = ebayR.note || '';
         const dropiNote = await postSaveDropiIntegration(productId, catalogVisibleBool);
         const rappiNote = await postSaveRappiIntegration(productId, catalogVisibleBool);
 
@@ -4884,7 +4968,15 @@ async function saveArticulo(existingId, options) {
           pinterestCatalogItemId:
             integrationPatch.pinterest_catalog_item_id != null
               ? String(integrationPatch.pinterest_catalog_item_id)
-              : prevArt.pinterestCatalogItemId || ''
+              : prevArt.pinterestCatalogItemId || '',
+          ebayListingId:
+            integrationPatch.ebay_listing_id != null
+              ? String(integrationPatch.ebay_listing_id)
+              : prevArt.ebayListingId || '',
+          ebayOfferId:
+            integrationPatch.ebay_offer_id != null
+              ? String(integrationPatch.ebay_offer_id)
+              : prevArt.ebayOfferId || ''
         };
         if(artIdx >= 0) state.articulos[artIdx] = artLocal;
         else state.articulos.push(artLocal);
@@ -4931,7 +5023,7 @@ async function saveArticulo(existingId, options) {
         closeModal();
         renderArticulos();
         showLoadingOverlay('hide');
-        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${dropiNote}${rappiNote}${pushNote}`);
+        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${ebayNote}${dropiNote}${rappiNote}${pushNote}`);
 
         if (window.ProductIntelligence && typeof window.ProductIntelligence.maybeSilentEnrichAfterSave === 'function') {
           window.ProductIntelligence.maybeSilentEnrichAfterSave(refID);

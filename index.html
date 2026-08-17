@@ -29,6 +29,8 @@
     window.GOOGLE_MERCHANT_SYNC_ENDPOINT = window.GOOGLE_MERCHANT_SYNC_ENDPOINT || '';
     /** Pinterest catálogo → Edge Function pinterest-catalog-sync */
     window.PINTEREST_CATALOG_SYNC_ENDPOINT = window.PINTEREST_CATALOG_SYNC_ENDPOINT || '';
+    /** eBay US (Inventory API) → Edge Function ebay-sync-product */
+    window.EBAY_SYNC_ENDPOINT = window.EBAY_SYNC_ENDPOINT || '';
     /** ERP → Catálogo mayoristas: sync + notificación FCM (Edge Functions) */
     window.MAYORISTAS_CATALOG_SYNC_ENDPOINT = window.MAYORISTAS_CATALOG_SYNC_ENDPOINT || '';
     window.MAYORISTAS_CATALOG_PUSH_ENDPOINT = window.MAYORISTAS_CATALOG_PUSH_ENDPOINT || '';
@@ -58,6 +60,7 @@
 <script defer src="./src/js/integrations/meta-commerce.js?v=1"></script>
 <script defer src="./src/js/integrations/google-merchant.js?v=20260730archive1"></script>
 <script defer src="./src/js/integrations/pinterest-catalog.js?v=6"></script>
+<script defer src="./src/js/integrations/ebay.js?v=20260817ebay1"></script>
 <script defer src="./src/js/integrations/dropi.js?v=11"></script>
 <script defer src="./src/js/integrations/rappi.js?v=1"></script>
 <script defer src="./src/js/integrations/mayoristas-catalog.js?v=20260723gallery40"></script>
@@ -93,7 +96,7 @@
 <script defer src="./src/js/modules/app/product-intelligence-module.js?v=20260720pi3"></script>
 <script defer src="./src/js/modules/app/ai-center-module.js?v=20260720ai4"></script>
 <script defer src="./src/js/utils/product-ref.js?v=20260720heraref1"></script>
-<script defer src="./src/js/modules/core.js?v=20260816legpoda1"></script><script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
+<script defer src="./src/js/modules/core.js?v=20260817ebay1"></script><script defer src="./src/js/modules/app/backup-module.js?v=20260322bk1"></script>
 
 </head>
 <body>
