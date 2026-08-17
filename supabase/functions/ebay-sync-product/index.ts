@@ -373,11 +373,13 @@ async function runAccountSetup(
   token: string,
 ): Promise<Record<string, unknown>> {
   const mp = encodeURIComponent(marketplaceId());
-  const [payRes, retRes, fulRes, locRes] = await Promise.all([
+  const [payRes, retRes, fulRes, locRes, privRes, programRes] = await Promise.all([
     ebayJson(token, "GET", `/sell/account/v1/payment_policy?marketplace_id=${mp}`),
     ebayJson(token, "GET", `/sell/account/v1/return_policy?marketplace_id=${mp}`),
     ebayJson(token, "GET", `/sell/account/v1/fulfillment_policy?marketplace_id=${mp}`),
     ebayJson(token, "GET", "/sell/inventory/v1/location?limit=100"),
+    ebayJson(token, "GET", "/sell/account/v1/privilege"),
+    ebayJson(token, "GET", "/sell/account/v1/payments_program/EBAY_US/EBAY_PAYMENTS"),
   ]);
 
   const paymentPolicies =
@@ -452,6 +454,8 @@ async function runAccountSetup(
     fulfillmentPolicyName: fulfillment?.name || null,
     merchantLocationKey: locationKey || null,
     locationCreated,
+    sellerPrivilege: privRes.ok ? privRes.data : { error: ebayErrorMessage(privRes.data, String(privRes.status)) },
+    paymentsProgram: programRes.ok ? programRes.data : { error: ebayErrorMessage(programRes.data, String(programRes.status)) },
     locationsFound: enabled.map((l) => ({
       key: l.merchantLocationKey,
       name: l.name,
