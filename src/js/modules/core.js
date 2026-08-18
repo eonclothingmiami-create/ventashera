@@ -427,6 +427,15 @@ function getEbaySyncEndpoint() {
   return '';
 }
 
+/** URL Edge Function faire-sync (Faire External API v2 wholesale). */
+function getFaireSyncEndpoint() {
+  const custom = (window.FAIRE_SYNC_ENDPOINT || '').trim();
+  if (custom) return custom;
+  const base = window.AppRepository?.SUPABASE_URL;
+  if (base) return String(base).replace(/\/$/, '') + '/functions/v1/faire-sync';
+  return '';
+}
+
 /** URL Edge Function hera-rappi-sync (Rappi Public API vía servidor; OAuth en secrets). */
 function getRappiSyncEndpoint() {
   const custom = (window.RAPPI_SYNC_ENDPOINT || '').trim();
@@ -453,6 +462,7 @@ function integrationIdsFromProductRow(p) {
     pinterestCatalogItemId: str(p.pinterest_catalog_item_id || p.pinterest_item_id || j.pinterest_catalog_item_id || j.pinterest_item_id),
     ebayListingId: str(p.ebay_listing_id || j.ebay_listing_id),
     ebayOfferId: str(p.ebay_offer_id || j.ebay_offer_id),
+    faireProductId: str(j.faire_product_id),
   };
 }
 
@@ -471,16 +481,40 @@ function isListedPinterestCatalog(art) {
 function isListedEbay(art) {
   return !!(art && art.ebayListingId);
 }
+function isListedFaire(art) {
+  return !!(art && art.faireProductId);
+}
+
+/** Encola sync eBay al guardar (cron cada 5 min; top vistas). ML y Faire van directo. */
+async function enqueueEbayChannel(productId) {
+  if (!supabaseClient || !productId) return '';
+  try {
+    const { data, error } = await supabaseClient.rpc('enqueue_channel_sync', {
+      p_product_id: productId,
+      p_channels: ['ebay'],
+    });
+    if (error) throw error;
+    const n = data && data.enqueued != null ? Number(data.enqueued) : 0;
+    return n > 0 ? ` · eBay: en cola (${n})` : ' · eBay: cola programada';
+  } catch (e) {
+    console.warn('[ebay-queue]', e);
+    return ' · eBay: error cola';
+  }
+}
 /**
  * Al abrir el maquetador: desmarca canales donde el producto ya tiene ID externo y muestra aviso breve.
  */
 function applyIntegrationChannelListedState(art) {
+  const ebayQueueHint =
+    'Al guardar entra en cola eBay (solo publica si está en top 90 vistas). Si ya está listado, se actualiza al instante.';
+  const directSyncHint = 'Se sincroniza automáticamente al guardar (sin marcar checkbox).';
   const rows = [
     {
       chk: 'art-sync-mercadolibre',
       hint: 'art-sync-mercadolibre-hint',
       listed: isListedMercadoLibre(art),
-      label: 'Ya publicado en Mercado Libre — desmarcado para evitar duplicados. Marca solo si quieres volver a enviar.',
+      label: 'Publicado en ML — las ediciones actualizan el listing existente (sin duplicar).',
+      autoHint: directSyncHint,
     },
     {
       chk: 'art-sync-meta-commerce',
@@ -504,7 +538,15 @@ function applyIntegrationChannelListedState(art) {
       chk: 'art-sync-ebay',
       hint: 'art-sync-ebay-hint',
       listed: isListedEbay(art),
-      label: 'Ya publicado en eBay — desmarcado para evitar duplicados. Marca solo si quieres volver a enviar.',
+      label: 'Publicado en eBay — precio/stock se actualizan al guardar. Nuevos: cola top 90 vistas.',
+      autoHint: ebayQueueHint,
+    },
+    {
+      chk: 'art-sync-faire',
+      hint: 'art-sync-faire-hint',
+      listed: isListedFaire(art),
+      label: 'Publicado en Faire — las ediciones actualizan el producto existente.',
+      autoHint: directSyncHint,
     },
   ];
   for (let i = 0; i < rows.length; i++) {
@@ -520,22 +562,20 @@ function applyIntegrationChannelListedState(art) {
       }
     } else {
       if (hi) {
-        hi.textContent = '';
-        hi.style.display = 'none';
+        hi.textContent = r.autoHint || '';
+        hi.style.display = r.autoHint ? 'block' : 'none';
       }
-      el.checked = r.chk === 'art-sync-mercadolibre';
+      el.checked = false;
     }
   }
 }
 
 /** Cada canal es independiente: no comparte estado con otros; fallo no bloquea el siguiente. Ver docs/INTEGRACIONES_CANALES.md */
 /** @returns {{ note: string, patch: Record<string, string> }} patch = columnas snake_case en `products` */
-async function postSaveMercadoLibreIntegration(productId, catalogVisibleBool) {
+async function postSaveMercadoLibreIntegration(productId) {
   const out = { note: '', patch: {} };
   const mlEndpoint = getMercadoLibreSyncEndpoint();
-  const mlChk = document.getElementById('art-sync-mercadolibre');
-  const want = mlEndpoint && mlChk && mlChk.checked;
-  if (!want) return out;
+  if (!mlEndpoint || typeof requestMercadoLibreSync !== 'function') return out;
   try {
     const mlRes = await requestMercadoLibreSync(productId);
     if (typeof console !== 'undefined' && console.info) {
@@ -751,16 +791,78 @@ async function postSavePinterestCatalogIntegration(productId, catalogVisibleBool
   }
 }
 
-async function postSaveEbayIntegration(productId, catalogVisibleBool) {
+async function postSaveFaireIntegration(productId) {
+  const out = { note: '', faireProductId: '' };
+  const faireEndpoint = getFaireSyncEndpoint();
+  if (!faireEndpoint || typeof window.requestFaireSync !== 'function') {
+    return out;
+  }
+  try {
+    const faireRes = await window.requestFaireSync(productId);
+    if (typeof console !== 'undefined' && console.info) {
+      console.info(
+        '[Faire]',
+        faireRes?.skipped ? 'omitido' : faireRes?.dryRun ? 'dryRun' : faireRes?.ok ? 'ok' : 'revisar',
+        faireRes?.faireProductId || faireRes?.message || ''
+      );
+    }
+    if (faireRes && faireRes.skipped) {
+      out.note = ' · Faire: no se llamó al endpoint';
+      return out;
+    }
+    if (faireRes && faireRes.dryRun) {
+      notify('warning', '🏬', 'Faire', faireRes.message || 'Configura FAIRE_ACCESS_TOKEN y taxonomía en Supabase.', { duration: 9000 });
+      out.note = ' · Faire: modo prueba (secrets pendientes)';
+      return out;
+    }
+    if (faireRes && faireRes.ok) {
+      const fid =
+        faireRes.faireProductId != null && String(faireRes.faireProductId).trim()
+          ? String(faireRes.faireProductId).trim()
+          : '';
+      if (fid && supabaseClient) {
+        try {
+          const { data: row } = await supabaseClient
+            .from('products')
+            .select('integrations_json')
+            .eq('id', productId)
+            .maybeSingle();
+          const prev =
+            row && row.integrations_json && typeof row.integrations_json === 'object' && !Array.isArray(row.integrations_json)
+              ? row.integrations_json
+              : {};
+          await supabaseClient
+            .from('products')
+            .update({ integrations_json: Object.assign({}, prev, { faire_product_id: fid }) })
+            .eq('id', productId);
+        } catch (e) {
+          console.warn('[Faire] persist integrations_json:', e);
+        }
+      }
+      out.faireProductId = fid;
+      out.note = fid ? ` · Faire: ${fid}` : ' · Faire: sincronizado';
+      return out;
+    }
+    out.note = ' · Faire: respuesta inesperada';
+    return out;
+  } catch (faireErr) {
+    console.warn('[Faire]', faireErr);
+    notify('warning', '🏬', 'Faire', faireErr.message || 'Falló la sincronización', { duration: 8000 });
+    out.note = ' · Faire: error (consola / Edge Function)';
+    return out;
+  }
+}
+
+async function postSaveEbayIntegration(productId, existingArt) {
   const out = { note: '', patch: {} };
   const ebayEndpoint = getEbaySyncEndpoint();
-  const ebayChk = document.getElementById('art-sync-ebay');
-  const want =
-    typeof window.requestEbaySync === 'function' &&
-    ebayEndpoint &&
-    ebayChk &&
-    ebayChk.checked;
-  if (!want) return out;
+  if (!ebayEndpoint || typeof window.requestEbaySync !== 'function') {
+    return out;
+  }
+  if (!existingArt || !isListedEbay(existingArt)) {
+    out.note = ' · eBay: en cola (top vistas)';
+    return out;
+  }
   try {
     const ebayRes = await window.requestEbaySync(productId);
     if (typeof console !== 'undefined' && console.info) {
@@ -1310,7 +1412,8 @@ async function hydrateArticulosFromSupabase() {
       googleMerchantOfferId: integIds.googleMerchantOfferId,
       pinterestCatalogItemId: integIds.pinterestCatalogItemId,
       ebayListingId: integIds.ebayListingId,
-      ebayOfferId: integIds.ebayOfferId
+      ebayOfferId: integIds.ebayOfferId,
+      faireProductId: integIds.faireProductId
     };
   }).filter((a) => a.activo !== false);
   try {
@@ -1960,7 +2063,8 @@ async function loadState() {
         googleMerchantOfferId:integIds.googleMerchantOfferId,
         pinterestCatalogItemId:integIds.pinterestCatalogItemId,
         ebayListingId:integIds.ebayListingId,
-        ebayOfferId:integIds.ebayOfferId};
+        ebayOfferId:integIds.ebayOfferId,
+        faireProductId:integIds.faireProductId};
     }).filter((a) => a.activo !== false);
 
     // Clientes / Empleados / Proveedores
@@ -4012,6 +4116,9 @@ async function unpublishArticuloFromChannels(art) {
   if (art.ebayListingId && typeof window.requestEbaySync === 'function') {
     canales.push(['ebay', () => window.requestEbaySync(id, { action: 'deactivate' })]);
   }
+  if (art.faireProductId && typeof window.requestFaireSync === 'function') {
+    canales.push(['faire', () => window.requestFaireSync(id, { action: 'deactivate' })]);
+  }
   for (const [canal, run] of canales) {
     try {
       const res = await run();
@@ -4352,7 +4459,7 @@ ${(window.AppRepository?.SUPABASE_URL || (window.MERCADOLIBRE_SYNC_ENDPOINT || '
             <div class="form-group" data-integration-channel="mercadolibre" style="margin-top: 8px; padding: 10px; background: rgba(255,230,120,0.12); border-radius: 8px; border: 1px solid rgba(255,200,80,0.35);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-mercadolibre" style="width: 18px; height: 18px;">
-    🛒 Publicar en Mercado Libre al guardar
+    🛒 Mercado Libre (sync automático al guardar)
   </label>
   <div id="art-sync-mercadolibre-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
 </div>` : ''}
@@ -4384,9 +4491,17 @@ ${(window.AppRepository?.SUPABASE_URL || (window.EBAY_SYNC_ENDPOINT || '').trim(
             <div class="form-group" data-integration-channel="ebay" style="margin-top: 8px; padding: 10px; background: rgba(230,80,0,0.1); border-radius: 8px; border: 1px solid rgba(230,80,0,0.4);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-ebay" style="width: 18px; height: 18px;">
-    🏷️ Publicar en eBay (US) al guardar
+    🏷️ eBay US (cola automática — top 90 vistas)
   </label>
   <div id="art-sync-ebay-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+</div>` : ''}
+${(window.AppRepository?.SUPABASE_URL || (window.FAIRE_SYNC_ENDPOINT || '').trim()) ? `
+            <div class="form-group" data-integration-channel="faire" style="margin-top: 8px; padding: 10px; background: rgba(120,90,60,0.12); border-radius: 8px; border: 1px solid rgba(120,90,60,0.45);">
+  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
+    <input type="checkbox" id="art-sync-faire" style="width: 18px; height: 18px;">
+    🏬 Faire wholesale MOQ 12 (sync automático al guardar)
+  </label>
+  <div id="art-sync-faire-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.DROPI_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="dropi" style="margin-top: 8px; padding: 10px; background: rgba(80,200,160,0.1); border-radius: 8px; border: 1px solid rgba(60,180,140,0.35);">
@@ -4913,11 +5028,15 @@ async function saveArticulo(existingId, options) {
           }
         }
 
-        const mlR = await postSaveMercadoLibreIntegration(productId, catalogVisibleBool);
+        const ebayQueueNote = isListedEbay(prevArtForNotify)
+          ? ''
+          : await enqueueEbayChannel(productId);
+        const mlR = await postSaveMercadoLibreIntegration(productId);
         const metaR = await postSaveMetaCommerceIntegration(productId, catalogVisibleBool);
         const googleR = await postSaveGoogleMerchantIntegration(productId, catalogVisibleBool);
         const pinR = await postSavePinterestCatalogIntegration(productId, catalogVisibleBool);
-        const ebayR = await postSaveEbayIntegration(productId, catalogVisibleBool);
+        const ebayR = await postSaveEbayIntegration(productId, prevArtForNotify);
+        const faireR = await postSaveFaireIntegration(productId);
         const integrationPatch = Object.assign({}, mlR.patch, metaR.patch, googleR.patch, pinR.patch, ebayR.patch);
         if (Object.keys(integrationPatch).length && supabaseClient) {
           try {
@@ -4932,6 +5051,7 @@ async function saveArticulo(existingId, options) {
         const googleNote = googleR.note || '';
         const pinterestNote = pinR.note || '';
         const ebayNote = ebayR.note || '';
+        const faireNote = faireR.note || '';
         const dropiNote = await postSaveDropiIntegration(productId, catalogVisibleBool);
         const rappiNote = await postSaveRappiIntegration(productId, catalogVisibleBool);
 
@@ -4976,7 +5096,8 @@ async function saveArticulo(existingId, options) {
           ebayOfferId:
             integrationPatch.ebay_offer_id != null
               ? String(integrationPatch.ebay_offer_id)
-              : prevArt.ebayOfferId || ''
+              : prevArt.ebayOfferId || '',
+          faireProductId: faireR.faireProductId || prevArt.faireProductId || ''
         };
         if(artIdx >= 0) state.articulos[artIdx] = artLocal;
         else state.articulos.push(artLocal);
@@ -5023,7 +5144,7 @@ async function saveArticulo(existingId, options) {
         closeModal();
         renderArticulos();
         showLoadingOverlay('hide');
-        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${mlNote}${metaNote}${googleNote}${pinterestNote}${ebayNote}${dropiNote}${rappiNote}${pushNote}`);
+        notify('success', '✅', 'Guardado', `${refID} guardado.${catalogVisibleBool ? '' : ' Oculto en catálogo web (el sitio debe filtrar visible=true).'}${ebayQueueNote}${mlNote}${metaNote}${googleNote}${pinterestNote}${ebayNote}${faireNote}${dropiNote}${rappiNote}${pushNote}`);
 
         if (window.ProductIntelligence && typeof window.ProductIntelligence.maybeSilentEnrichAfterSave === 'function') {
           window.ProductIntelligence.maybeSilentEnrichAfterSave(refID);

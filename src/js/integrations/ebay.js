@@ -5,8 +5,9 @@
  * Endpoint: `window.EBAY_SYNC_ENDPOINT` o SUPABASE_URL + /functions/v1/ebay-sync-product.
  * Secrets solo en el servidor (EBAY_CLIENT_ID, EBAY_REFRESH_TOKEN, políticas).
  *
- * Body: { productId, action?: 'publish' | 'deactivate' }
- * Respuesta: { ok, dryRun?, listingId?, offerId?, sku?, message? }
+ * Body: { productId, action?: 'publish' | 'deactivate' | 'monthly_sync', listingKind?: 'retail' | 'lot' }
+ * monthly_sync: rotación automática top vistas + lotes (requiere cronSecret del servidor).
+ * Respuesta: { ok, dryRun?, listingId?, offerId?, sku?, message?, skipped?, reason? }
  */
 (function initEbayEndpoint() {
   const custom = String(window.EBAY_SYNC_ENDPOINT || '').trim();
@@ -52,6 +53,35 @@ window.requestEbaySync = async function requestEbaySync(productId, extra) {
   }
   if (data && data.ok === false) {
     throw new Error(String(data.error || 'eBay rechazó la solicitud'));
+  }
+  return data || { ok: true };
+};
+
+/** Dispara sincronización mensual (top vistas + lotes). Solo uso admin / cron. */
+window.requestEbayMonthlySync = async function requestEbayMonthlySync(cronSecret) {
+  const url = (window.EBAY_SYNC_ENDPOINT || '').trim();
+  if (!url) return { skipped: true, reason: 'sin endpoint' };
+  const headers = { 'Content-Type': 'application/json' };
+  const anon = window.AppRepository?.SUPABASE_ANON_KEY;
+  if (anon) {
+    headers.apikey = anon;
+    headers.Authorization = 'Bearer ' + anon;
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ action: 'monthly_sync', cronSecret: String(cronSecret || '') }),
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_) {
+    data = null;
+  }
+  if (!res.ok) {
+    const msg = (data && (data.error || data.message)) || text || String(res.status);
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
   return data || { ok: true };
 };

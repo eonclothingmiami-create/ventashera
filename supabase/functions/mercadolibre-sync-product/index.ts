@@ -647,6 +647,92 @@ Deno.serve(async (req) => {
     });
   }
 
+  const existingItemId = String(product.mercadolibre_item_id || "").trim();
+  if (existingItemId && mlToken) {
+    const priceMarkupCop = Math.max(
+      0,
+      Math.floor(Number((Deno.env.get("ML_PRICE_MARKUP_COP") ?? "").trim()) || 0),
+    );
+    const priceNum = (Number(product.price) || 0) + priceMarkupCop;
+    const stockNum = Math.max(0, Math.min(99999, Number(product.stock) || 0));
+
+    const getRes = await fetch(
+      `https://api.mercadolibre.com/items/${encodeURIComponent(existingItemId)}`,
+      { headers: { Authorization: `Bearer ${mlToken}` } },
+    );
+    if (getRes.ok) {
+      const existing = await getRes.json() as {
+        id?: string;
+        permalink?: string;
+        variations?: Array<{ id: number }>;
+      };
+      const variations = existing.variations || [];
+      if (variations.length > 1) {
+        const qtyEach = Math.max(0, Math.floor(stockNum / variations.length));
+        for (const v of variations) {
+          await fetch(
+            `https://api.mercadolibre.com/items/${encodeURIComponent(existingItemId)}/variations/${v.id}`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${mlToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ price: priceNum, available_quantity: qtyEach }),
+            },
+          );
+        }
+      } else {
+        const updRes = await fetch(
+          `https://api.mercadolibre.com/items/${encodeURIComponent(existingItemId)}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${mlToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ price: priceNum, available_quantity: stockNum }),
+          },
+        );
+        if (!updRes.ok) {
+          const updText = await updRes.text();
+          let updBody: unknown = null;
+          try {
+            updBody = updText ? JSON.parse(updText) : null;
+          } catch {
+            updBody = updText;
+          }
+          return json({
+            ok: false,
+            error: extractMlErrorMessage(updBody) || `Mercado Libre HTTP ${updRes.status}`,
+            action: "update_failed",
+            itemId: existingItemId,
+            mercadolibre: updBody,
+            tokenRefreshed,
+          }, 200);
+        }
+      }
+      return json({
+        ok: true,
+        dryRun: false,
+        action: "updated",
+        itemId: existingItemId,
+        permalink: existing.permalink,
+        tokenRefreshed,
+      });
+    }
+    if (getRes.status !== 404) {
+      const errText = await getRes.text();
+      return json({
+        ok: false,
+        error: extractMlErrorMessage(errText) || `No se pudo leer item ML ${existingItemId}`,
+        action: "update_failed",
+        itemId: existingItemId,
+        tokenRefreshed,
+      }, 200);
+    }
+  }
+
   const psRes = await sb
     .from("product_sizes")
     .select("sizes(label)")
