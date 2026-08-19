@@ -2,14 +2,14 @@
  * Edge Function: ebay-sync-product (V2 strategy)
  *
  * Canal eBay aislado del ERP/catálogo. Acciones:
- *   publish        — retail o lote derivado (listingKind)
- *   deactivate     — retira retail o lote
- *   monthly_sync   — top por vistas + lotes + rotación (cron día 1)
- *   republish_all  — actualiza precio/stock de listings ya publicados (batch)
+ *   publish        — publica/actualiza solo lotes mayoristas
+ *   deactivate     — retira retail viejo y/o lote mayorista
+ *   monthly_sync   — mantenimiento batch de inventario mayorista
+ *   republish_all  — migración / resincronización masiva de inventario eBay
  *   account_setup  — diagnóstico políticas
  *
  * Tablas eBay-only: ebay_publish_config, ebay_derived_listings
- * Ranking: ebay_top_viewed_products() sobre product_views
+ * Estrategia: eBay mayorista only. Nunca publica unidad individual.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -797,6 +797,14 @@ async function publishListing(
   listingKind: ListingKind,
   config: PublishConfig,
 ): Promise<PublishResult> {
+  if (listingKind !== "lot") {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "retail individual deshabilitado; eBay opera solo por lotes",
+      listingKind,
+    };
+  }
   const fulfillment = env("EBAY_FULFILLMENT_POLICY_ID");
   const payment = env("EBAY_PAYMENT_POLICY_ID");
   const ret = env("EBAY_RETURN_POLICY_ID");
@@ -818,13 +826,13 @@ async function publishListing(
   }
 
   const baseSku = (p.ebay_sku && String(p.ebay_sku).trim()) || skuFromProduct(p);
-  const qty = Math.max(1, Math.floor(Number(env("EBAY_LIST_QUANTITY", "1")) || 1));
   const baseTitle = String(p.name || "Product");
   const baseDescription = stripHtml(String(p.description || p.name || "Product"));
 
   let sku = baseSku;
-  let offerId = (p.ebay_offer_id || "").trim();
-  let listingId = (p.ebay_listing_id || "").trim();
+  let qty = 1;
+  let offerId = "";
+  let listingId = "";
   let derivedId: string | null = null;
   let title = baseTitle.slice(0, 80);
   let description = baseDescription;
@@ -832,21 +840,20 @@ async function publishListing(
   const priced = await priceUsdForListing(unitCop, listingKind, config);
   let priceUsd = priced.priceUsd;
 
-  if (listingKind === "lot") {
-    const lotSize = config.lot_size;
-    if (Number(p.stock) < lotSize) {
-      return { ok: true, skipped: true, reason: `stock ${p.stock} < lote ${lotSize}` };
-    }
-    const derived = await ensureDerivedRow(sb, productId, baseSku, lotSize);
-    if (!derived) return { ok: false, error: "No se pudo crear fila derivada eBay" };
-    derivedId = derived.id;
-    sku = derived.sku;
-    offerId = String(derived.ebay_offer_id || "").trim();
-    listingId = String(derived.ebay_listing_id || "").trim();
-    const lotCopy = buildLotCopy(baseTitle, baseDescription, lotSize, priceUsd);
-    title = lotCopy.title;
-    description = lotCopy.description;
+  const lotSize = config.lot_size;
+  if (Number(p.stock) < lotSize) {
+    return { ok: true, skipped: true, reason: `stock ${p.stock} < lote ${lotSize}` };
   }
+  qty = Math.max(1, Math.floor(Number(p.stock) / lotSize));
+  const derived = await ensureDerivedRow(sb, productId, baseSku, lotSize);
+  if (!derived) return { ok: false, error: "No se pudo crear fila derivada eBay" };
+  derivedId = derived.id;
+  sku = derived.sku;
+  offerId = String(derived.ebay_offer_id || "").trim();
+  listingId = String(derived.ebay_listing_id || "").trim();
+  const lotCopy = buildLotCopy(baseTitle, baseDescription, lotSize, priceUsd);
+  title = lotCopy.title;
+  description = lotCopy.description;
 
   const suggested = await suggestCategoryId(token, title);
   const categoryId = suggested.categoryId;
@@ -885,7 +892,7 @@ async function publishListing(
   );
   if (!putItem.ok) {
     const msg = ebayErrorMessage(putItem.data, "eBay rechazó inventory_item");
-    if (listingKind === "lot" && derivedId) {
+    if (derivedId) {
       await persistDerived(sb, derivedId, { ebay_sync_status: "error", ebay_last_error: msg });
     } else {
       await persistRetail(sb, productId, { ebay_sku: sku, ebay_sync_status: "error", ebay_last_error: msg });
@@ -934,7 +941,7 @@ async function publishListing(
     );
     if (!upd.ok) {
       const msg = ebayErrorMessage(upd.data, "eBay rechazó updateOffer");
-      if (listingKind === "lot" && derivedId) {
+      if (derivedId) {
         await persistDerived(sb, derivedId, { ebay_offer_id: offerId, ebay_sync_status: "error", ebay_last_error: msg });
       } else {
         await persistRetail(sb, productId, { ebay_sku: sku, ebay_offer_id: offerId, ebay_sync_status: "error", ebay_last_error: msg });
@@ -945,7 +952,7 @@ async function publishListing(
     const created = await ebayJson(token, "POST", "/sell/inventory/v1/offer", offerPayload);
     if (!created.ok) {
       const msg = ebayErrorMessage(created.data, "eBay rechazó createOffer");
-      if (listingKind === "lot" && derivedId) {
+      if (derivedId) {
         await persistDerived(sb, derivedId, { ebay_sync_status: "error", ebay_last_error: msg });
       } else {
         await persistRetail(sb, productId, { ebay_sku: sku, ebay_sync_status: "error", ebay_last_error: msg });
@@ -967,7 +974,7 @@ async function publishListing(
     );
     if (!pub.ok) {
       const msg = ebayErrorMessage(pub.data, "eBay rechazó publishOffer");
-      if (listingKind === "lot" && derivedId) {
+      if (derivedId) {
         await persistDerived(sb, derivedId, {
           ebay_offer_id: offerId,
           ebay_sync_status: "error",
@@ -990,7 +997,7 @@ async function publishListing(
     );
   }
 
-  if (listingKind === "lot" && derivedId) {
+  if (derivedId) {
     await persistDerived(sb, derivedId, {
       sku,
       ebay_offer_id: offerId || null,
@@ -998,15 +1005,14 @@ async function publishListing(
       ebay_sync_status: listingId ? "published" : "offer",
       ebay_last_error: null,
     });
-  } else {
-    await persistRetail(sb, productId, {
-      ebay_sku: sku,
-      ebay_offer_id: offerId || null,
-      ebay_listing_id: listingId || null,
-      ebay_sync_status: listingId ? "published" : "offer",
-      ebay_last_error: null,
-    });
   }
+  await persistRetail(sb, productId, {
+    ebay_sku: baseSku,
+    ebay_offer_id: null,
+    ebay_listing_id: null,
+    ebay_sync_status: listingId ? "lot_only" : "lot_offer",
+    ebay_last_error: null,
+  });
 
   return {
     ok: true,
@@ -1097,24 +1103,71 @@ async function deactivateListing(
   return { ok: true, sku, offerId, listingKind };
 }
 
+async function deactivateAllListings(
+  sb: SupabaseClient,
+  token: string,
+  productId: string,
+  lotSize: number,
+): Promise<Record<string, unknown>> {
+  const retail = await deactivateListing(sb, token, productId, "retail", lotSize);
+  const lot = await deactivateListing(sb, token, productId, "lot", lotSize);
+  return {
+    ok: !!(retail.ok && lot.ok),
+    retail,
+    lot,
+    skipped: !!(retail.skipped && lot.skipped),
+  };
+}
+
+async function loadWholesaleSyncPlan(
+  sb: SupabaseClient,
+  lotSize: number,
+): Promise<{ eligibleIds: string[]; withdrawRetailIds: string[]; withdrawLotIds: string[] }> {
+  const { data: eligible } = await sb
+    .from("products")
+    .select("id")
+    .eq("active", true)
+    .gte("stock", lotSize);
+  const eligibleIds = (eligible || []).map((r: { id: string }) => String(r.id));
+  const eligibleSet = new Set(eligibleIds);
+
+  const { data: activeRetail } = await sb
+    .from("products")
+    .select("id, ebay_listing_id, ebay_offer_id");
+  const withdrawRetailIds = (activeRetail || [])
+    .filter((r: { ebay_listing_id?: string | null; ebay_offer_id?: string | null }) =>
+      !!String(r.ebay_listing_id || "").trim() || !!String(r.ebay_offer_id || "").trim()
+    )
+    .map((r: { id: string }) => String(r.id));
+  const { data: activeLots } = await sb
+    .from("ebay_derived_listings")
+    .select("product_id")
+    .not("ebay_listing_id", "is", null)
+    .neq("ebay_listing_id", "");
+
+  return {
+    eligibleIds,
+    withdrawRetailIds,
+    withdrawLotIds: (activeLots || [])
+      .map((r: { product_id: string }) => String(r.product_id))
+      .filter((id) => !eligibleSet.has(id)),
+  };
+}
+
 async function runMonthlySync(
   sb: SupabaseClient,
   token: string,
   config: PublishConfig,
 ): Promise<Record<string, unknown>> {
   const batchSize = Math.max(5, Math.min(40, Number(env("EBAY_SYNC_BATCH_SIZE", "20")) || 20));
-  const retailLimit = config.monthly_top_n;
-  const lotLimit = config.lot_top_n;
-  const monthKey = new Date().toISOString().slice(0, 7);
+  const syncKey = new Date().toISOString().slice(0, 10);
 
   type SyncState = {
-    monthKey: string;
-    phase: "withdraw_retail" | "withdraw_lot" | "publish_retail" | "publish_lot" | "done";
-    retailIds: string[];
+    syncKey: string;
+    phase: "withdraw_retail" | "withdraw_lot" | "publish_lot" | "done";
     lotIds: string[];
     withdrawRetailIds: string[];
     withdrawLotIds: string[];
-    retailIdx: number;
     lotIdx: number;
     withdrawRetailIdx: number;
     withdrawLotIdx: number;
@@ -1122,17 +1175,13 @@ async function runMonthlySync(
   };
 
   const emptySummary = () => ({
-    retailTopN: retailLimit,
-    lotTopN: lotLimit,
     lotSize: config.lot_size,
-    monthKey,
-    retailPublished: 0,
+    syncKey,
+    eligibleProducts: 0,
     retailWithdrawn: 0,
     lotPublished: 0,
     lotWithdrawn: 0,
-    retailErrors: [] as string[],
     lotErrors: [] as string[],
-    skippedRetail: [] as string[],
     skippedLot: [] as string[],
     batches: 0,
   });
@@ -1141,49 +1190,28 @@ async function runMonthlySync(
     .maybeSingle();
   let state = (cfgRow?.sync_state || null) as SyncState | null;
 
-  if (state?.monthKey === monthKey && state.phase === "done") {
+  if (state?.syncKey === syncKey && state.phase === "done") {
     return {
       ...(state.summary || emptySummary()),
       phase: "done",
       done: true,
       skipped: true,
-      reason: "Sync del mes ya completada",
+      reason: "Sync mayorista del día ya completado",
     };
   }
 
-  if (!state || state.monthKey !== monthKey) {
-    const fetchLimit = Math.max(retailLimit, lotLimit) + 20;
-    const ranked = await getTopViewed(sb, fetchLimit);
-    const retailIds = ranked.slice(0, retailLimit).map((r) => r.product_id);
-    const lotIds = ranked.slice(0, lotLimit).map((r) => r.product_id);
-    const retailSet = new Set(retailIds);
-    const lotSet = new Set(lotIds);
-
-    const { data: activeRetail } = await sb
-      .from("products")
-      .select("id")
-      .eq("ebay_sync_status", "published");
-    const { data: activeLots } = await sb
-      .from("ebay_derived_listings")
-      .select("product_id")
-      .eq("ebay_sync_status", "published");
-
+  if (!state || state.syncKey !== syncKey) {
+    const plan = await loadWholesaleSyncPlan(sb, config.lot_size);
     state = {
-      monthKey,
+      syncKey,
       phase: "withdraw_retail",
-      retailIds,
-      lotIds,
-      withdrawRetailIds: (activeRetail || [])
-        .map((r: { id: string }) => String(r.id))
-        .filter((id) => !retailSet.has(id)),
-      withdrawLotIds: (activeLots || [])
-        .map((r: { product_id: string }) => String(r.product_id))
-        .filter((id) => !lotSet.has(id)),
-      retailIdx: 0,
+      lotIds: plan.eligibleIds,
+      withdrawRetailIds: plan.withdrawRetailIds,
+      withdrawLotIds: plan.withdrawLotIds,
       lotIdx: 0,
       withdrawRetailIdx: 0,
       withdrawLotIdx: 0,
-      summary: emptySummary(),
+      summary: { ...emptySummary(), eligibleProducts: plan.eligibleIds.length },
     };
   }
 
@@ -1207,27 +1235,12 @@ async function runMonthlySync(
     if (state.phase === "withdraw_lot") {
       const id = state.withdrawLotIds[state.withdrawLotIdx];
       if (!id) {
-        state.phase = "publish_retail";
+        state.phase = "publish_lot";
         continue;
       }
       const res = await deactivateListing(sb, token, id, "lot", config.lot_size);
       if (res.ok && !res.skipped) summary.lotWithdrawn += 1;
       state.withdrawLotIdx += 1;
-      processed += 1;
-      continue;
-    }
-
-    if (state.phase === "publish_retail") {
-      const id = state.retailIds[state.retailIdx];
-      if (!id) {
-        state.phase = "publish_lot";
-        continue;
-      }
-      const res = await publishListing(sb, token, id, "retail", config);
-      if (res.ok && !res.skipped) summary.retailPublished += 1;
-      else if (res.skipped) summary.skippedRetail.push(`${id}: ${res.reason}`);
-      else if (res.error) summary.retailErrors.push(`${id}: ${res.error}`);
-      state.retailIdx += 1;
       processed += 1;
       continue;
     }
@@ -1271,7 +1284,6 @@ async function runMonthlySync(
     progress: {
       withdrawRetail: `${state.withdrawRetailIdx}/${state.withdrawRetailIds.length}`,
       withdrawLot: `${state.withdrawLotIdx}/${state.withdrawLotIds.length}`,
-      publishRetail: `${state.retailIdx}/${state.retailIds.length}`,
       publishLot: `${state.lotIdx}/${state.lotIds.length}`,
     },
   };
@@ -1284,42 +1296,42 @@ async function runRepublishAll(
   offset = 0,
 ): Promise<Record<string, unknown>> {
   const batchSize = Math.max(5, Math.min(40, Number(env("EBAY_SYNC_BATCH_SIZE", "20")) || 20));
+  const plan = await loadWholesaleSyncPlan(sb, config.lot_size);
 
-  const { data: retailRows } = await sb
-    .from("products")
-    .select("id")
-    .not("ebay_listing_id", "is", null)
-    .neq("ebay_listing_id", "")
-    .eq("active", true);
-  const { data: lotRows } = await sb
-    .from("ebay_derived_listings")
-    .select("product_id")
-    .not("ebay_listing_id", "is", null)
-    .neq("ebay_listing_id", "");
-
-  const jobs: Array<{ productId: string; listingKind: ListingKind }> = [
-    ...(retailRows || []).map((r: { id: string }) => ({
-      productId: r.id,
-      listingKind: "retail" as const,
-    })),
-    ...(lotRows || []).map((r: { product_id: string }) => ({
-      productId: r.product_id,
-      listingKind: "lot" as const,
-    })),
+  const jobs: Array<{ type: "withdraw_retail" | "withdraw_lot" | "publish_lot"; productId: string }> = [
+    ...plan.withdrawRetailIds.map((productId) => ({ type: "withdraw_retail" as const, productId })),
+    ...plan.withdrawLotIds.map((productId) => ({ type: "withdraw_lot" as const, productId })),
+    ...plan.eligibleIds.map((productId) => ({ type: "publish_lot" as const, productId })),
   ];
 
   const slice = jobs.slice(offset, offset + batchSize);
   const results: Array<Record<string, unknown>> = [];
   let published = 0;
+  let withdrawnRetail = 0;
+  let withdrawnLot = 0;
   let skipped = 0;
   let errors = 0;
 
   for (const job of slice) {
-    const res = await publishListing(sb, token, job.productId, job.listingKind, config);
-    if (res.ok && !res.skipped) published += 1;
-    else if (res.skipped) skipped += 1;
-    else errors += 1;
-    results.push({ productId: job.productId, listingKind: job.listingKind, ...res });
+    const res = job.type === "withdraw_retail"
+      ? await deactivateListing(sb, token, job.productId, "retail", config.lot_size)
+      : job.type === "withdraw_lot"
+      ? await deactivateListing(sb, token, job.productId, "lot", config.lot_size)
+      : await publishListing(sb, token, job.productId, "lot", config);
+    if (res.ok && !res.skipped) {
+      if (job.type === "publish_lot") published += 1;
+    } else if (res.skipped) {
+      skipped += 1;
+    } else {
+      errors += 1;
+    }
+    if (res.ok && !res.skipped && job.type === "withdraw_retail") {
+      withdrawnRetail += 1;
+    }
+    if (res.ok && !res.skipped && job.type === "withdraw_lot") {
+      withdrawnLot += 1;
+    }
+    results.push({ productId: job.productId, jobType: job.type, ...res });
   }
 
   const nextOffset = offset + slice.length;
@@ -1331,7 +1343,10 @@ async function runRepublishAll(
     processed: slice.length,
     nextOffset,
     done: nextOffset >= jobs.length,
+    eligibleProducts: plan.eligibleIds.length,
     published,
+    withdrawnRetail,
+    withdrawnLot,
     skipped,
     errors,
     results,
@@ -1359,7 +1374,7 @@ Deno.serve(async (req) => {
     : body.action === "republish_all"
     ? "republish_all"
     : "publish";
-  const listingKind: ListingKind = body.listingKind === "lot" ? "lot" : "retail";
+  const listingKind: ListingKind = body.listingKind === "retail" ? "retail" : "lot";
 
   const supabaseUrl = env("SUPABASE_URL");
   const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
@@ -1466,29 +1481,14 @@ Deno.serve(async (req) => {
   }
 
   if (action === "deactivate") {
+    if (!body.listingKind) {
+      const both = await deactivateAllListings(sb, token, productId, config.lot_size);
+      if (!both.ok) return json({ ok: false, ...both }, 400);
+      return json({ ok: true, action: "deactivate", ...both });
+    }
     const res = await deactivateListing(sb, token, productId, listingKind, config.lot_size);
     if (!res.ok) return json({ ok: false, error: res.error, ...res }, 400);
     return json({ ok: true, action: "deactivate", ...res });
-  }
-
-  if (config.auto_sync_enabled && listingKind === "retail") {
-    const { data: existingRow } = await sb
-      .from("products")
-      .select("ebay_listing_id")
-      .eq("id", productId)
-      .maybeSingle();
-    const hasListing = !!(existingRow?.ebay_listing_id && String(existingRow.ebay_listing_id).trim());
-    if (!hasListing) {
-      const allowed = await isInRetailTop(sb, productId, config.monthly_top_n);
-      if (!allowed) {
-        return json({
-          ok: true,
-          skipped: true,
-          reason: `Fuera del top ${config.monthly_top_n} por vistas. eBay se sincroniza automáticamente el día 1 de cada mes.`,
-          listingKind,
-        });
-      }
-    }
   }
 
   const res = await publishListing(sb, token, productId, listingKind, config);

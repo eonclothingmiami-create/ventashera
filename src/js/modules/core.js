@@ -479,34 +479,18 @@ function isListedPinterestCatalog(art) {
   return !!(art && art.pinterestCatalogItemId);
 }
 function isListedEbay(art) {
-  return !!(art && art.ebayListingId);
+  return !!(art && (art.ebayListingId || art.ebayOfferId));
 }
 function isListedFaire(art) {
   return !!(art && art.faireProductId);
 }
 
-/** Encola sync eBay al guardar (cron cada 5 min; top vistas). ML y Faire van directo. */
-async function enqueueEbayChannel(productId) {
-  if (!supabaseClient || !productId) return '';
-  try {
-    const { data, error } = await supabaseClient.rpc('enqueue_channel_sync', {
-      p_product_id: productId,
-      p_channels: ['ebay'],
-    });
-    if (error) throw error;
-    const n = data && data.enqueued != null ? Number(data.enqueued) : 0;
-    return n > 0 ? ` · eBay: en cola (${n})` : ' · eBay: cola programada';
-  } catch (e) {
-    console.warn('[ebay-queue]', e);
-    return ' · eBay: error cola';
-  }
-}
 /**
  * Al abrir el maquetador: desmarca canales donde el producto ya tiene ID externo y muestra aviso breve.
  */
 function applyIntegrationChannelListedState(art) {
-  const ebayQueueHint =
-    'Al guardar entra en cola eBay (solo publica si está en top 90 vistas). Si ya está listado, se actualiza al instante.';
+  const ebayWholesaleHint =
+    'eBay publica solo lotes mayoristas x12. Si ya está listado, actualiza al guardar; si no, entra en cola hasta que haya cupo.';
   const directSyncHint = 'Se sincroniza automáticamente al guardar (sin marcar checkbox).';
   const rows = [
     {
@@ -537,9 +521,9 @@ function applyIntegrationChannelListedState(art) {
     {
       chk: 'art-sync-ebay',
       hint: 'art-sync-ebay-hint',
-      listed: isListedEbay(art),
-      label: 'Publicado en eBay — precio/stock se actualizan al guardar. Nuevos: cola top 90 vistas.',
-      autoHint: ebayQueueHint,
+      listed: false,
+      label: 'eBay mayorista — publica lotes x12; no se listan unidades individuales.',
+      autoHint: ebayWholesaleHint,
     },
     {
       chk: 'art-sync-faire',
@@ -859,12 +843,11 @@ async function postSaveEbayIntegration(productId, existingArt) {
   if (!ebayEndpoint || typeof window.requestEbaySync !== 'function') {
     return out;
   }
-  if (!existingArt || !isListedEbay(existingArt)) {
-    out.note = ' · eBay: en cola (top vistas)';
-    return out;
-  }
-  try {
-    const ebayRes = await window.requestEbaySync(productId);
+  const lotSize = 12;
+  const stock = Number(existingArt?.stock ?? 0);
+  const active = existingArt?.active !== false;
+
+  function applyEbaySyncResponse(ebayRes) {
     if (typeof console !== 'undefined' && console.info) {
       console.info(
         '[eBay]',
@@ -873,24 +856,65 @@ async function postSaveEbayIntegration(productId, existingArt) {
       );
     }
     if (ebayRes && ebayRes.skipped) {
-      out.note = ' · eBay: no se llamó al endpoint';
+      out.patch.ebay_listing_id = null;
+      out.patch.ebay_offer_id = null;
+      out.note = ebayRes.reason ? ` · eBay: ${ebayRes.reason}` : ' · eBay: omitido';
       return out;
     }
     if (ebayRes && ebayRes.dryRun) {
       notify('warning', '🏷️', 'eBay', ebayRes.message || 'Configura OAuth y políticas en la Edge Function.', { duration: 9000 });
-      out.note = ' · eBay: modo prueba (EBAY_REFRESH_TOKEN + políticas US en Supabase)';
+      out.note = ' · eBay: modo prueba (OAuth + políticas US en Supabase)';
       return out;
     }
     if (ebayRes && ebayRes.ok) {
-      const lid = ebayRes.listingId != null && String(ebayRes.listingId).trim() ? String(ebayRes.listingId).trim() : '';
-      const oid = ebayRes.offerId != null && String(ebayRes.offerId).trim() ? String(ebayRes.offerId).trim() : '';
-      if (lid) out.patch.ebay_listing_id = lid;
-      if (oid) out.patch.ebay_offer_id = oid;
+      out.patch.ebay_listing_id = null;
+      out.patch.ebay_offer_id = null;
       if (ebayRes.sku) out.patch.ebay_sku = String(ebayRes.sku);
-      out.note = lid ? ` · eBay: ${lid}` : oid ? ` · eBay offer: ${oid}` : ' · eBay: sincronizado';
+      out.note = ebayRes.listingId
+        ? ` · eBay lote: ${String(ebayRes.listingId)}`
+        : ebayRes.offerId
+        ? ` · eBay lote offer: ${String(ebayRes.offerId)}`
+        : ' · eBay lote: sincronizado';
       return out;
     }
     out.note = ' · eBay: respuesta inesperada';
+    return out;
+  }
+
+  try {
+    if (!active || stock < lotSize) {
+      out.note =
+        stock < lotSize
+          ? ` · eBay: stock insuficiente para lote x${lotSize}`
+          : ' · eBay: producto inactivo';
+      return out;
+    }
+
+    if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+      out.note = ' · eBay: sin cliente Supabase para encolar';
+      return out;
+    }
+
+    const { data: queueRes, error: queueErr } = await supabaseClient.rpc('enqueue_channel_sync', {
+      p_product_id: productId,
+      p_channels: ['ebay'],
+    });
+    if (queueErr) throw queueErr;
+
+    if (queueRes?.reason === 'already_listed') {
+      const ebayRes = await window.requestEbaySync(productId, { listingKind: 'lot' });
+      return applyEbaySyncResponse(ebayRes);
+    }
+
+    if (queueRes?.skipped) {
+      out.note = queueRes.reason
+        ? ` · eBay: ${String(queueRes.reason)}`
+        : ' · eBay: omitido';
+      return out;
+    }
+
+    const n = Number(queueRes?.enqueued || 0);
+    out.note = n > 0 ? ' · eBay: en cola para publicación de lote' : ' · eBay: ya en cola';
     return out;
   } catch (ebayErr) {
     console.warn('[eBay]', ebayErr);
@@ -4113,7 +4137,7 @@ async function unpublishArticuloFromChannels(art) {
   if (art.googleMerchantOfferId && typeof window.requestGoogleMerchantSync === 'function') {
     canales.push(['google', () => window.requestGoogleMerchantSync(id, { action: 'delete' })]);
   }
-  if (art.ebayListingId && typeof window.requestEbaySync === 'function') {
+  if (typeof window.requestEbaySync === 'function') {
     canales.push(['ebay', () => window.requestEbaySync(id, { action: 'deactivate' })]);
   }
   if (art.faireProductId && typeof window.requestFaireSync === 'function') {
@@ -5047,9 +5071,7 @@ async function saveArticulo(existingId, options) {
           }
         }
 
-        const ebayQueueNote = isListedEbay(prevArtForNotify)
-          ? ''
-          : await enqueueEbayChannel(productId);
+        const ebayQueueNote = '';
         const mlR = await postSaveMercadoLibreIntegration(productId);
         const metaR = await postSaveMetaCommerceIntegration(productId, catalogVisibleBool);
         const googleR = await postSaveGoogleMerchantIntegration(productId, catalogVisibleBool);

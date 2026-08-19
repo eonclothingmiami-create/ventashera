@@ -1,6 +1,7 @@
 /**
- * Despacha channel_publish_queue (solo eBay) → ebay-sync-product.
+ * Despacha channel_publish_queue (solo eBay lotes mayoristas) → ebay-sync-product.
  * Cron cada 5 min + invocación manual { action: "dispatch" }.
+ * Para al primer selling limit; reintenta pending en la siguiente corrida.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -10,7 +11,7 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BATCH = 12;
+const BATCH = 5;
 
 type QueueRow = {
   id: string;
@@ -18,6 +19,7 @@ type QueueRow = {
   channel: "mercadolibre" | "ebay" | "faire";
   action: string;
   attempts: number;
+  products?: { stock?: number | null } | Array<{ stock?: number | null }> | null;
 };
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -34,6 +36,26 @@ function fnUrl(name: string): string {
 
 function invokeBearer(): string {
   return (Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+}
+
+function isSellingLimitError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("exceed the amount") ||
+    m.includes("selling limit") ||
+    m.includes("selling_limit") ||
+    m.includes("amount you can list")
+  );
+}
+
+function isRetryableContentError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("fragrance name") ||
+    m.includes("size type") ||
+    m.includes("cannot revise listing") ||
+    m.includes("title and/or description")
+  );
 }
 
 async function invokeEdge(
@@ -60,50 +82,28 @@ async function invokeEdge(
   return { ok: res.ok && data.ok !== false, status: res.status, data };
 }
 
-async function persistChannelIds(
-  sb: SupabaseClient,
-  productId: string,
-  channel: string,
-  data: Record<string, unknown>,
-): Promise<void> {
-  if (channel === "mercadolibre") {
-    const itemId = String(data.itemId || "").trim();
-    if (itemId) {
-      await sb.from("products").update({ mercadolibre_item_id: itemId }).eq("id", productId);
-    }
-    return;
-  }
-  if (channel === "ebay") {
-    const patch: Record<string, unknown> = { ebay_last_sync_at: new Date().toISOString() };
-    const lid = String(data.listingId || "").trim();
-    const oid = String(data.offerId || "").trim();
-    const sku = String(data.sku || "").trim();
-    if (lid) patch.ebay_listing_id = lid;
-    if (oid) patch.ebay_offer_id = oid;
-    if (sku) patch.ebay_sku = sku;
-    if (data.skipped) patch.ebay_sync_status = "skipped";
-    else if (data.ok) patch.ebay_sync_status = "published";
-    await sb.from("products").update(patch).eq("id", productId);
-    return;
-  }
-  if (channel === "faire") {
-    const faireId = String(data.faireProductId || "").trim();
-    if (!faireId) return;
-    const { data: row } = await sb.from("products").select("integrations_json").eq("id", productId).maybeSingle();
-    const prev = row?.integrations_json && typeof row.integrations_json === "object" && !Array.isArray(row.integrations_json)
-      ? row.integrations_json as Record<string, unknown>
-      : {};
-    await sb.from("products").update({
-      integrations_json: { ...prev, faire_product_id: faireId },
-    }).eq("id", productId);
-  }
+async function persistEbaySyncTouch(sb: SupabaseClient, productId: string): Promise<void> {
+  await sb.from("products").update({
+    ebay_last_sync_at: new Date().toISOString(),
+  }).eq("id", productId);
 }
 
 async function processJob(sb: SupabaseClient, job: QueueRow): Promise<Record<string, unknown>> {
+  const { data: derived } = await sb
+    .from("ebay_derived_listings")
+    .select("ebay_listing_id")
+    .eq("product_id", job.product_id)
+    .eq("listing_kind", "lot")
+    .maybeSingle();
+
+  if (derived?.ebay_listing_id && String(derived.ebay_listing_id).trim()) {
+    return { ok: true, skipped: true, reason: "already_listed" };
+  }
+
   return (await invokeEdge("ebay-sync-product", {
     productId: job.product_id,
     action: "publish",
-    listingKind: "retail",
+    listingKind: "lot",
   })).data;
 }
 
@@ -117,18 +117,27 @@ Deno.serve(async (req) => {
 
   const { data: jobs, error: qErr } = await sb
     .from("channel_publish_queue")
-    .select("id, product_id, channel, action, attempts")
+    .select("id, product_id, channel, action, attempts, products(stock)")
     .eq("status", "pending")
     .eq("channel", "ebay")
     .order("updated_at", { ascending: true })
-    .limit(BATCH);
+    .limit(BATCH * 4);
 
   if (qErr) return json({ ok: false, error: qErr.message }, 500);
   if (!jobs?.length) return json({ ok: true, processed: 0, done: true });
 
-  const results: Array<Record<string, unknown>> = [];
+  const sorted = [...(jobs as QueueRow[])].sort((a, b) => {
+    const stockA = Number(Array.isArray(a.products) ? a.products[0]?.stock : a.products?.stock) || 0;
+    const stockB = Number(Array.isArray(b.products) ? b.products[0]?.stock : b.products?.stock) || 0;
+    return stockB - stockA;
+  }).slice(0, BATCH);
 
-  for (const job of jobs as QueueRow[]) {
+  const results: Array<Record<string, unknown>> = [];
+  let stoppedForLimit = false;
+
+  for (const job of sorted) {
+    if (stoppedForLimit) break;
+
     await sb.from("channel_publish_queue").update({
       status: "processing",
       attempts: job.attempts + 1,
@@ -138,18 +147,39 @@ Deno.serve(async (req) => {
     try {
       const data = await processJob(sb, job);
       const skipped = !!data.skipped;
-      const failed = data.ok === false && !skipped;
-      const status = skipped ? "skipped" : failed ? "error" : "done";
+      const errMsg = String(data.error || data.message || "").trim();
+      const sellingLimit = !skipped && data.ok === false && isSellingLimitError(errMsg);
+      const contentError = !skipped && data.ok === false && isRetryableContentError(errMsg);
+      const failed = data.ok === false && !skipped && !sellingLimit;
+
+      let status: string;
+      if (skipped) status = "skipped";
+      else if (sellingLimit) status = "pending";
+      else if (failed) status = contentError ? "error" : "error";
+      else status = "done";
 
       await sb.from("channel_publish_queue").update({
         status,
-        last_error: failed ? String(data.error || data.message || "sync_failed").slice(0, 500) : null,
+        last_error: (failed || sellingLimit) ? errMsg.slice(0, 500) : null,
         result: data,
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
 
-      if (!skipped && !failed) {
-        await persistChannelIds(sb, job.product_id, "ebay", data);
+      if (!skipped && !failed && data.ok !== false) {
+        await persistEbaySyncTouch(sb, job.product_id);
+      }
+
+      if (sellingLimit) {
+        stoppedForLimit = true;
+        results.push({
+          id: job.id,
+          channel: job.channel,
+          productId: job.product_id,
+          status: "pending",
+          stoppedBatch: true,
+          error: errMsg,
+        });
+        continue;
       }
 
       results.push({
@@ -158,7 +188,8 @@ Deno.serve(async (req) => {
         productId: job.product_id,
         status,
         skipped: data.reason || null,
-        error: failed ? data.error : null,
+        error: failed ? errMsg : null,
+        listingId: data.listingId || null,
       });
     } catch (e) {
       const msg = String(e).slice(0, 500);
@@ -175,6 +206,7 @@ Deno.serve(async (req) => {
     ok: true,
     action: "dispatch",
     processed: results.length,
+    stoppedForLimit,
     results,
   });
 });
