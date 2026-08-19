@@ -206,6 +206,55 @@
     }
   }
 
+  async function reconcileGatewayPayments(ctx) {
+    const { notify, renderVentasCatalogo: rerender } = ctx;
+    const endpoint = global.getCatalogOrderStatusEndpoint?.() || '';
+    if (!endpoint) {
+      notify('warning', '💳', 'Pagos', 'Endpoint catalog-order-status no configurado.', { duration: 4000 });
+      return;
+    }
+    try {
+      const token = global.AuthSession?.getValidAccessToken
+        ? await global.AuthSession.getValidAccessToken(global.supabaseClient)
+        : (await global.supabaseClient?.auth?.getSession())?.data?.session?.access_token;
+      if (!token) {
+        notify('warning', '💳', 'Sesión', 'Inicia sesión para reconciliar pagos.', { duration: 4500 });
+        return;
+      }
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+      const anon = global.AppRepository?.SUPABASE_ANON_KEY;
+      if (anon) headers.apikey = anon;
+      notify('info', '💳', 'Reconciliando…', 'Consultando Wompi/Addi por pendientes', { duration: 2500 });
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'reconcile_pending_payments', limit: 30, days: 30 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        const n = Number(data.updated || 0);
+        notify(
+          'success',
+          '💳',
+          'Pagos reconciliados',
+          `${n} actualizado(s) · ${data.scanned || 0} revisados · ${data.skipped || 0} omitidos`,
+          { duration: 5500 },
+        );
+        if (n > 0 && typeof global.refreshCriticalSlice === 'function') {
+          await global.refreshCriticalSlice('ventas_catalogo');
+        }
+        rerender();
+      } else if (res.status === 401) {
+        notify('warning', '💳', 'Sesión', 'No autorizado. Vuelve a iniciar sesión.', { duration: 4500 });
+      } else {
+        notify('warning', '💳', 'Pagos', data.error || 'Error al reconciliar', { duration: 7000 });
+      }
+    } catch (e) {
+      console.warn('[ventas_catalogo] reconcile_payments', e);
+      notify('warning', '💳', 'Pagos', e.message || 'Error de red', { duration: 6000 });
+    }
+  }
+
   function renderAbandonedCartsPanel(state, fmt) {
     const carts = (state.catalogCartSnapshots || [])
       .filter((c) => ['abandoned', 'recovery_sent', 'active'].includes(String(c.status || '')))
@@ -509,6 +558,7 @@
       </div>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-woo" style="margin-bottom:2px" title="Importar pedidos WooCommerce">🛒 Sync WooCommerce</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-marketplaces" style="margin-bottom:2px" title="Importar pedidos Mercado Libre, Faire y eBay">🏬 Sync ML / Faire / eBay</button>
+      <button type="button" class="btn btn-secondary" id="vcatalog-btn-reconcile" style="margin-bottom:2px" title="Repregunta Wompi/Addi por pedidos pendientes del catálogo web">💳 Reconciliar Wompi/Addi</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-expire" style="margin-bottom:2px" title="Pendientes &gt;7 días sin pasarela → checkout abandonado">⏳ Expirar pendientes</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-reg" style="margin-bottom:2px">＋ Registrar venta externa</button>
       <span style="font-size:12px;color:var(--text2)">${rows.length} pedido(s)</span>
@@ -518,6 +568,7 @@
       <p style="font-size:12px;color:var(--text2);margin:0 0 14px;line-height:1.45">
         Listado unificado: catálogo web (Wompi/Addi), <b>WooCommerce</b>, <b>Mercado Libre</b>, <b>Faire</b>, <b>eBay</b> y registros manuales.
         Estados: pendiente → pago exitoso / fallido / checkout abandonado / cancelada.
+        Wompi/Addi se reconcilian al retorno del catálogo y cada 15 min por cron; usa <b>Reconciliar Wompi/Addi</b> para forzar ahora.
       </p>
       ${renderAbandonedCartsPanel(state, fmt)}
       <div class="table-wrap">
@@ -551,6 +602,8 @@
     if (btnWoo) btnWoo.onclick = () => syncWooCommerceOrders(ctx);
     const btnMk = document.getElementById('vcatalog-btn-marketplaces');
     if (btnMk) btnMk.onclick = () => syncMarketplaceOrders(ctx);
+    const btnReconcile = document.getElementById('vcatalog-btn-reconcile');
+    if (btnReconcile) btnReconcile.onclick = () => reconcileGatewayPayments(ctx);
     const btnExpire = document.getElementById('vcatalog-btn-expire');
     if (btnExpire) btnExpire.onclick = () => expireStaleOrders(ctx);
 

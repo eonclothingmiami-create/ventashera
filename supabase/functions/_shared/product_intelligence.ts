@@ -3,6 +3,8 @@
  * Each module = interchangeable prompt + provider; not a multi-agent swarm.
  */
 
+import { SEO_META_COLOMBIA_HINT } from "./colombian_origin_copy.ts";
+
 export type PiModule =
   | "copy"
   | "seo"
@@ -32,11 +34,11 @@ const BRAND_FALLBACK = `Hera Swimwear (Colombia). Tono Quiet Luxury: femenino, a
 No inventes materiales, precios, stock ni URLs de redes. Español es-CO.`;
 
 export const PROMPT_VERSIONS: Record<Exclude<PiModule, "embedding">, string> = {
-  copy: "copy_v3_short",
-  seo: "seo_v2_brand",
+  copy: "copy_v4_colombia_origin",
+  seo: "seo_v3_colombia_origin",
   attributes: "attributes_v2_brand",
   relations: "relations_v2_brand",
-  knowledge: "knowledge_v2_brand",
+  knowledge: "knowledge_v3_colombia_origin",
 };
 
 export function artifactTypeForModule(
@@ -93,6 +95,7 @@ Eres copywriter de Hera. Responde SOLO JSON válido:
   "description_short": string
 }
 description_short = 1–2 frases, máximo 160 caracteres. Es el texto de ficha de catálogo (clientes no leen párrafos largos).
+OBLIGATORIO: mencionar que es traje de baño confeccionado/hecho en Colombia (marca colombiana Hera Swimwear). Integrarlo con naturalidad en la frase, no como pegote al final si no cabe — prioriza origen colombiano sobre adjetivos genéricos.
 No inventes description_long. El detalle largo vive en Knowledge, no en la descripción pública.
 Respeta tono Quiet Luxury y listas always/never de la Brand Voice.`,
       },
@@ -116,7 +119,8 @@ Eres especialista SEO de Hera. Responde SOLO JSON:
   "slug": string,
   "keywords": string[]
 }
-Sigue la estructura SEO de la Brand Voice. meta_title ≤ 60. meta_description ≤ 155. slug kebab-case sin acentos.`,
+Sigue la estructura SEO de la Brand Voice. meta_title ≤ 60. meta_description ≤ 155. slug kebab-case sin acentos.
+${SEO_META_COLOMBIA_HINT}`,
       },
       {
         role: "user",
@@ -199,6 +203,7 @@ Responde SOLO JSON:
   "document": string
 }
 Incluye: ref, nombre, tipo, ocasión, estilo Quiet Luxury si aplica, descripción, facetas.
+OBLIGATORIO: indicar que Hera Swimwear es marca colombiana y que el traje de baño se confecciona/fabrica en Colombia.
 Texto plano, denso, en español. Sin markdown. Sin inventar hechos.`,
     },
     {

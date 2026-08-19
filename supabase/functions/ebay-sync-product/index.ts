@@ -17,6 +17,10 @@ import {
   getTrmSnapshot,
   shippingUnitCop,
 } from "../_shared/cop_usd_fx.ts";
+import {
+  EBAY_LOT_ORIGIN_LEAD,
+  ensureColombianOriginEn,
+} from "../_shared/colombian_origin_copy.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -769,9 +773,11 @@ function buildLotCopy(
   const title = (prefix + baseTitle).slice(0, 80);
   const unitUsd = (Number(priceUsd) / lotSize).toFixed(2);
   const lotNote =
+    EBAY_LOT_ORIGIN_LEAD +
     `You are purchasing ONE wholesale lot of ${lotSize} identical units. ` +
     `Lot price: $${priceUsd} USD ($${unitUsd} per unit). Ships from Colombia. `;
-  const description = (lotNote + baseDescription).slice(0, 4000);
+  const body = ensureColombianOriginEn(baseDescription, 3900);
+  const description = (lotNote + body).slice(0, 4000);
   return { title, description };
 }
 
@@ -827,7 +833,10 @@ async function publishListing(
 
   const baseSku = (p.ebay_sku && String(p.ebay_sku).trim()) || skuFromProduct(p);
   const baseTitle = String(p.name || "Product");
-  const baseDescription = stripHtml(String(p.description || p.name || "Product"));
+  const baseDescription = ensureColombianOriginEn(
+    stripHtml(String(p.description || p.name || "Product")),
+    3900,
+  );
 
   let sku = baseSku;
   let qty = 1;

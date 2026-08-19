@@ -111,6 +111,28 @@ export function catalogOrderPrivilegedAuthOk(req: Request): Promise<boolean> {
   return catalogOrderAuthOk(req, "privileged");
 }
 
+/** Credenciales de notificación Addi (usuario + contraseña del portal aliados). */
+export function addiWebhookAuthOk(req: Request): boolean {
+  const expectedUser = (Deno.env.get("ADDI_WEBHOOK_USER") || "").trim();
+  const expectedPass = (Deno.env.get("ADDI_WEBHOOK_PASSWORD") || "").trim();
+  if (!expectedUser || !expectedPass) return false;
+
+  const auth = (req.headers.get("authorization") || "").trim();
+  const match = auth.match(/^Basic\s+(.+)$/i);
+  if (!match) return false;
+
+  try {
+    const decoded = atob(match[1]);
+    const colon = decoded.indexOf(":");
+    if (colon < 0) return false;
+    const user = decoded.slice(0, colon);
+    const pass = decoded.slice(colon + 1);
+    return user === expectedUser && pass === expectedPass;
+  } catch {
+    return false;
+  }
+}
+
 /** Alias usado por algunas funciones antiguas. */
 export function catalogOrderAuthOkExport(req: Request): Promise<boolean> {
   return catalogOrderClientAuthOk(req);

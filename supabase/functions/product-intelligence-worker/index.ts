@@ -13,6 +13,10 @@ import {
   type PiModule,
   type ProductContext,
 } from "../_shared/product_intelligence.ts";
+import {
+  ensureColombianOriginEs,
+  hasColombianOriginMention,
+} from "../_shared/colombian_origin_copy.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -232,6 +236,23 @@ async function processGenerationJob(
     messages,
   });
   const payload = parseJsonObject(chat.content);
+
+  if (module === "copy") {
+    const short = String(payload.description_short || payload.description || "").trim();
+    if (short) payload.description_short = ensureColombianOriginEs(short, 160);
+  }
+  if (module === "knowledge") {
+    let doc = String(payload.document || "").trim();
+    if (doc && !hasColombianOriginMention(doc)) {
+      doc += " Traje de baño confeccionado en Colombia por Hera Swimwear.";
+      payload.document = doc;
+    }
+  }
+  if (module === "seo") {
+    const meta = String(payload.meta_description || "").trim();
+    if (meta) payload.meta_description = ensureColombianOriginEs(meta, 155);
+  }
+
   // Stamp brand voice version for audit (non-breaking)
   const stamped = {
     ...payload,

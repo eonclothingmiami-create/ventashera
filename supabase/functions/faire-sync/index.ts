@@ -24,6 +24,7 @@ import {
   getTrmSnapshot,
   shippingUnitCop,
 } from "../_shared/cop_usd_fx.ts";
+import { ensureColombianOriginEn } from "../_shared/colombian_origin_copy.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -360,7 +361,10 @@ function buildProductPayload(
   existingVariantMap: Record<string, { faire_variant_id?: string; sku?: string }> = {},
 ) {
   const name = String(product.name || product.ref || "Product").trim().slice(0, 60);
-  const desc = stripHtml(String(product.description || product.name || "")).slice(0, 3000);
+  const desc = ensureColombianOriginEn(
+    stripHtml(String(product.description || product.name || "")),
+    3000,
+  );
   const taxonomyId = cfg.default_taxonomy_type_id;
   if (!taxonomyId) {
     throw new Error("missing_taxonomy: configura FAIRE_DEFAULT_TAXONOMY_TYPE_ID o faire_publish_config.default_taxonomy_type_id");

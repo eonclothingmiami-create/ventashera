@@ -12,10 +12,13 @@ const APPROVED = new Set([
   "APPROVED",
   "APROBADO",
   "SUCCESS",
+  "SUCCESSFUL",
   "COMPLETED",
+  "COMPLETE",
   "AUTHORIZED",
   "FINISHED",
   "PAID",
+  "CAPTURED",
   // Addi (crédito)
   "FUNDED",
   "DISBURSED",
@@ -28,19 +31,24 @@ const APPROVED = new Set([
 const FAILED = new Set([
   "DECLINED",
   "REJECTED",
+  "RECHAZADO",
   "ERROR",
   "FAILED",
   "DENIED",
   "VOIDED",
   "CANCELLED",
   "CANCELED",
+  "CANCEL",
 ]);
 
 const ABANDONED = new Set([
   "ABANDONED",
+  "ABANDON",
   "EXPIRED",
   "TIMEOUT",
+  "TIMED_OUT",
   "CHECKOUT_ABANDONED",
+  "CLOSED",
 ]);
 
 export function mapGatewayStatus(raw: string | null | undefined): EstadoPago | null {

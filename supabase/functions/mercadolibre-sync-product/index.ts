@@ -26,6 +26,7 @@
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { ensureColombianOriginEs } from "../_shared/colombian_origin_copy.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -842,9 +843,10 @@ Deno.serve(async (req) => {
   const want3xCampaign =
     installmentsSamePrice === "3" || installmentsSamePrice === "3x";
 
-  const plainDescription = String(product.description || "")
-    .trim()
-    .slice(0, 50000);
+  const plainDescription = ensureColombianOriginEs(
+    String(product.description || "").trim(),
+    50000,
+  );
 
   const envListingType = (Deno.env.get("ML_LISTING_TYPE_ID") ?? "").trim();
   // 3x_campaign exige gold_pro en la doc ML; si pedís 3 cuotas, no uses gold_special.

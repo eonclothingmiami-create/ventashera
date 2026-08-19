@@ -36,6 +36,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import * as jose from "npm:jose@5.9.6";
+import { ensureColombianOriginEs } from "../_shared/colombian_origin_copy.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -92,7 +93,7 @@ function descriptionFromProduct(
   name: string | null,
 ): string {
   const plain = stripHtml(description || "") || (name || "Sin descripción");
-  return plain.slice(0, 5000);
+  return ensureColombianOriginEs(plain, 5000);
 }
 
 function priceValueCOP(price: number | null): string {

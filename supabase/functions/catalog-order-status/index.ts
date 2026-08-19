@@ -1,25 +1,30 @@
 /**
- * Actualiza estado de pago de un pedido catálogo (retorno Wompi/Addi, webhook, mantenimiento).
- * POST { reference, status|estado_pago, proveedor_ref?, payment_status_raw?, action? }
- * action=expire_stale → marca pendientes > N horas como checkout_abandonado
- * action=resolve_wompi_return → consulta Wompi por transaction_id o reference (retorno catálogo)
+ * Actualiza estado de pago de un pedido catálogo (retorno Wompi/Addi, webhook, reconciliación).
+ * POST actions:
+ * - resolve_wompi_return — consulta Wompi por transaction_id o reference
+ * - resolve_addi_return — callback catálogo o consulta API Addi
+ * - reconcile_pending_payments — repregunta pasarelas por pedidos pendientes
+ * - expire_stale — marca pendientes > N horas como checkout_abandonado
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import {
-  mapGatewayStatus,
-  type EstadoPago,
-} from "../_shared/ventas_catalogo_map.ts";
-import {
-  fetchWompiTransactionById,
-  fetchWompiTransactionByReference,
-} from "../_shared/wompi_client.ts";
 import {
   catalogOrderClientAuthOk,
   catalogOrderPrivilegedAuthOk,
   catalogOrderUserAuthOk,
+  addiWebhookAuthOk,
 } from "../_shared/catalog_order_auth.ts";
-import { sendTikTokPurchaseForOrder } from "../_shared/tiktok_events_api.ts";
-import { sendPinterestCheckoutForOrder } from "../_shared/pinterest_events_api.ts";
+import {
+  createServiceClient,
+  patchCatalogOrder,
+  reconcileCatalogOrderRow,
+  reconcilePendingCatalogPayments,
+  resolveEstadoFromBody,
+} from "../_shared/catalog_order_status.ts";
+import { mapGatewayStatus } from "../_shared/ventas_catalogo_map.ts";
+import {
+  fetchWompiTransactionById,
+  fetchWompiTransactionByReference,
+} from "../_shared/wompi_client.ts";
+import { addiConfigured } from "../_shared/addi_client.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -34,143 +39,70 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-function resolveEstado(body: Record<string, unknown>): EstadoPago | null {
-  const direct = String(body.estado_pago ?? body.estadoPago ?? "").trim();
-  const allowed = [
-    "pendiente",
-    "pago_exitoso",
-    "pago_fallido",
-    "checkout_abandonado",
-    "expirado",
-    "cancelada",
-  ];
-  if (allowed.includes(direct)) return direct as EstadoPago;
-
-  const raw = String(
-    body.payment_status_raw ?? body.status ?? body.transaction_status ?? "",
-  ).trim();
-  return mapGatewayStatus(raw);
+/** Addi exige HTTP 200 devolviendo el mismo JSON recibido. */
+function addiWebhookEcho(rawText: string): Response {
+  return new Response(rawText, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-async function patchOrder(
-  sb: ReturnType<typeof createClient>,
-  row: Record<string, unknown>,
-  nuevoEstado: EstadoPago,
-  opts: {
-    proveedorRef?: string;
-    paymentRaw?: string;
-    source?: string;
-    extraMeta?: Record<string, unknown>;
-    clientIp?: string;
-    userAgent?: string;
-  },
-) {
-  if (
-    row.estado_pago === "pago_exitoso" &&
-    nuevoEstado !== "pago_exitoso" &&
-    nuevoEstado !== "cancelada"
-  ) {
-    return {
-      skipped: true,
-      reason: "already_paid",
-      estado_pago: row.estado_pago,
-    };
+async function handleAddiWebhookNotification(
+  sb: ReturnType<typeof createServiceClient>,
+  body: Record<string, unknown>,
+  opts: { clientIp?: string; userAgent?: string },
+): Promise<{ processed: boolean; error?: string }> {
+  const reference = String(
+    body.orderId ?? body.order_id ?? body.reference ?? body.externalReference ?? "",
+  ).trim();
+  const rawStatus = String(
+    body.status ?? body.applicationStatus ?? body.application_status ?? body.state ?? "",
+  ).trim();
+  const appId = String(
+    body.applicationId ?? body.application_id ?? body.id ?? "",
+  ).trim();
+
+  if (!reference) {
+    return { processed: false, error: "orderId/reference required" };
+  }
+  if (!rawStatus) {
+    return { processed: false, error: "status required" };
   }
 
-  const proveedorRef = opts.proveedorRef || row.proveedor_ref;
-  const paymentRaw = opts.paymentRaw || row.payment_status_raw;
-  const now = new Date().toISOString();
-  const prevMeta = row.tracking_meta && typeof row.tracking_meta === "object"
-    ? row.tracking_meta as Record<string, unknown>
-    : {};
-
-  const patch: Record<string, unknown> = {
-    estado_pago: nuevoEstado,
-    proveedor_ref: proveedorRef,
-    payment_status_raw: paymentRaw,
-    payment_updated_at: now,
-    updated_at: now,
-    tracking_meta: {
-      ...prevMeta,
-      last_status_update: now,
-      last_status_source: opts.source || "catalog-order-status",
-      ...(opts.extraMeta || {}),
-    },
-  };
-
-  if (nuevoEstado === "pago_exitoso") {
-    patch.pagado_at = row.pagado_at || now;
-  }
-  if (nuevoEstado === "cancelada" || nuevoEstado === "pago_fallido") {
-    patch.pagado_at = null;
+  const nuevoEstado = mapGatewayStatus(rawStatus);
+  if (!nuevoEstado) {
+    return { processed: false, error: `Unknown Addi status: ${rawStatus}` };
   }
 
-  const { data: updated, error: updErr } = await sb.from("ventas_catalogo")
-    .update(patch)
-    .eq("id", String(row.id))
-    .select("id, reference, estado_pago, pagado_at, payment_status_raw, proveedor_ref")
-    .single();
+  const { data: row, error: fetchErr } = await sb.from("ventas_catalogo")
+    .select("*")
+    .eq("reference", reference)
+    .maybeSingle();
 
-  if (updErr) throw new Error(updErr.message);
-
-  const ADS_PURCHASE_SOURCES = new Set(["wompi_return", "addi_return"]);
-  if (
-    nuevoEstado === "pago_exitoso" &&
-    row.estado_pago !== "pago_exitoso" &&
-    ADS_PURCHASE_SOURCES.has(String(opts.source || ""))
-  ) {
-    const orderPayload = {
-      reference: row.reference,
-      amount_cop: row.amount_cop,
-      totales: row.totales as { total?: number },
-      items: row.items as Record<string, unknown>[],
-      cliente_email: row.cliente_email,
-      cliente_telefono: row.cliente_telefono,
-      tracking_meta: prevMeta,
-    };
-    const metaExtra: Record<string, unknown> = {
-      ...(patch.tracking_meta as Record<string, unknown>),
-    };
-    let metaChanged = false;
-
-    try {
-      const tt = await sendTikTokPurchaseForOrder(orderPayload);
-      if (tt.ok) {
-        metaExtra.tiktok_purchase_sent_at = new Date().toISOString();
-        metaExtra.tiktok_events_api = true;
-        metaChanged = true;
-      } else if (tt.skipped !== "tiktok_not_configured") {
-        console.warn("[catalog-order-status] TikTok Events API", tt);
-      }
-    } catch (e) {
-      console.warn("[catalog-order-status] TikTok Events API error", e);
-    }
-
-    try {
-      const pin = await sendPinterestCheckoutForOrder(orderPayload, {
-        clientIp: opts.clientIp,
-        userAgent: opts.userAgent,
-      });
-      if (pin.ok) {
-        metaExtra.pinterest_checkout_sent_at = new Date().toISOString();
-        metaExtra.pinterest_events_api = true;
-        metaChanged = true;
-      } else if (pin.skipped !== "pinterest_not_configured") {
-        console.warn("[catalog-order-status] Pinterest CAPI", pin);
-      }
-    } catch (e) {
-      console.warn("[catalog-order-status] Pinterest CAPI error", e);
-    }
-
-    if (metaChanged) {
-      await sb.from("ventas_catalogo").update({ tracking_meta: metaExtra }).eq(
-        "id",
-        row.id,
-      );
-    }
+  if (fetchErr) {
+    return { processed: false, error: fetchErr.message };
+  }
+  if (!row) {
+    return { processed: false, error: `Order not found: ${reference}` };
   }
 
-  return { order: updated };
+  try {
+    await patchCatalogOrder(sb, row, nuevoEstado, {
+      proveedorRef: appId || undefined,
+      paymentRaw: rawStatus,
+      source: "addi_webhook",
+      extraMeta: {
+        addi_webhook_at: new Date().toISOString(),
+        ...(appId ? { addi_application_id: appId } : {}),
+      },
+      clientIp: opts.clientIp,
+      userAgent: opts.userAgent,
+    });
+    return { processed: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { processed: false, error: msg };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -185,19 +117,37 @@ Deno.serve(async (req) => {
   ).split(",")[0]?.trim() || undefined;
   const userAgent = req.headers.get("user-agent") || undefined;
 
-  const url = Deno.env.get("SUPABASE_URL")!;
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const sb = createClient(url, key);
+  const sb = createServiceClient();
 
   if (req.method === "POST") {
+    const rawText = await req.text();
     let body: Record<string, unknown> = {};
     try {
-      body = await req.json();
+      body = rawText ? JSON.parse(rawText) as Record<string, unknown> : {};
     } catch {
       return json({ ok: false, error: "Invalid JSON" }, 400);
     }
 
     const action = String(body.action || "").trim();
+
+    if (addiWebhookAuthOk(req)) {
+      const result = await handleAddiWebhookNotification(sb, body, { clientIp, userAgent });
+      if (!result.processed) {
+        console.warn("[addi_webhook]", result.error, body);
+      }
+      return addiWebhookEcho(rawText);
+    }
+
+    if (action === "addi_webhook") {
+      if (!await catalogOrderPrivilegedAuthOk(req)) {
+        return json({ ok: false, error: "Addi webhook unauthorized" }, 401);
+      }
+      const result = await handleAddiWebhookNotification(sb, body, { clientIp, userAgent });
+      if (!result.processed) {
+        return json({ ok: false, error: result.error || "webhook failed" }, 400);
+      }
+      return json({ ok: true, echoed: false });
+    }
 
     if (action === "expire_stale") {
       if (!await catalogOrderUserAuthOk(req)) {
@@ -209,6 +159,26 @@ Deno.serve(async (req) => {
       });
       if (error) return json({ ok: false, error: error.message }, 500);
       return json({ ok: true, expired: data ?? 0, hours });
+    }
+
+    if (action === "reconcile_pending_payments") {
+      const cronOk = await catalogOrderPrivilegedAuthOk(req);
+      const userOk = !cronOk && await catalogOrderUserAuthOk(req);
+      if (!cronOk && !userOk) {
+        return json({ ok: false, error: "Authorization required" }, 401);
+      }
+      try {
+        const result = await reconcilePendingCatalogPayments(sb, {
+          limit: Number(body.limit) || 30,
+          days: Number(body.days) || 30,
+          clientIp,
+          userAgent,
+        });
+        return json(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return json({ ok: false, error: msg }, 500);
+      }
     }
 
     if (action === "resolve_wompi_return") {
@@ -256,7 +226,7 @@ Deno.serve(async (req) => {
           return json({ ok: false, error: "Order not found", reference }, 404);
         }
 
-        const result = await patchOrder(sb, row, nuevoEstado, {
+        const result = await patchCatalogOrder(sb, row, nuevoEstado, {
           proveedorRef: tx.id,
           paymentRaw: tx.status,
           source: "wompi_return",
@@ -272,7 +242,84 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (!await catalogOrderPrivilegedAuthOk(req)) {
+    if (action === "resolve_addi_return") {
+      if (!await catalogOrderClientAuthOk(req)) {
+        return json({ ok: false, error: "Unauthorized" }, 401);
+      }
+
+      const reference = String(body.reference || body.orderId || "").trim();
+      if (!reference) {
+        return json({ ok: false, error: "reference required" }, 400);
+      }
+
+      const { data: row, error: fetchErr } = await sb.from("ventas_catalogo")
+        .select("*")
+        .eq("reference", reference)
+        .maybeSingle();
+
+      if (fetchErr) return json({ ok: false, error: fetchErr.message }, 500);
+      if (!row) return json({ ok: false, error: "Order not found", reference }, 404);
+
+      const rawStatus = String(
+        body.payment_status_raw ??
+          body.status ??
+          body.addi_status ??
+          body.application_status ??
+          "",
+      ).trim();
+
+      try {
+        if (rawStatus) {
+          const nuevoEstado = mapGatewayStatus(rawStatus);
+          if (!nuevoEstado) {
+            return json({
+              ok: false,
+              error: `Unknown Addi status: ${rawStatus}`,
+              addi_status: rawStatus,
+            }, 400);
+          }
+          const appId = String(
+            body.application_id ?? body.applicationId ?? body.proveedor_ref ?? "",
+          ).trim();
+          const result = await patchCatalogOrder(sb, row, nuevoEstado, {
+            proveedorRef: appId || undefined,
+            paymentRaw: rawStatus,
+            source: "addi_return",
+            extraMeta: {
+              addi_reconciled_at: new Date().toISOString(),
+              ...(appId ? { addi_application_id: appId } : {}),
+            },
+            clientIp,
+            userAgent,
+          });
+          return json({ ok: true, addi_status: rawStatus, ...result });
+        }
+
+        if (!addiConfigured()) {
+          return json({
+            ok: false,
+            error: "Addi status or ADDI credentials required",
+          }, 400);
+        }
+
+        const result = await reconcileCatalogOrderRow(sb, row, {
+          source: "addi_return",
+          clientIp,
+          userAgent,
+        });
+        return json(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return json({ ok: false, error: msg }, 500);
+      }
+    }
+
+    const source = String(body.source || "").trim();
+    const clientReturnSources = new Set(["addi_return", "wompi_return", "wompi_webhook"]);
+    const authOk = clientReturnSources.has(source)
+      ? await catalogOrderClientAuthOk(req)
+      : await catalogOrderPrivilegedAuthOk(req);
+    if (!authOk) {
       return json({ ok: false, error: "Unauthorized" }, 401);
     }
 
@@ -281,7 +328,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "reference required" }, 400);
     }
 
-    const nuevoEstado = resolveEstado(body);
+    const nuevoEstado = resolveEstadoFromBody(body);
     if (!nuevoEstado) {
       return json({ ok: false, error: "Could not resolve estado_pago" }, 400);
     }
@@ -295,14 +342,20 @@ Deno.serve(async (req) => {
     if (!row) return json({ ok: false, error: "Order not found" }, 404);
 
     try {
-      const result = await patchOrder(sb, row, nuevoEstado, {
-        proveedorRef: String(
-          body.proveedor_ref ?? body.proveedorRef ?? body.transaction_id ?? "",
-        ).trim() || undefined,
-        paymentRaw: String(
-          body.payment_status_raw ?? body.status ?? "",
-        ).trim() || undefined,
-        source: String(body.source || "catalog-order-status"),
+      const appId = String(
+        body.application_id ?? body.applicationId ?? body.proveedor_ref ?? "",
+      ).trim();
+      const paymentRaw = String(
+        body.payment_status_raw ?? body.status ?? body.transaction_status ?? "",
+      ).trim() || undefined;
+
+      const result = await patchCatalogOrder(sb, row, nuevoEstado, {
+        proveedorRef: appId ||
+          String(body.proveedor_ref ?? body.proveedorRef ?? body.transaction_id ?? "").trim() ||
+          undefined,
+        paymentRaw,
+        source: source || "catalog-order-status",
+        extraMeta: appId ? { addi_application_id: appId } : undefined,
         clientIp,
         userAgent,
       });
