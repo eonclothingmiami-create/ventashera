@@ -4,6 +4,7 @@
  * ERP → Catálogo mayoristas + cola Smart Digest (catalog_push_events).
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { notifyHeraCatalogIndexNow } from "../_shared/indexnow.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -439,6 +440,14 @@ Deno.serve(async (req) => {
     pushEventType,
   });
 
+  let indexnow: Record<string, unknown> = {};
+  try {
+    const refForPing = String(nextRow.ref || existing?.ref || "").trim();
+    indexnow = await notifyHeraCatalogIndexNow(supabase, refForPing) as Record<string, unknown>;
+  } catch (e) {
+    log("indexnow_unhandled", { event_id: eventId, product_id: productId, error: String(e) });
+  }
+
   return json({
     ok: true,
     event_id: eventId,
@@ -447,5 +456,6 @@ Deno.serve(async (req) => {
     changedRelevant,
     pushEnqueued,
     pushEventType,
+    indexnow,
   });
 });

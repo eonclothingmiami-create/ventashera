@@ -27,7 +27,7 @@ const cors = {
 const EXPECTED_STATE = "hera-ebay-prod";
 const DEFAULT_RUNAME = "Hera_Swimwear-HeraSwim-HeraSw-bndiaam";
 const SCOPES =
-  "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account";
+  "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account https://api.ebay.com/oauth/api_scope/sell.fulfillment";
 
 function env(name: string, fallback = ""): string {
   return (Deno.env.get(name) ?? fallback).trim();
@@ -212,7 +212,7 @@ ${href ? `<p><a href="${href}">Autorizar Hera Swimwear en eBay US</a></p>` : "<p
   if (!refresh) {
     return json({
       ok: false,
-      error: "eBay no devolvió refresh_token. Revisa scopes sell.inventory / sell.account en el consentimiento.",
+      error: "eBay no devolvió refresh_token. Revisa scopes sell.inventory / sell.account / sell.fulfillment en el consentimiento.",
     }, 400);
   }
 

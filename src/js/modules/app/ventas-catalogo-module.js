@@ -47,6 +47,8 @@
     rappi: 'Rappi',
     instagram: 'Instagram',
     tiktok: 'TikTok',
+    faire: 'Faire',
+    ebay: 'eBay',
     otro: 'Otro',
   };
 
@@ -54,6 +56,8 @@
     ['catalogo_web', LABEL_ORIGEN.catalogo_web],
     ['woocommerce', LABEL_ORIGEN.woocommerce],
     ['mercadolibre', LABEL_ORIGEN.mercadolibre],
+    ['faire', LABEL_ORIGEN.faire],
+    ['ebay', LABEL_ORIGEN.ebay],
     ['meta_commerce', LABEL_ORIGEN.meta_commerce],
     ['google_merchant', LABEL_ORIGEN.google_merchant],
     ['pinterest', LABEL_ORIGEN.pinterest],
@@ -166,6 +170,39 @@
       rerender();
     } else {
       notify('warning', '🛒', 'WooCommerce', res.error || res.reason || 'Error al sincronizar', { duration: 7000 });
+    }
+  }
+
+  async function syncMarketplaceOrders(ctx) {
+    const { notify, renderVentasCatalogo: rerender } = ctx;
+    if (typeof global.requestMarketplaceOrdersSync !== 'function') {
+      notify('warning', '🏬', 'Marketplaces', 'Integración de pedidos no cargada.', { duration: 4000 });
+      return;
+    }
+    notify('info', '🏬', 'Sincronizando…', 'Importando ML, Faire y eBay', { duration: 2500 });
+    const res = await global.requestMarketplaceOrdersSync(30);
+    if (res.ok) {
+      const d = res.data || {};
+      const n = d.synced ?? 0;
+      const parts = [];
+      if (d.mercadolibre) {
+        parts.push('ML ' + (d.mercadolibre.synced ?? 0));
+        if (d.mercadolibre.ok === false && d.mercadolibre.hint) {
+          notify('warning', '🛒', 'Mercado Libre pedidos', d.mercadolibre.hint, { duration: 8000 });
+        }
+      }
+      if (d.faire) parts.push('Faire ' + (d.faire.synced ?? 0));
+      if (d.ebay) {
+        parts.push('eBay ' + (d.ebay.synced ?? 0));
+        if (d.ebay.ok === false && d.ebay.hint) {
+          notify('warning', '🏷️', 'eBay pedidos', d.ebay.hint, { duration: 8000 });
+        }
+      }
+      notify('success', '✅', 'Marketplaces', `${n} pedido(s) · ${parts.join(' · ')}`, { duration: 5000 });
+      if (typeof global.refreshCriticalSlice === 'function') await global.refreshCriticalSlice('ventas_catalogo');
+      rerender();
+    } else {
+      notify('warning', '🏬', 'Marketplaces', res.error || res.reason || 'Error al sincronizar', { duration: 7000 });
     }
   }
 
@@ -471,6 +508,7 @@
         </select>
       </div>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-woo" style="margin-bottom:2px" title="Importar pedidos WooCommerce">🛒 Sync WooCommerce</button>
+      <button type="button" class="btn btn-secondary" id="vcatalog-btn-marketplaces" style="margin-bottom:2px" title="Importar pedidos Mercado Libre, Faire y eBay">🏬 Sync ML / Faire / eBay</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-expire" style="margin-bottom:2px" title="Pendientes &gt;7 días sin pasarela → checkout abandonado">⏳ Expirar pendientes</button>
       <button type="button" class="btn btn-secondary" id="vcatalog-btn-reg" style="margin-bottom:2px">＋ Registrar venta externa</button>
       <span style="font-size:12px;color:var(--text2)">${rows.length} pedido(s)</span>
@@ -478,7 +516,7 @@
     <div class="card">
       <div class="card-title">Ventas por canal (catálogo + integraciones)</div>
       <p style="font-size:12px;color:var(--text2);margin:0 0 14px;line-height:1.45">
-        Listado unificado: catálogo web (Wompi/Addi), <b>WooCommerce</b>, marketplaces y registros manuales.
+        Listado unificado: catálogo web (Wompi/Addi), <b>WooCommerce</b>, <b>Mercado Libre</b>, <b>Faire</b>, <b>eBay</b> y registros manuales.
         Estados: pendiente → pago exitoso / fallido / checkout abandonado / cancelada.
       </p>
       ${renderAbandonedCartsPanel(state, fmt)}
@@ -511,6 +549,8 @@
     }
     const btnWoo = document.getElementById('vcatalog-btn-woo');
     if (btnWoo) btnWoo.onclick = () => syncWooCommerceOrders(ctx);
+    const btnMk = document.getElementById('vcatalog-btn-marketplaces');
+    if (btnMk) btnMk.onclick = () => syncMarketplaceOrders(ctx);
     const btnExpire = document.getElementById('vcatalog-btn-expire');
     if (btnExpire) btnExpire.onclick = () => expireStaleOrders(ctx);
 

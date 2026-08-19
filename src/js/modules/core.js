@@ -4148,6 +4148,25 @@ async function deleteArticulo(id){
       if (data && data.ok === false) throw new Error(data.message || 'No se pudo eliminar el artículo');
       action = data?.action || 'deleted';
       await unpublishArticuloFromChannels(art);
+      const archiveRef = String(art.ref || art.codigo || '').trim();
+      if (archiveRef && typeof window.mayoristasPublishCatalogProduct === 'function') {
+        window.mayoristasPublishCatalogProduct({
+          product: {
+            id,
+            ref: archiveRef,
+            name: art.nombre || art.name,
+            description: art.descripcion || art.description || null,
+            price: art.price ?? art.precioVenta,
+            stock: art.stock,
+            seccion: art.seccion || null,
+            categoria: art.categoria || art.cat || null,
+            visible: false,
+            active: false,
+          },
+          images: Array.isArray(art.images) ? art.images : [],
+          notifyHints: { visible_changed: true },
+        }).catch((e) => console.warn('[indexnow archive]', e));
+      }
     }
 
     // Sale del catálogo/POS igual que un borrado; si fue archivado, el historial queda en DB.
@@ -5104,7 +5123,7 @@ async function saveArticulo(existingId, options) {
 
         let pushNote = '';
         try {
-          if (catalogVisibleBool && typeof window.mayoristasPublishCatalogProduct === 'function') {
+          if (typeof window.mayoristasPublishCatalogProduct === 'function') {
             const imagesForPublish = (window._galeriaModificada || !existingId)
               ? _tempGaleria
               : (artLocal.images || _tempGaleria);

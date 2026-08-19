@@ -431,6 +431,38 @@ async function handleAccountSetup(token: string) {
   return json({ ok: true, profile: res.data });
 }
 
+async function handleInspectProduct(token: string, faireProductId: string) {
+  const res = await faireRequest(token, "GET", `/products/${encodeURIComponent(faireProductId)}`);
+  if (!res.ok) {
+    return json({ ok: false, error: "faire_get_failed", status: res.status, detail: res.data }, 502);
+  }
+  const product = res.data as {
+    id?: string;
+    name?: string;
+    variants?: Array<{
+      sku?: string;
+      wholesale_price_cents?: number;
+      retail_price_cents?: number;
+      prices?: Array<{
+        wholesale_price?: { amount_minor?: number; currency?: string };
+        retail_price?: { amount_minor?: number; currency?: string };
+      }>;
+    }>;
+  };
+  const v = product.variants?.[0];
+  return json({
+    ok: true,
+    faireProductId: product.id,
+    name: product.name,
+    currency: v?.prices?.[0]?.wholesale_price?.currency
+      || v?.prices?.[0]?.retail_price?.currency
+      || "USD",
+    wholesaleUsd: (v?.prices?.[0]?.wholesale_price?.amount_minor || v?.wholesale_price_cents || 0) / 100,
+    retailUsd: (v?.prices?.[0]?.retail_price?.amount_minor || v?.retail_price_cents || 0) / 100,
+    sampleVariant: v || null,
+  });
+}
+
 async function handlePublish(
   supabase: SupabaseClient,
   token: string,
@@ -778,6 +810,18 @@ Deno.serve(async (req) => {
     switch (action) {
       case "account_setup":
         return await handleAccountSetup(token);
+      case "inspect":
+        if (!productId) return json({ ok: false, error: "product_id_required" }, 400);
+        {
+          const { data: mapRow } = await supabase
+            .from("faire_product_map")
+            .select("faire_product_id")
+            .eq("product_id", productId)
+            .maybeSingle();
+          const fid = String(mapRow?.faire_product_id || "").trim();
+          if (!fid) return json({ ok: false, error: "not_mapped" }, 404);
+          return await handleInspectProduct(token, fid);
+        }
       case "publish":
         if (!productId) return json({ ok: false, error: "product_id_required" }, 400);
         return await handlePublish(supabase, token, productId, cfg);
