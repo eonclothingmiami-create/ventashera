@@ -486,70 +486,35 @@ function isListedFaire(art) {
 }
 
 /**
- * Al abrir el maquetador: desmarca canales donde el producto ya tiene ID externo y muestra aviso breve.
+ * Al abrir el maquetador: desmarca canales (sin textos informativos).
+ * Si el producto ya tiene listing, el sync post-save actualiza el existente.
  */
 function applyIntegrationChannelListedState(art) {
-  const ebayWholesaleHint =
-    'eBay publica solo lotes mayoristas x12. Si ya está listado, actualiza al guardar; si no, entra en cola hasta que haya cupo.';
-  const directSyncHint = 'Se sincroniza automáticamente al guardar (sin marcar checkbox).';
-  const rows = [
-    {
-      chk: 'art-sync-mercadolibre',
-      hint: 'art-sync-mercadolibre-hint',
-      listed: isListedMercadoLibre(art),
-      label: 'Publicado en ML — las ediciones actualizan el listing existente (sin duplicar).',
-      autoHint: directSyncHint,
-    },
-    {
-      chk: 'art-sync-meta-commerce',
-      hint: 'art-sync-meta-commerce-hint',
-      listed: isListedMetaCommerce(art),
-      label: 'Ya sincronizado en Meta — desmarcado para evitar duplicados.',
-    },
-    {
-      chk: 'art-sync-google-merchant',
-      hint: 'art-sync-google-merchant-hint',
-      listed: isListedGoogleMerchant(art),
-      label: 'Ya en Google Merchant — desmarcado para evitar duplicados.',
-    },
-    {
-      chk: 'art-sync-pinterest-catalog',
-      hint: 'art-sync-pinterest-catalog-hint',
-      listed: isListedPinterestCatalog(art),
-      label: 'Ya en Pinterest — desmarcado para evitar duplicados.',
-    },
-    {
-      chk: 'art-sync-ebay',
-      hint: 'art-sync-ebay-hint',
-      listed: false,
-      label: 'eBay mayorista — publica lotes x12; no se listan unidades individuales.',
-      autoHint: ebayWholesaleHint,
-    },
-    {
-      chk: 'art-sync-faire',
-      hint: 'art-sync-faire-hint',
-      listed: isListedFaire(art),
-      label: 'Publicado en Faire — las ediciones actualizan el producto existente.',
-      autoHint: directSyncHint,
-    },
+  const chks = [
+    'art-sync-mercadolibre',
+    'art-sync-meta-commerce',
+    'art-sync-google-merchant',
+    'art-sync-pinterest-catalog',
+    'art-sync-ebay',
+    'art-sync-faire',
   ];
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const el = document.getElementById(r.chk);
-    const hi = document.getElementById(r.hint);
-    if (!el) continue;
-    if (r.listed) {
-      el.checked = false;
-      if (hi) {
-        hi.textContent = r.label;
-        hi.style.display = 'block';
-      }
-    } else {
-      if (hi) {
-        hi.textContent = r.autoHint || '';
-        hi.style.display = r.autoHint ? 'block' : 'none';
-      }
-      el.checked = false;
+  const hints = [
+    'art-sync-mercadolibre-hint',
+    'art-sync-meta-commerce-hint',
+    'art-sync-google-merchant-hint',
+    'art-sync-pinterest-catalog-hint',
+    'art-sync-ebay-hint',
+    'art-sync-faire-hint',
+  ];
+  for (let i = 0; i < chks.length; i++) {
+    const el = document.getElementById(chks[i]);
+    if (el) el.checked = false;
+  }
+  for (let j = 0; j < hints.length; j++) {
+    const hi = document.getElementById(hints[j]);
+    if (hi) {
+      hi.textContent = '';
+      hi.style.display = 'none';
     }
   }
 }
@@ -4502,49 +4467,49 @@ ${(window.AppRepository?.SUPABASE_URL || (window.MERCADOLIBRE_SYNC_ENDPOINT || '
             <div class="form-group" data-integration-channel="mercadolibre" style="margin-top: 8px; padding: 10px; background: rgba(255,230,120,0.12); border-radius: 8px; border: 1px solid rgba(255,200,80,0.35);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-mercadolibre" style="width: 18px; height: 18px;">
-    🛒 Mercado Libre (sync automático al guardar)
+    🛒 Mercado Libre
   </label>
-  <div id="art-sync-mercadolibre-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+  <div id="art-sync-mercadolibre-hint" style="display:none;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.META_COMMERCE_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="meta-commerce" style="margin-top: 8px; padding: 10px; background: rgba(120,160,255,0.1); border-radius: 8px; border: 1px solid rgba(100,140,255,0.35);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-meta-commerce" style="width: 18px; height: 18px;">
-    📱 Meta (Facebook / Instagram) al guardar
+    📱 Meta
   </label>
-  <div id="art-sync-meta-commerce-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+  <div id="art-sync-meta-commerce-hint" style="display:none;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.GOOGLE_MERCHANT_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="google-merchant" style="margin-top: 8px; padding: 10px; background: rgba(255,255,255,0.06); border-radius: 8px; border: 1px solid rgba(66,133,244,0.45);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-google-merchant" style="width: 18px; height: 18px;">
-    🔍 Google Merchant al guardar
+    🔍 Google Merchant
   </label>
-  <div id="art-sync-google-merchant-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+  <div id="art-sync-google-merchant-hint" style="display:none;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.PINTEREST_CATALOG_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="pinterest-catalog" style="margin-top: 8px; padding: 10px; background: rgba(230,0,35,0.08); border-radius: 8px; border: 1px solid rgba(230,0,35,0.35);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-pinterest-catalog" style="width: 18px; height: 18px;">
-    📌 Pinterest (catálogo) al guardar
+    📌 Pinterest
   </label>
-  <div id="art-sync-pinterest-catalog-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+  <div id="art-sync-pinterest-catalog-hint" style="display:none;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.EBAY_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="ebay" style="margin-top: 8px; padding: 10px; background: rgba(230,80,0,0.1); border-radius: 8px; border: 1px solid rgba(230,80,0,0.4);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-ebay" style="width: 18px; height: 18px;">
-    🏷️ eBay US (cola automática — top 90 vistas)
+    🏷️ eBay
   </label>
-  <div id="art-sync-ebay-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+  <div id="art-sync-ebay-hint" style="display:none;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.FAIRE_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="faire" style="margin-top: 8px; padding: 10px; background: rgba(120,90,60,0.12); border-radius: 8px; border: 1px solid rgba(120,90,60,0.45);">
   <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text1); font-weight: bold;">
     <input type="checkbox" id="art-sync-faire" style="width: 18px; height: 18px;">
-    🏬 Faire wholesale MOQ 12 (sync automático al guardar)
+    🏬 Faire
   </label>
-  <div id="art-sync-faire-hint" style="display:none;font-size:11px;color:var(--accent);margin-top:6px;margin-left:28px;line-height:1.3;"></div>
+  <div id="art-sync-faire-hint" style="display:none;"></div>
 </div>` : ''}
 ${(window.AppRepository?.SUPABASE_URL || (window.DROPI_SYNC_ENDPOINT || '').trim()) ? `
             <div class="form-group" data-integration-channel="dropi" style="margin-top: 8px; padding: 10px; background: rgba(80,200,160,0.1); border-radius: 8px; border: 1px solid rgba(60,180,140,0.35);">
