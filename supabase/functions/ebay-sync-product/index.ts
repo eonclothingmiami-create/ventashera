@@ -21,6 +21,12 @@ import {
   EBAY_LOT_ORIGIN_LEAD,
   ensureColombianOriginEn,
 } from "../_shared/colombian_origin_copy.ts";
+import {
+  ensureEbayAccessToken,
+  ebayApiHost,
+  ebayReauthPath,
+  isEbayInvalidAccessTokenError,
+} from "../_shared/ebay_oauth.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -28,23 +34,19 @@ const cors = {
     "authorization, x-client-info, apikey, content-type, x-ebay-cron-secret",
 };
 
-const TOKEN_BUFFER_MS = 5 * 60 * 1000;
-const INVENTORY_SCOPE =
-  "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account";
-
 type Body = {
   productId?: string;
-  action?: "publish" | "deactivate" | "account_setup" | "monthly_sync" | "republish_all";
+  action?:
+    | "publish"
+    | "deactivate"
+    | "account_setup"
+    | "monthly_sync"
+    | "republish_all"
+    | "sync_colombia_copy";
   listingKind?: "retail" | "lot";
   cronSecret?: string;
   offset?: number;
-};
-
-type TokenRow = {
-  id: string;
-  access_token: string | null;
-  refresh_token: string | null;
-  expires_at: string | null;
+  limit?: number;
 };
 
 type ProductRow = {
@@ -105,11 +107,20 @@ function env(name: string, fallback = ""): string {
 }
 
 function apiBase(): string {
-  return env("EBAY_API_BASE", "https://api.ebay.com").replace(/\/$/, "");
+  return ebayApiHost();
 }
 
 function marketplaceId(): string {
   return env("EBAY_MARKETPLACE_ID", "EBAY_US");
+}
+
+/** Sesión OAuth por invocación: ante 401 Invalid access token → refresh + 1 retry. */
+let _oauthSb: SupabaseClient | null = null;
+let _oauthToken = "";
+
+function bindEbayOAuth(sb: SupabaseClient, token: string): void {
+  _oauthSb = sb;
+  _oauthToken = token;
 }
 
 function skuFromProduct(p: ProductRow): string {
@@ -170,26 +181,49 @@ async function ebayJson(
   path: string,
   body?: unknown,
 ): Promise<{ ok: boolean; status: number; data: unknown; text: string }> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/json",
-    "Content-Language": "en-US",
-    "Accept-Language": "en-US",
-  };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(apiBase() + path, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  let data: unknown = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
+  async function once(bearer: string) {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${bearer}`,
+      Accept: "application/json",
+      "Content-Language": "en-US",
+      "Accept-Language": "en-US",
+    };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await fetch(apiBase() + path, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let data: unknown = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    return { ok: res.ok, status: res.status, data, text };
   }
-  return { ok: res.ok, status: res.status, data, text };
+
+  let bearer = (token || _oauthToken).trim();
+  let result = await once(bearer);
+
+  // Solo reintentar OAuth de usuario si la petición usaba el user token (no application token).
+  const usedUserToken = Boolean(_oauthSb) &&
+    Boolean(_oauthToken) &&
+    bearer === _oauthToken.trim();
+  if (
+    usedUserToken &&
+    isEbayInvalidAccessTokenError(result.status, result.text || result.data)
+  ) {
+    const refreshed = await ensureEbayAccessToken(_oauthSb!, { forceRefresh: true });
+    if (refreshed.ok) {
+      _oauthToken = refreshed.accessToken;
+      bearer = refreshed.accessToken;
+      result = await once(bearer);
+    }
+  }
+
+  return result;
 }
 
 function ebayErrorMessage(data: unknown, fallback: string): string {
@@ -204,90 +238,12 @@ function ebayErrorMessage(data: unknown, fallback: string): string {
   return fallback.slice(0, 800);
 }
 
-async function exchangeRefresh(
-  refreshToken: string,
-  clientId: string,
-  clientSecret: string,
-): Promise<{ access_token?: string; refresh_token?: string; expires_in?: number } | null> {
-  const basic = btoa(`${clientId}:${clientSecret}`);
-  const oauthHost = apiBase().includes("sandbox")
-    ? "https://api.sandbox.ebay.com"
-    : "https://api.ebay.com";
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    scope: INVENTORY_SCOPE,
-  });
-  const res = await fetch(`${oauthHost}/identity/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basic}`,
-    },
-    body: body.toString(),
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
-}
-
-async function getValidAccessToken(sb: SupabaseClient): Promise<string> {
-  const clientId = env("EBAY_CLIENT_ID");
-  const clientSecret = env("EBAY_CLIENT_SECRET");
-  const envAccess = env("EBAY_ACCESS_TOKEN");
-  const envRefresh = env("EBAY_REFRESH_TOKEN");
-
-  let row: TokenRow | null = null;
-  try {
-    const { data, error } = await sb.from("ebay_oauth_tokens").select("*").eq("id", "default")
-      .maybeSingle();
-    if (!error && data) row = data as TokenRow;
-  } catch {
-    /* tabla ausente */
-  }
-
-  let access = (row?.access_token || envAccess).trim();
-  let refresh = (row?.refresh_token || envRefresh).trim();
-  const expMs = row?.expires_at ? new Date(row.expires_at).getTime() : 0;
-  if (access && expMs > Date.now() + TOKEN_BUFFER_MS) return access;
-
-  if (refresh && clientId && clientSecret) {
-    const exchanged = await exchangeRefresh(refresh, clientId, clientSecret);
-    if (exchanged?.access_token) {
-      access = exchanged.access_token;
-      if (exchanged.refresh_token) refresh = exchanged.refresh_token;
-      const expiresAt = new Date(
-        Date.now() + Math.max(60, Number(exchanged.expires_in) || 7200) * 1000,
-      ).toISOString();
-      try {
-        await sb.from("ebay_oauth_tokens").upsert({
-          id: "default",
-          access_token: access,
-          refresh_token: refresh,
-          expires_at: expiresAt,
-          updated_at: new Date().toISOString(),
-        });
-      } catch {
-        /* noop */
-      }
-      return access;
-    }
-  }
-  return access;
-}
-
 async function getApplicationToken(): Promise<string> {
   const clientId = env("EBAY_CLIENT_ID");
   const clientSecret = env("EBAY_CLIENT_SECRET");
   if (!clientId || !clientSecret) return "";
   const basic = btoa(`${clientId}:${clientSecret}`);
-  const oauthHost = apiBase().includes("sandbox")
-    ? "https://api.sandbox.ebay.com"
-    : "https://api.ebay.com";
-  const res = await fetch(`${oauthHost}/identity/v1/oauth2/token`, {
+  const res = await fetch(`${apiBase()}/identity/v1/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -314,24 +270,47 @@ async function defaultCategoryTreeId(taxToken: string): Promise<string> {
     : "";
 }
 
+/** Leaf categories eBay US — Women's Swimwear (fallback si Taxonomy no responde). */
+const EBAY_CAT_TWO_PIECE = "63867";
+const EBAY_CAT_ONE_PIECE = "63869";
+const EBAY_CAT_COVER_UP = "163022";
+const EBAY_CAT_SWIM_DEFAULT = EBAY_CAT_TWO_PIECE;
+
+function fallbackCategoryId(title: string): string {
+  if (/cover[\s-]?up|salida|pareo|kaftan|robe/i.test(title)) return EBAY_CAT_COVER_UP;
+  if (/one[\s-]?piece|entero|monokini/i.test(title)) return EBAY_CAT_ONE_PIECE;
+  return EBAY_CAT_SWIM_DEFAULT;
+}
+
 async function suggestCategoryId(userToken: string, title: string): Promise<{ categoryId: string; treeId: string }> {
   const fromEnv = env("EBAY_DEFAULT_CATEGORY_ID");
   const taxToken = (await getApplicationToken()) || userToken;
   const treeId = await defaultCategoryTreeId(taxToken);
   if (fromEnv) return { categoryId: fromEnv, treeId };
-  if (!treeId) return { categoryId: "", treeId: "" };
-  const q = encodeURIComponent(title.slice(0, 200));
-  const sug = await ebayJson(
-    taxToken,
-    "GET",
-    `/commerce/taxonomy/v1/category_tree/${treeId}/get_category_suggestions?q=${q}`,
-  );
-  const hits =
-    sug.data && typeof sug.data === "object"
-      ? (sug.data as { categorySuggestions?: Array<{ category?: { categoryId?: string } }> })
-        .categorySuggestions
-      : [];
-  return { categoryId: hits?.[0]?.category?.categoryId || "", treeId };
+
+  if (treeId) {
+    const q = encodeURIComponent(title.slice(0, 200));
+    const sug = await ebayJson(
+      taxToken,
+      "GET",
+      `/commerce/taxonomy/v1/category_tree/${treeId}/get_category_suggestions?q=${q}`,
+    );
+    const hits =
+      sug.data && typeof sug.data === "object"
+        ? (sug.data as { categorySuggestions?: Array<{ category?: { categoryId?: string } }> })
+          .categorySuggestions
+        : [];
+    const suggested = hits?.[0]?.category?.categoryId || "";
+    if (suggested) return { categoryId: suggested, treeId };
+    console.warn("[ebay] taxonomy suggestions empty", {
+      status: sug.status,
+      title: title.slice(0, 80),
+    });
+  } else {
+    console.warn("[ebay] taxonomy treeId empty; using swimwear fallback");
+  }
+
+  return { categoryId: fallbackCategoryId(title), treeId: treeId || "0" };
 }
 
 function pickFromValues(values: string[], preferred: string[]): string {
@@ -364,6 +343,19 @@ function defaultAspectFallback(aspectName: string, title: string, values: string
   }
   if (n.includes("department")) {
     return pickFromValues(values, ["Women", "Unisex Adult", "Women's"]) || "Women";
+  }
+  if (n === "style" || n.includes("style")) {
+    return pickFromValues(values, [
+      "Swimwear",
+      "Bikini",
+      "One-Piece",
+      "Cover-Up",
+      "Solid",
+      "Classic",
+    ]) || values[0] || "Swimwear";
+  }
+  if (n.includes("gemstone")) {
+    return pickFromValues(values, ["Does Not Apply", "None", "No Gemstone"]) || "Does Not Apply";
   }
   return "";
 }
@@ -419,12 +411,32 @@ async function requiredAspects(
         }>;
       }).aspects || []
       : [];
+
+  const countryAspectNames = [
+    "Country/Region of Manufacture",
+    "Country of Origin",
+    "Country of Manufacture",
+  ];
+
   for (const a of list) {
     const name = String(a.localizedAspectName || "").trim();
-    if (!name || !a.aspectConstraint?.aspectRequired || aspects[name]) continue;
+    if (!name || aspects[name]) continue;
+
     const values = (a.aspectValues || [])
       .map((v) => String(v.localizedValue || "").trim())
       .filter(Boolean);
+    const isCountry = countryAspectNames.some((n) => n.toLowerCase() === name.toLowerCase()) ||
+      /country|region of manufacture|origin/i.test(name);
+
+    // País: siempre Colombia cuando el aspecto existe (requerido u opcional).
+    if (isCountry) {
+      const colombia = pickFromValues(values, ["Colombia", "CO"]) || "Colombia";
+      aspects[name] = [colombia];
+      continue;
+    }
+
+    if (!a.aspectConstraint?.aspectRequired) continue;
+
     const secret = env("EBAY_ASPECT_" + name.toUpperCase().replace(/[^A-Z0-9]+/g, "_"));
     let picked = pickAspectValue(title, values, secret);
     if (!picked || picked === "Does Not Apply") {
@@ -1004,6 +1016,33 @@ async function publishListing(
         ? (pub.data as { listingId?: string }).listingId
         : "") || "",
     );
+  } else if (offerId && listingId) {
+    // Oferta ya publicada: re-publish para empujar descripción/aspectos (p.ej. origen Colombia).
+    const revise = await ebayJson(
+      token,
+      "POST",
+      `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}/publish`,
+    );
+    if (!revise.ok) {
+      const msg = ebayErrorMessage(revise.data, "eBay rechazó revise/publishOffer");
+      // No fallar del todo si el inventory+offer ya se actualizaron; reportar warning.
+      console.warn("[ebay] revise listing failed", { sku, offerId, msg: msg.slice(0, 200) });
+      if (derivedId) {
+        await persistDerived(sb, derivedId, {
+          ebay_offer_id: offerId,
+          ebay_listing_id: listingId,
+          ebay_sync_status: "published",
+          ebay_last_error: "revise_warn: " + msg.slice(0, 400),
+        });
+      }
+    } else {
+      const revisedId = String(
+        (revise.data && typeof revise.data === "object"
+          ? (revise.data as { listingId?: string }).listingId
+          : "") || "",
+      );
+      if (revisedId) listingId = revisedId;
+    }
   }
 
   if (derivedId) {
@@ -1362,6 +1401,270 @@ async function runRepublishAll(
   };
 }
 
+async function patchColombiaCopyOnListing(
+  sb: SupabaseClient,
+  token: string,
+  productId: string,
+  config: PublishConfig,
+): Promise<PublishResult> {
+  const lotSize = config.lot_size;
+  const { data: derived } = await sb
+    .from("ebay_derived_listings")
+    .select("id, sku, ebay_offer_id, ebay_listing_id")
+    .eq("product_id", productId)
+    .eq("listing_kind", "lot")
+    .eq("lot_size", lotSize)
+    .maybeSingle();
+  if (!derived?.ebay_listing_id || !derived?.sku) {
+    return { ok: true, skipped: true, reason: "sin listing publicado", listingKind: "lot" };
+  }
+
+  const { data: product, error: pErr } = await sb
+    .from("products")
+    .select("id, ref, name, description, price, stock, active")
+    .eq("id", productId)
+    .maybeSingle();
+  if (pErr || !product) return { ok: false, error: pErr?.message || "Producto no encontrado" };
+
+  const sku = String(derived.sku);
+  let offerId = String(derived.ebay_offer_id || "").trim();
+  let listingId = String(derived.ebay_listing_id || "").trim();
+
+  // Precio y cantidad actuales en eBay — no recalcular (evita selling limit al revisar).
+  let priceUsd = "";
+  let availableQuantity = 1;
+  let categoryId = env("EBAY_DEFAULT_CATEGORY_ID", "63867");
+  if (!offerId) {
+    const listed = await ebayJson(token, "GET", `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
+    const offers =
+      listed.data && typeof listed.data === "object"
+        ? (listed.data as {
+          offers?: Array<{
+            offerId?: string;
+            categoryId?: string;
+            availableQuantity?: number;
+            pricingSummary?: { price?: { value?: string } };
+            listing?: { listingId?: string };
+          }>;
+        }).offers
+        : [];
+    offerId = offers?.[0]?.offerId || "";
+    if (offers?.[0]?.categoryId) categoryId = String(offers[0].categoryId);
+    if (offers?.[0]?.pricingSummary?.price?.value) {
+      priceUsd = String(offers[0].pricingSummary.price.value);
+    }
+    if (offers?.[0]?.availableQuantity != null) {
+      availableQuantity = Math.max(1, Number(offers[0].availableQuantity) || 1);
+    }
+    if (!listingId) listingId = offers?.[0]?.listing?.listingId || listingId;
+  } else {
+    const cur = await ebayJson(token, "GET", `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`);
+    if (cur.ok && cur.data && typeof cur.data === "object") {
+      const o = cur.data as {
+        categoryId?: string;
+        availableQuantity?: number;
+        pricingSummary?: { price?: { value?: string } };
+        listing?: { listingId?: string };
+      };
+      if (o.categoryId) categoryId = String(o.categoryId);
+      if (o.pricingSummary?.price?.value) priceUsd = String(o.pricingSummary.price.value);
+      if (o.availableQuantity != null) {
+        availableQuantity = Math.max(1, Number(o.availableQuantity) || 1);
+      }
+      if (o.listing?.listingId) listingId = String(o.listing.listingId);
+    }
+  }
+  if (!offerId || !priceUsd) {
+    return { ok: false, error: "No se pudo leer offer/precio actual en eBay", sku, listingKind: "lot" };
+  }
+
+  const baseTitle = String(product.name || "Product");
+  const baseDescription = ensureColombianOriginEn(
+    stripHtml(String(product.description || product.name || "Product")),
+    3900,
+  );
+  const lotCopy = buildLotCopy(baseTitle, baseDescription, lotSize, priceUsd);
+  const title = lotCopy.title;
+  const description = lotCopy.description;
+
+  const taxToken = (await getApplicationToken()) || token;
+  const treeId = await defaultCategoryTreeId(taxToken);
+  const { sizeLabel, colorLabel, images } = await loadProductMedia(sb, productId);
+  const aspects = await requiredAspects(
+    taxToken,
+    treeId || "0",
+    categoryId,
+    title,
+    sizeLabel,
+    colorLabel,
+  );
+  // Fallbacks frecuentes que eBay exige en revise de categorías mis-asignadas.
+  if (!aspects.Style) aspects.Style = ["Swimwear"];
+  if (!aspects["Gemstone Type"]) aspects["Gemstone Type"] = ["Does Not Apply"];
+
+  const ebayImages = await toEbayJpegUrls(sb, productId, images);
+  const inventoryItem = {
+    availability: {
+      shipToLocationAvailability: {
+        quantity: availableQuantity,
+      },
+    },
+    condition: "NEW" as const,
+    product: {
+      title,
+      description: description.slice(0, 4000) || title,
+      aspects,
+      ...(ebayImages.length ? { imageUrls: ebayImages } : {}),
+    },
+  };
+
+  const putItem = await ebayJson(
+    token,
+    "PUT",
+    `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+    inventoryItem,
+  );
+  if (!putItem.ok) {
+    const msg = ebayErrorMessage(putItem.data, "eBay rechazó inventory_item");
+    await persistDerived(sb, derived.id, { ebay_sync_status: "error", ebay_last_error: msg });
+    return { ok: false, error: msg, sku, listingKind: "lot" };
+  }
+
+  const fulfillment = env("EBAY_FULFILLMENT_POLICY_ID");
+  const payment = env("EBAY_PAYMENT_POLICY_ID");
+  const ret = env("EBAY_RETURN_POLICY_ID");
+  const location = env("EBAY_MERCHANT_LOCATION_KEY");
+  const listingPolicies: Record<string, unknown> = {
+    fulfillmentPolicyId: fulfillment,
+    paymentPolicyId: payment,
+    returnPolicyId: ret,
+  };
+  if (config.best_offer_enabled) {
+    listingPolicies.bestOfferTerms = { bestOfferEnabled: true };
+  }
+
+  const offerPayload = {
+    sku,
+    marketplaceId: marketplaceId(),
+    format: "FIXED_PRICE",
+    listingDuration: "GTC",
+    availableQuantity,
+    categoryId,
+    listingDescription: description.slice(0, 4000) || title,
+    listingPolicies,
+    pricingSummary: { price: { value: priceUsd, currency: "USD" } },
+    merchantLocationKey: location,
+  };
+
+  const upd = await ebayJson(
+    token,
+    "PUT",
+    `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`,
+    offerPayload,
+  );
+  if (!upd.ok) {
+    const msg = ebayErrorMessage(upd.data, "eBay rechazó updateOffer");
+    await persistDerived(sb, derived.id, {
+      ebay_offer_id: offerId,
+      ebay_sync_status: "error",
+      ebay_last_error: msg,
+    });
+    return { ok: false, error: msg, sku, offerId, listingKind: "lot" };
+  }
+
+  const revise = await ebayJson(
+    token,
+    "POST",
+    `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}/publish`,
+  );
+  if (!revise.ok) {
+    const msg = ebayErrorMessage(revise.data, "eBay rechazó revise listing");
+    await persistDerived(sb, derived.id, {
+      ebay_offer_id: offerId,
+      ebay_listing_id: listingId,
+      ebay_sync_status: "error",
+      ebay_last_error: msg,
+    });
+    return { ok: false, error: msg, sku, offerId, listingId, listingKind: "lot" };
+  }
+  const revisedId = String(
+    (revise.data && typeof revise.data === "object"
+      ? (revise.data as { listingId?: string }).listingId
+      : "") || listingId,
+  );
+
+  await persistDerived(sb, derived.id, {
+    ebay_offer_id: offerId,
+    ebay_listing_id: revisedId,
+    ebay_sync_status: "published",
+    ebay_last_error: null,
+  });
+
+  return {
+    ok: true,
+    sku,
+    offerId,
+    listingId: revisedId,
+    listingKind: "lot",
+    priceUsd,
+    categoryId,
+  };
+}
+
+async function runSyncColombiaCopy(
+  sb: SupabaseClient,
+  token: string,
+  config: PublishConfig,
+  offset: number,
+  limit: number,
+): Promise<Record<string, unknown>> {
+  const batch = Math.min(20, Math.max(1, limit || 8));
+  const { data: rows, error } = await sb
+    .from("ebay_derived_listings")
+    .select("product_id, ebay_listing_id, sku")
+    .eq("listing_kind", "lot")
+    .not("ebay_listing_id", "is", null)
+    .neq("ebay_listing_id", "")
+    .order("product_id", { ascending: true })
+    .range(offset, offset + batch - 1);
+
+  if (error) return { ok: false, error: error.message };
+  const list = rows || [];
+  const results: Array<Record<string, unknown>> = [];
+  let updated = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const row of list) {
+    const productId = String(row.product_id || "");
+    const res = await patchColombiaCopyOnListing(sb, token, productId, config);
+    if (res.ok && !res.skipped) updated += 1;
+    else if (res.skipped) skipped += 1;
+    else errors += 1;
+    results.push({
+      productId,
+      listingId: row.ebay_listing_id,
+      sku: row.sku,
+      ...res,
+    });
+    await sleep(350);
+  }
+
+  const nextOffset = offset + list.length;
+  return {
+    ok: true,
+    action: "sync_colombia_copy",
+    offset,
+    processed: list.length,
+    nextOffset,
+    done: list.length < batch,
+    updated,
+    skipped,
+    errors,
+    results,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "POST required" }, 405);
@@ -1382,6 +1685,8 @@ Deno.serve(async (req) => {
     ? "monthly_sync"
     : body.action === "republish_all"
     ? "republish_all"
+    : body.action === "sync_colombia_copy"
+    ? "sync_colombia_copy"
     : "publish";
   const listingKind: ListingKind = body.listingKind === "retail" ? "retail" : "lot";
 
@@ -1393,12 +1698,26 @@ Deno.serve(async (req) => {
   const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const config = await loadPublishConfig(sb);
 
-  if (action === "account_setup") {
-    const token = await getValidAccessToken(sb);
-    if (!token) {
-      return json({ ok: false, error: "Sin access token. Completa OAuth (refresh token en ebay_oauth_tokens)." }, 401);
+  async function requireToken(): Promise<string | Response> {
+    const result = await ensureEbayAccessToken(sb);
+    if (!result.ok) {
+      return json({
+        ok: false,
+        needs_reauth: result.needsReauth,
+        reauth_required: result.needsReauth,
+        event: result.event,
+        error: result.error,
+        authorize_url: ebayReauthPath(),
+      }, 401);
     }
-    const setup = await runAccountSetup(token);
+    bindEbayOAuth(sb, result.accessToken);
+    return result.accessToken;
+  }
+
+  if (action === "account_setup") {
+    const tokenOrRes = await requireToken();
+    if (tokenOrRes instanceof Response) return tokenOrRes;
+    const setup = await runAccountSetup(tokenOrRes);
     return json(setup, setup.ok ? 200 : 400);
   }
 
@@ -1413,7 +1732,9 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: true, reason: "auto_sync_enabled=false" });
     }
 
-    const token = await getValidAccessToken(sb);
+    const tokenOrRes = await requireToken();
+    if (tokenOrRes instanceof Response) return tokenOrRes;
+    const token = tokenOrRes;
     const fulfillment = env("EBAY_FULFILLMENT_POLICY_ID");
     const payment = env("EBAY_PAYMENT_POLICY_ID");
     const ret = env("EBAY_RETURN_POLICY_ID");
@@ -1449,15 +1770,17 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "cronSecret inválido" }, 403);
     }
 
-    const token = await getValidAccessToken(sb);
+    const tokenOrRes = await requireToken();
+    if (tokenOrRes instanceof Response) return tokenOrRes;
+    const token = tokenOrRes;
     const fulfillment = env("EBAY_FULFILLMENT_POLICY_ID");
     const payment = env("EBAY_PAYMENT_POLICY_ID");
     const ret = env("EBAY_RETURN_POLICY_ID");
     const location = env("EBAY_MERCHANT_LOCATION_KEY");
-    if (!token || !fulfillment || !payment || !ret || !location) {
+    if (!fulfillment || !payment || !ret || !location) {
       return json({
         ok: false,
-        error: "Faltan token OAuth o políticas eBay para republish_all",
+        error: "Faltan políticas eBay para republish_all",
       }, 400);
     }
 
@@ -1466,16 +1789,27 @@ Deno.serve(async (req) => {
     return json(summary);
   }
 
+  if (action === "sync_colombia_copy") {
+    const tokenOrRes = await requireToken();
+    if (tokenOrRes instanceof Response) return tokenOrRes;
+    const offset = Math.max(0, Number(body.offset || 0) || 0);
+    const limit = Math.max(1, Number(body.limit || 8) || 8);
+    const summary = await runSyncColombiaCopy(sb, tokenOrRes, config, offset, limit);
+    return json(summary, summary.ok === false ? 400 : 200);
+  }
+
   if (!productId) return json({ ok: false, error: "productId requerido" }, 400);
 
-  const token = await getValidAccessToken(sb);
+  const tokenOrRes = await requireToken();
+  if (tokenOrRes instanceof Response) return tokenOrRes;
+  const token = tokenOrRes;
   const fulfillment = env("EBAY_FULFILLMENT_POLICY_ID");
   const payment = env("EBAY_PAYMENT_POLICY_ID");
   const ret = env("EBAY_RETURN_POLICY_ID");
   const location = env("EBAY_MERCHANT_LOCATION_KEY");
   const missingPolicies = !fulfillment || !payment || !ret || !location;
 
-  if (!token || missingPolicies) {
+  if (missingPolicies) {
     const skuHint = productId ? productId.slice(0, 8) : "";
     return json({
       ok: true,
@@ -1483,9 +1817,8 @@ Deno.serve(async (req) => {
       productId,
       sku: skuHint,
       marketplaceId: marketplaceId(),
-      message: !token
-        ? "Configura EBAY_CLIENT_ID, EBAY_CLIENT_SECRET y EBAY_REFRESH_TOKEN (OAuth Authorization Code; scope sell.inventory)."
-        : "Faltan políticas eBay US: EBAY_FULFILLMENT_POLICY_ID, EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID, EBAY_MERCHANT_LOCATION_KEY.",
+      message:
+        "Faltan políticas eBay US: EBAY_FULFILLMENT_POLICY_ID, EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID, EBAY_MERCHANT_LOCATION_KEY.",
     });
   }
 

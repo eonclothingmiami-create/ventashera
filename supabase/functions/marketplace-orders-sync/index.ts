@@ -13,6 +13,12 @@ import {
   usdToCop,
   upsertMarketplaceSale,
 } from "../_shared/marketplace_orders.ts";
+import {
+  ebayApiHost,
+  ebayReauthPath,
+  ensureEbayAccessToken,
+  isEbayInvalidAccessTokenError,
+} from "../_shared/ebay_oauth.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -275,76 +281,50 @@ async function syncMercadoLibre(sb: SupabaseClient, limit: number) {
   return { ok: true, synced: results.length, fetched: (search.results || []).length, results };
 }
 
-const EBAY_SCOPES_BASE =
-  "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account";
-const EBAY_SCOPES_FULFILLMENT =
-  `${EBAY_SCOPES_BASE} https://api.ebay.com/oauth/api_scope/sell.fulfillment`;
-
-async function refreshEbayUserToken(
-  sb: SupabaseClient,
-  refresh: string,
-  clientId: string,
-  clientSecret: string,
-  scope: string,
-): Promise<string> {
-  const basic = btoa(`${clientId}:${clientSecret}`);
-  const res = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basic}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refresh,
-      scope,
-    }),
-  });
-  const j = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number };
-  if (!j.access_token) return "";
-  await sb.from("ebay_oauth_tokens").upsert({
-    id: "default",
-    access_token: j.access_token,
-    refresh_token: j.refresh_token || refresh,
-    expires_at: new Date(Date.now() + Math.max(60, Number(j.expires_in) || 7200) * 1000).toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-  return j.access_token;
-}
-
-async function ebayUserToken(sb: SupabaseClient): Promise<{ token: string; fulfillment: boolean }> {
-  const { data } = await sb.from("ebay_oauth_tokens").select("access_token, refresh_token, expires_at").eq("id", "default").maybeSingle();
-  const refresh = String(data?.refresh_token || env("EBAY_REFRESH_TOKEN") || "").trim();
-  const clientId = env("EBAY_CLIENT_ID");
-  const clientSecret = env("EBAY_CLIENT_SECRET");
-  if (refresh && clientId && clientSecret) {
-    const withFulfillment = await refreshEbayUserToken(sb, refresh, clientId, clientSecret, EBAY_SCOPES_FULFILLMENT);
-    if (withFulfillment) return { token: withFulfillment, fulfillment: true };
-    const base = await refreshEbayUserToken(sb, refresh, clientId, clientSecret, EBAY_SCOPES_BASE);
-    if (base) return { token: base, fulfillment: false };
-  }
-  const exp = data?.expires_at ? new Date(data.expires_at).getTime() : 0;
-  if (data?.access_token && exp > Date.now() + 60_000) {
-    return { token: String(data.access_token), fulfillment: false };
-  }
-  return { token: String(env("EBAY_ACCESS_TOKEN") || ""), fulfillment: false };
-}
-
 async function syncEbay(sb: SupabaseClient, limit: number) {
-  const auth = await ebayUserToken(sb);
-  if (!auth.token) return { ok: false, error: "missing_ebay_token", synced: 0 };
+  const auth = await ensureEbayAccessToken(sb);
+  if (!auth.ok) {
+    return {
+      ok: false,
+      error: auth.needsReauth ? "ebay_reauth_required" : "missing_ebay_token",
+      needs_reauth: auth.needsReauth,
+      event: auth.event,
+      detail: auth.error,
+      hint: `Reautoriza eBay: ${ebayReauthPath()}`,
+      synced: 0,
+    };
+  }
 
-  const res = await fetch(`https://api.ebay.com/sell/fulfillment/v1/order?limit=${Math.min(limit, 50)}`, {
-    headers: { Authorization: `Bearer ${auth.token}`, Accept: "application/json" },
-  });
-  const data = await res.json().catch(() => ({})) as { orders?: Array<Record<string, unknown>>; errors?: unknown };
+  let token = auth.accessToken;
+  const ordersUrl =
+    `${ebayApiHost()}/sell/fulfillment/v1/order?limit=${Math.min(limit, 50)}`;
+
+  async function fetchOrders(bearer: string) {
+    const res = await fetch(ordersUrl, {
+      headers: { Authorization: `Bearer ${bearer}`, Accept: "application/json" },
+    });
+    const data = await res.json().catch(() => ({})) as {
+      orders?: Array<Record<string, unknown>>;
+      errors?: unknown;
+    };
+    return { res, data };
+  }
+
+  let { res, data } = await fetchOrders(token);
+  if (isEbayInvalidAccessTokenError(res.status, data)) {
+    const refreshed = await ensureEbayAccessToken(sb, { forceRefresh: true });
+    if (refreshed.ok) {
+      token = refreshed.accessToken;
+      ({ res, data } = await fetchOrders(token));
+    }
+  }
+
   if (!res.ok) {
     return {
       ok: false,
       error: "ebay_orders_failed",
       status: res.status,
-      hint: "Reautoriza eBay con scope sell.fulfillment: abre /functions/v1/ebay-oauth-exchange?action=authorize",
-      fulfillment_scope: auth.fulfillment,
+      hint: `Reautoriza eBay con scope sell.fulfillment: ${ebayReauthPath()}`,
       detail: data,
       synced: 0,
     };
