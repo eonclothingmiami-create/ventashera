@@ -3740,8 +3740,8 @@ async function convertirVentaCatalogoAPos(catalogRowId) {
     notify('warning', '📦', 'Ya convertido', 'Este pedido ya tiene venta POS vinculada.', { duration: 5000 });
     return;
   }
-  if (r.estadoPago !== 'pago_exitoso') {
-    notify('warning', '📦', 'Estado', 'Solo se puede convertir un pedido con pago exitoso.', { duration: 5000 });
+  if (r.estadoPago !== 'pago_exitoso' && r.estadoPago !== 'despachado') {
+    notify('warning', '📦', 'Estado', 'Solo se puede convertir un pedido con pago exitoso o despachado.', { duration: 5000 });
     return;
   }
   const items = Array.isArray(r.items) ? r.items : [];

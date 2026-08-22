@@ -3,6 +3,7 @@
 export type EstadoPago =
   | "pendiente"
   | "pago_exitoso"
+  | "despachado"
   | "pago_fallido"
   | "checkout_abandonado"
   | "expirado"

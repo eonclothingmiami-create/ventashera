@@ -8,12 +8,25 @@ import {
   fetchAddiApplicationById,
   fetchAddiApplicationByOrderReference,
 } from "./addi_client.ts";
+import {
+  getSistecreditoTransaction,
+  mapSistecreditoStatus,
+  sistecreditoConfigured,
+  sistecreditoTxStatus,
+} from "./sistecredito_client.ts";
 import { sendTikTokPurchaseForOrder } from "./tiktok_events_api.ts";
 import { sendPinterestCheckoutForOrder } from "./pinterest_events_api.ts";
 
 export type CatalogOrderRow = Record<string, unknown>;
 
-const ADS_PURCHASE_SOURCES = new Set(["wompi_return", "addi_return", "addi_webhook", "wompi_webhook"]);
+const ADS_PURCHASE_SOURCES = new Set([
+  "wompi_return",
+  "addi_return",
+  "addi_webhook",
+  "wompi_webhook",
+  "sistecredito_webhook",
+  "sistecredito_return",
+]);
 
 export async function patchCatalogOrder(
   sb: SupabaseClient,
@@ -28,10 +41,18 @@ export async function patchCatalogOrder(
     userAgent?: string;
   },
 ): Promise<Record<string, unknown>> {
+  if (row.estado_pago === "despachado" && nuevoEstado !== "despachado" && nuevoEstado !== "cancelada") {
+    return {
+      skipped: true,
+      reason: "already_dispatched",
+      estado_pago: row.estado_pago,
+    };
+  }
   if (
     row.estado_pago === "pago_exitoso" &&
     nuevoEstado !== "pago_exitoso" &&
-    nuevoEstado !== "cancelada"
+    nuevoEstado !== "cancelada" &&
+    nuevoEstado !== "despachado"
   ) {
     return {
       skipped: true,
@@ -61,8 +82,15 @@ export async function patchCatalogOrder(
     },
   };
 
-  if (nuevoEstado === "pago_exitoso") {
+  if (nuevoEstado === "pago_exitoso" || nuevoEstado === "despachado") {
     patch.pagado_at = row.pagado_at || now;
+  }
+  if (nuevoEstado === "despachado") {
+    patch.tracking_meta = {
+      ...(patch.tracking_meta as Record<string, unknown>),
+      despacho_revisado_at: prevMeta.despacho_revisado_at || now,
+      pendiente_revisar_despacho: false,
+    };
   }
   if (nuevoEstado === "cancelada" || nuevoEstado === "pago_fallido") {
     patch.pagado_at = null;
@@ -204,6 +232,53 @@ export async function reconcileCatalogOrderRow(
     return { ok: true, gateway: "addi", addi: app, ...result };
   }
 
+  if (canal === "sistecredito" || canal.includes("siste")) {
+    if (!sistecreditoConfigured()) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: "sistecredito_not_configured",
+        reference,
+      };
+    }
+    const txId = proveedorRef;
+    if (!txId) {
+      return { ok: false, skipped: true, reason: "sistecredito_missing_tx_id", reference };
+    }
+    const tx = await getSistecreditoTransaction(txId).catch(() => null);
+    if (!tx) {
+      return { ok: false, skipped: true, reason: "sistecredito_not_found", reference };
+    }
+    const statusRaw = sistecreditoTxStatus(tx);
+    const mapped = mapSistecreditoStatus(statusRaw);
+    const nuevoEstado = mapGatewayStatus(mapped);
+    if (!nuevoEstado) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: "sistecredito_status_pending_or_unknown",
+        sistecredito_status: statusRaw,
+        reference,
+      };
+    }
+    const result = await patchCatalogOrder(sb, row, nuevoEstado, {
+      proveedorRef: String(tx._id || txId),
+      paymentRaw: statusRaw || mapped,
+      source: opts?.source === "sistecredito_return"
+        ? "sistecredito_return"
+        : "sistecredito_webhook",
+      extraMeta: {
+        sistecredito_reconciled_at: new Date().toISOString(),
+        sistecredito_transaction_id: tx._id || txId,
+        sistecredito_status: statusRaw || null,
+        reconcile_source: source,
+      },
+      clientIp: opts?.clientIp,
+      userAgent: opts?.userAgent,
+    });
+    return { ok: true, gateway: "sistecredito", sistecredito: { id: tx._id || txId, status: statusRaw }, ...result };
+  }
+
   return { ok: false, skipped: true, reason: "unsupported_canal", canal };
 }
 
@@ -227,7 +302,14 @@ export async function reconcilePendingCatalogPayments(
 
   const pending = (rows || []).filter((r) => {
     const c = String(r.canal_pago || "").toLowerCase();
-    return c === "wompi" || c.includes("wompi") || c === "addi" || c.includes("addi");
+    return (
+      c === "wompi" ||
+      c.includes("wompi") ||
+      c === "addi" ||
+      c.includes("addi") ||
+      c === "sistecredito" ||
+      c.includes("siste")
+    );
   }).slice(0, limit);
 
   const results: Array<Record<string, unknown>> = [];
@@ -275,6 +357,7 @@ export function resolveEstadoFromBody(body: Record<string, unknown>): EstadoPago
   const allowed = [
     "pendiente",
     "pago_exitoso",
+    "despachado",
     "pago_fallido",
     "checkout_abandonado",
     "expirado",

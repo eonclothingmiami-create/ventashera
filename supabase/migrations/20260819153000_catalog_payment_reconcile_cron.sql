@@ -40,7 +40,7 @@ end;
 $$;
 
 comment on function public.channel_trigger_catalog_payment_reconcile() is
-  'Reconcilia pedidos catálogo pendientes (Wompi/Addi) vía catalog-order-status.';
+  'Reconcilia pedidos catálogo pendientes (Wompi/Addi/Sistecredito) vía catalog-order-status.';
 
 do $$
 declare

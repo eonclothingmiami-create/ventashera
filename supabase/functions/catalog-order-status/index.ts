@@ -3,6 +3,7 @@
  * POST actions:
  * - resolve_wompi_return — consulta Wompi por transaction_id o reference
  * - resolve_addi_return — callback catálogo o consulta API Addi
+ * - resolve_sistecredito_return — consulta Credinet por proveedor_ref / reference
  * - reconcile_pending_payments — repregunta pasarelas por pedidos pendientes
  * - expire_stale — marca pendientes > N horas como checkout_abandonado
  */
@@ -25,6 +26,7 @@ import {
   fetchWompiTransactionByReference,
 } from "../_shared/wompi_client.ts";
 import { addiConfigured } from "../_shared/addi_client.ts";
+import { sistecreditoConfigured } from "../_shared/sistecredito_client.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -314,8 +316,67 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (action === "resolve_sistecredito_return") {
+      if (!await catalogOrderClientAuthOk(req)) {
+        return json({ ok: false, error: "Unauthorized" }, 401);
+      }
+
+      const reference = String(body.reference || body.invoice || body.orderId || "").trim();
+      const txId = String(
+        body.transaction_id ?? body.transactionId ?? body._id ?? body.proveedor_ref ?? "",
+      ).trim();
+      if (!reference && !txId) {
+        return json({ ok: false, error: "reference or transaction_id required" }, 400);
+      }
+      if (!sistecreditoConfigured()) {
+        return json({ ok: false, error: "SISTECREDITO credentials not configured" }, 503);
+      }
+
+      try {
+        let row = null as Record<string, unknown> | null;
+        if (reference) {
+          const { data, error: fetchErr } = await sb.from("ventas_catalogo")
+            .select("*")
+            .eq("reference", reference)
+            .maybeSingle();
+          if (fetchErr) return json({ ok: false, error: fetchErr.message }, 500);
+          row = data;
+        }
+        if (!row && txId) {
+          const { data, error: fetchErr } = await sb.from("ventas_catalogo")
+            .select("*")
+            .eq("proveedor_ref", txId)
+            .maybeSingle();
+          if (fetchErr) return json({ ok: false, error: fetchErr.message }, 500);
+          row = data;
+        }
+        if (!row) {
+          return json({ ok: false, error: "Order not found", reference, transaction_id: txId }, 404);
+        }
+
+        if (txId && !row.proveedor_ref) {
+          row = { ...row, proveedor_ref: txId };
+        }
+
+        const result = await reconcileCatalogOrderRow(sb, row, {
+          source: "sistecredito_return",
+          clientIp,
+          userAgent,
+        });
+        return json(result);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return json({ ok: false, error: msg }, 500);
+      }
+    }
+
     const source = String(body.source || "").trim();
-    const clientReturnSources = new Set(["addi_return", "wompi_return", "wompi_webhook"]);
+    const clientReturnSources = new Set([
+      "addi_return",
+      "wompi_return",
+      "wompi_webhook",
+      "sistecredito_return",
+    ]);
     const authOk = clientReturnSources.has(source)
       ? await catalogOrderClientAuthOk(req)
       : await catalogOrderPrivilegedAuthOk(req);

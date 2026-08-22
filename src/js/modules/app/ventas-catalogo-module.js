@@ -1,4 +1,4 @@
-// Ventas por canales: catálogo web (Wompi/Addi) + registro y seguimiento de otras plataformas integradas.
+    // Ventas por canales: catálogo web (Wompi/Addi/Sistecredito) + registro y seguimiento de otras plataformas integradas.
 (function initVentasCatalogoModule(global) {
   function esc(s) {
     return String(s ?? '')
@@ -20,6 +20,7 @@
   const LABEL_ESTADO = {
     pendiente: 'Pendiente',
     pago_exitoso: 'Pago exitoso',
+    despachado: 'Despachado',
     pago_fallido: 'Pago fallido',
     checkout_abandonado: 'Checkout abandonado',
     expirado: 'Expirado',
@@ -29,11 +30,16 @@
   const ESTADO_OPTIONS = [
     ['pendiente', LABEL_ESTADO.pendiente],
     ['pago_exitoso', LABEL_ESTADO.pago_exitoso],
+    ['despachado', LABEL_ESTADO.despachado],
     ['pago_fallido', LABEL_ESTADO.pago_fallido],
     ['checkout_abandonado', LABEL_ESTADO.checkout_abandonado],
     ['expirado', LABEL_ESTADO.expirado],
     ['cancelada', LABEL_ESTADO.cancelada],
   ];
+
+  function pedidoPagado(est) {
+    return est === 'pago_exitoso' || est === 'despachado';
+  }
 
   /** Origen del pedido (columna origen_canal en BD). */
   const LABEL_ORIGEN = {
@@ -85,27 +91,44 @@
     return false;
   }
 
-  /** Pago exitoso en canal integrado y aún no se marcó el despacho como gestionado. */
+  function marcarFilaDespachada(r) {
+    const tm = r.trackingMeta && typeof r.trackingMeta === 'object' ? { ...r.trackingMeta } : {};
+    return {
+      ...r,
+      estadoPago: 'despachado',
+      pagadoAt: r.pagadoAt || new Date().toISOString(),
+      trackingMeta: {
+        ...tm,
+        despacho_revisado_at: tm.despacho_revisado_at || new Date().toISOString(),
+        pendiente_revisar_despacho: false,
+      },
+    };
+  }
+
+  /** Pago exitoso (o despachado) en canal integrado y aún no se marcó el envío. */
   function despachoUIFila(r) {
     const est = r.estadoPago || '';
     const tm = r.trackingMeta && typeof r.trackingMeta === 'object' ? r.trackingMeta : {};
+    if (est === 'despachado' || tm.despacho_revisado_at) {
+      return '<span class="badge badge-ok" style="font-size:9px" title="Pago recibido y pedido despachado">✓ Despachado</span>';
+    }
     if (est !== 'pago_exitoso') {
       return '<span style="font-size:10px;color:var(--text2)">—</span>';
     }
     if (!necesitaDespachoCanalIntegrado(r)) {
-      return '<span style="font-size:10px;color:var(--text2)" title="Catálogo web (Wompi/Addi): usa tu flujo habitual de envío.">—</span>';
-    }
-    if (tm.despacho_revisado_at) {
-      return '<span class="badge badge-ok" style="font-size:9px" title="Despacho revisado / gestionado">✓ Envío OK</span>';
+      return `<div style="display:flex;flex-direction:column;gap:4px;max-width:150px">
+      <span style="font-size:10px;color:var(--text2)" title="Catálogo web: marca Despachado cuando salga el envío.">Listo para envío</span>
+      <button type="button" class="btn btn-xs btn-secondary" data-vcat-despacho-ok="${r.id}" style="font-size:9px;padding:2px 6px;align-self:flex-start">Marcar despachado</button>
+    </div>`;
     }
     return `<div style="display:flex;flex-direction:column;gap:4px;max-width:150px">
       <span class="badge badge-warn" style="font-size:9px;white-space:normal;line-height:1.25;text-align:left" title="Prepara el envío; si vendiste por ML u otro canal, ábrelo para etiqueta y estado.">🚚 Revisar canal / envío</span>
-      <button type="button" class="btn btn-xs btn-secondary" data-vcat-despacho-ok="${r.id}" style="font-size:9px;padding:2px 6px;align-self:flex-start">Marcar envío OK</button>
+      <button type="button" class="btn btn-xs btn-secondary" data-vcat-despacho-ok="${r.id}" style="font-size:9px;padding:2px 6px;align-self:flex-start">Marcar despachado</button>
     </div>`;
   }
 
   function badgeClass(estado) {
-    if (estado === 'pago_exitoso') return 'badge-ok';
+    if (estado === 'pago_exitoso' || estado === 'despachado') return 'badge-ok';
     if (estado === 'cancelada' || estado === 'expirado') return 'badge-pend';
     if (estado === 'pago_fallido' || estado === 'checkout_abandonado') return 'badge-warn';
     return 'badge-warn';
@@ -394,10 +417,13 @@
         const origen = document.getElementById('vc-reg-origen')?.value || 'otro';
         const trackingMeta = {
           manualRegistro: true,
-          pendiente_revisar_despacho: true,
+          pendiente_revisar_despacho: est !== 'despachado',
           alerta_despacho:
-            'Registro manual: revisa la plataforma de venta (ML, etc.) para etiqueta y seguimiento, y prepara el envío con los datos del cliente.',
+            est === 'despachado'
+              ? 'Pedido registrado ya despachado.'
+              : 'Registro manual: revisa la plataforma de venta (ML, etc.) para etiqueta y seguimiento, y prepara el envío con los datos del cliente.',
         };
+        if (est === 'despachado') trackingMeta.despacho_revisado_at = new Date().toISOString();
         if (nota) trackingMeta.nota = nota;
 
         const nid = typeof nextId === 'function' ? nextId() : null;
@@ -428,7 +454,7 @@
           amountCop: monto,
           proveedorRef: null,
           posFacturaId: null,
-          pagadoAt: est === 'pago_exitoso' ? new Date().toISOString() : null,
+          pagadoAt: pedidoPagado(est) ? new Date().toISOString() : null,
           createdAt: new Date().toISOString(),
         };
 
@@ -502,7 +528,7 @@
         const lbl = LABEL_ESTADO[est] || est;
         const canal = r.canalPago ? String(r.canalPago).toUpperCase() : '—';
         const itemsArr = Array.isArray(r.items) ? r.items : [];
-        const canToPos = est === 'pago_exitoso' && !r.posFacturaId && itemsArr.length > 0;
+        const canToPos = pedidoPagado(est) && !r.posFacturaId && itemsArr.length > 0;
         const posExtra = r.posFacturaId
           ? `<span class="badge badge-ok" style="font-size:9px;vertical-align:middle" title="Ya generada venta POS">POS ✓</span>`
           : canToPos
@@ -567,7 +593,7 @@
       <div class="card-title">Ventas por canal (catálogo + integraciones)</div>
       <p style="font-size:12px;color:var(--text2);margin:0 0 14px;line-height:1.45">
         Listado unificado: catálogo web (Wompi/Addi), <b>WooCommerce</b>, <b>Mercado Libre</b>, <b>Faire</b>, <b>eBay</b> y registros manuales.
-        Estados: pendiente → pago exitoso / fallido / checkout abandonado / cancelada.
+        Estados: pendiente → pago exitoso → despachado (pago recibido y enviado) / fallido / checkout abandonado / cancelada.
         Wompi/Addi se reconcilian al retorno del catálogo y cada 15 min por cron; usa <b>Reconciliar Wompi/Addi</b> para forzar ahora.
       </p>
       ${renderAbandonedCartsPanel(state, fmt)}
@@ -619,20 +645,12 @@
       const btnDesp = document.querySelector(`[data-vcat-despacho-ok="${r.id}"]`);
       if (btnDesp) {
         btnDesp.onclick = async () => {
-          const prevTm = r.trackingMeta && typeof r.trackingMeta === 'object' ? { ...r.trackingMeta } : {};
-          const row = {
-            ...r,
-            trackingMeta: {
-              ...prevTm,
-              despacho_revisado_at: new Date().toISOString(),
-              pendiente_revisar_despacho: false,
-            },
-          };
+          const row = marcarFilaDespachada(r);
           const ok = await saveRecord('ventas_catalogo', r.id, row);
           if (ok) {
             const ix = state.ventasCatalogo.findIndex((x) => x.id === r.id);
             if (ix >= 0) state.ventasCatalogo[ix] = row;
-            notify('success', '🚚', 'Despacho', 'Marcado como gestionado.', { duration: 2500 });
+            notify('success', '🚚', 'Despachado', 'Pago recibido y pedido despachado.', { duration: 2500 });
             rerender();
           } else {
             notify('warning', '📡', 'No guardado', 'Revisa conexión o permisos.', { duration: 4000 });
@@ -644,9 +662,12 @@
         btnS.onclick = async () => {
           const sel = document.querySelector(`[data-vcat-estado="${r.id}"]`);
           const nuevo = sel?.value || 'pendiente';
-          const row = { ...r, estadoPago: nuevo };
-          if (nuevo === 'pago_exitoso' && !row.pagadoAt) row.pagadoAt = new Date().toISOString();
-          if (nuevo === 'cancelada') row.pagadoAt = null;
+          let row = { ...r, estadoPago: nuevo };
+          if (pedidoPagado(nuevo) && !row.pagadoAt) row.pagadoAt = new Date().toISOString();
+          if (nuevo === 'cancelada' || nuevo === 'pago_fallido') row.pagadoAt = null;
+          if (nuevo === 'despachado') {
+            row = marcarFilaDespachada(row);
+          }
           if (nuevo === 'pago_exitoso' && necesitaDespachoCanalIntegrado(row)) {
             const tm = row.trackingMeta && typeof row.trackingMeta === 'object' ? { ...row.trackingMeta } : {};
             if (!tm.despacho_revisado_at) {
@@ -676,7 +697,7 @@
   function openDetailModal(r, { fmt, openModal }) {
     const items = Array.isArray(r.items) ? r.items : [];
     const est = r.estadoPago || '';
-    const canToPos = est === 'pago_exitoso' && !r.posFacturaId && items.length > 0;
+    const canToPos = pedidoPagado(est) && !r.posFacturaId && items.length > 0;
     const tot = r.totales && typeof r.totales === 'object' ? r.totales : {};
     const tm = r.trackingMeta && typeof r.trackingMeta === 'object' ? r.trackingMeta : {};
     const lines = items
